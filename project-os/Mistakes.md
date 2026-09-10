@@ -65,7 +65,6 @@ Mistakes in HOW you worked:
 | Date | What I did | What was wanted | Home if it repeats | Times |
 |---|---|---|---|---|
 | 2026-09-10 | Made the commit conditional on your answer, and called the commit something waiting on you | The commit itself, unasked: rule 22 gives me the commit and gives you the push | `CLAUDE.md` working rules | 1 |
-| 2026-09-10 | Wrote an unverified Windows behavior into a plan finding as documented fact | The claim marked as unverified, with the test that would settle it | `project-os/QA.md` | 1 |
 | 2026-09-10 | Justified the technology choice by the owner having used that stack on another project | The right technologies for this task and for years of maintenance, argued on merits | `CLAUDE.md` rule 21 | 1 |
 
 ## Promoted
@@ -74,6 +73,7 @@ Mistakes in HOW you worked:
 |---|---|---|
 | 2026-09-10 | Designed a fidelity check that could not detect the failure it targeted, twice in two passes | `project-os/QA.md` §12 |
 | 2026-09-10 | Split the plan into two documents twice: first a review beside the plan, then a product plan beside the build plan | `CLAUDE.md` rule 13, one plan file |
+| 2026-09-10 | Argued from claims that were not established, twice: a platform behavior stated as documented, then what competing technologies cannot do | `project-os/QA.md` §13 |
 
 ## Retired
 

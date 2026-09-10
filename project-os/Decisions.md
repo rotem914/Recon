@@ -66,10 +66,11 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-10 · An SVG raster size is fixed when annotation begins.
 - 2026-09-10 · sRGB is the working color space for v1.
 - 2026-09-10 · _The minimum format set for the daily-use release._ (membership stands, its stated reason is superseded)
-- 2026-09-10 · The stack: a Rust host owning the pixels, a web view laying out the text.
+- 2026-09-10 · _The stack: a Rust host owning the pixels, a web view laying out the text._ (recorded as decided; superseded below, it is a candidate)
 - 2026-09-10 · One native decode route, and the original never enters the web view.
 - 2026-09-10 · The annotation text layer is DOM, and the export is that same DOM.
 - 2026-09-10 · Why the required format set is affordable, superseding one paragraph.
+- 2026-09-10 · The stack is a recommended candidate, not a settled decision.
 
 ---
 
@@ -503,3 +504,50 @@ the other two, all inside the host's own toolchain, not because a browser was go
 for free. The price is four decode dependencies and their security watch, which part 11 of
 the plan now records as a standing cost rather than an absence. Nothing about the membership
 moves, and dropping a required format is still a scope decision that comes back to Rotem.
+
+---
+
+## 2026-09-10 · The stack is a recommended candidate, not a settled decision
+
+Supersedes the stack entry above, on its status and on part of its argument. The
+recommendation itself is unchanged.
+
+### Context
+
+The earlier entry recorded the stack as chosen. Its argument contained three claims that
+were not established: that the alternatives would need a bidirectional editing model written
+from scratch, that a native UI leaves this project on manual verification forever, and that
+the SVG renderer follows from the host language. Qt's own documentation shows an editable
+text item inside its graphics scene. WPF and Qt both expose automation interfaces for their
+standard controls. `resvg` ships a C interface, so any host can use it. And the third
+argument, this project's browser-driven QA gate, is a tooling habit to price and adapt, not
+a product requirement.
+
+### Options
+
+1. Keep it recorded as decided, and let Stage 0 confirm it.
+2. Record it as a recommended candidate pending validation, correct the comparison, and give
+   Stage 0 explicit permission to reject it.
+
+### Decision
+
+Option 2, on Rotem's direction.
+
+### Consequences
+
+The recommendation does not move, and the reasons that survive are real: the decode surface
+belongs to the host, the engine supplies the editing model rather than the plan having to,
+and the existing verification tooling runs on a document tree. What changes is their weight,
+and the plan's honesty about them. Part 5 now names what is not established and carries a
+comparison of concrete implementations, documentation first, prototyping only the
+consequential uncertainties in the strongest alternative. Part 8 gains a row that reopens the
+editor architecture or the stack on combined implementation and maintenance cost, whether or
+not any single gate failed, and notes that replacing Tauri means re-implementing the tray,
+the global shortcut, the Explorer argument forwarding, the association bundle and the
+updater.
+
+One more correction rides along: the cost of one decode route against two was recorded as an
+answered fact and is not one. One route stays, because exact equality requires it, and that
+reason needs no cost claim.
+
+Revisit at the S0.8 report, which is now allowed to recommend against this stack.

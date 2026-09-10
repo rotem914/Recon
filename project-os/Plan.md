@@ -5,9 +5,9 @@ One document. What Recon is, how it behaves, what was decided, and how it gets b
 Read this file and `project-os/Backlog.md` at task pickup. There is no second plan.
 
 Status: consolidated on 2026-09-10. Approved for the Stage 0 experiment.
-The stack and the decode route are decided in part 5 and part 6a, and they close the three
-format decisions that were open. Nothing in the plan waits on an answer; what waits is
-measurement, in part 7.
+The stack in part 5 is a **recommended candidate, not a settled decision**: Stage 0 has
+permission to reject it, and part 8 says on what evidence. The decode route and the format
+decisions inside that candidate are settled (part 6a).
 Not built: nothing here exists yet, and no timing or memory figure in this document came
 from running anything.
 
@@ -222,6 +222,9 @@ This is the part that has to be good enough to use all day with no annotation in
 
 - **Fit to window** on open, **actual size** on demand, zoom in and out, and pan. Zoom
   re-encodes nothing and never changes what an export would contain.
+- **Detail matches the zoom.** At 100% and beyond, the visible region shows the source's own
+  pixels, not an enlarged fit-to-window preview. Fine text in a screenshot or a diagram has
+  to be readable, since that is most of what gets viewed here.
 - **Fullscreen**, one key in, the same key or `Esc` out.
 - **The filename and the pixel dimensions are visible** without hunting for them.
 - **Previous and next walk the folder** the opened file came from, across the supported
@@ -295,9 +298,11 @@ several bubbles before improving the heuristic.
   the clipboard, in an exported file and in the Rogers text are the same numbers.
   Renumbering on output is rejected; the reason is in `project-os/Decisions.md`.
 - Hebrew, English and mixed-direction text are supported in the first callout
-  implementation. Base direction comes from the first strong character of the bubble, with
-  a manual override on the selected bubble; alignment follows base direction; the
-  anchor-side edge stays fixed while the opposite edge grows.
+  implementation. A bubble's direction is one of three explicit modes, automatic,
+  left-to-right or right-to-left, and the resolved value is stored with it. Automatic
+  resolves from the bubble's first strong character and applies to the whole bubble, not per
+  paragraph. Alignment follows the resolved direction, and the anchor-side edge stays fixed
+  while the opposite edge grows.
 - The editor and the rendered output agree on wrapping, alignment, font rendering and arrow
   positions. Part 7 step S0.6 is where that is proved rather than asserted.
 
@@ -377,6 +382,10 @@ again restores its previous text.
 
 - Clipboard and file output carry the original captured or source pixels, plus the visible
   annotations, plus any annotation margin.
+- **The output covers the whole composition.** Its dimensions are the source dimensions plus
+  the stored margins, and an annotation that sits entirely inside the margin, outside the
+  source rectangle, is in the output like any other. Anything that sizes the output to the
+  source alone would cut those annotations off.
 - Copy and export snapshot the composition when invoked. Their completion never discards or
   overwrites an edit made afterwards.
 - Selection outlines, editing handles, the caret and tool UI are never in the output.
@@ -628,60 +637,89 @@ check, step S1.5's mode boundary, and step S1.11's new-file-only Save As.
 
 # Part 5: the architecture
 
-## The stack, and why it is this one
+## The stack: the recommended candidate, and what still has to be shown
 
-**A Rust host owning the pixels, and a Chromium web view laying out the text.** Concretely:
-a Rust process with windows-rs for capture, decoding, the store, the clipboard and the
-native overlays, and a WebView2 editor for the scene, the composer and the annotation text.
-Tauri v2 packages it and supplies the tray, the global shortcut, single-instance argument
-forwarding and the installer.
+**Recommended: a Rust host owning the pixels, and a Chromium web view laying out the text.**
+A Rust process with windows-rs for capture, decoding, the store, the clipboard and the
+native overlays; a WebView2 editor for the scene, the composer and the annotation text;
+Tauri v2 packaging it.
+
+**This is a candidate pending validation, not a settled decision.** Stage 0 may reject it,
+and part 8 says on what evidence. What follows is the argument for it and, just as
+important, the part of that argument that is not established.
 
 Familiarity with a stack from another project is not a reason, and rule 21 of `CLAUDE.md`
-says another project is not evidence about this one. Three of Recon's own requirements
-decided it.
+says another project is not evidence about this one.
 
-**Decoding is the second-largest surface in this product, and it belongs to the host.**
-Nine formats, orientation applied once, one color space, frames and pages addressable by
-index, and a parse path pointed at client files, so a permanent security and format-drift
-surface. Rust answers all of it in one toolchain, with most of that parse path memory-safe:
-`image` for PNG, JPEG, BMP, GIF with frame access and WebP; `resvg` for SVG, which actually
-renders `<text>`; libavif or dav1d for AVIF; and windows-rs into WIC for multipage TIFF and
-for HEIC through whatever codec the machine has. Every alternative owns four native
-libraries behind interop it writes itself, and two of the candidates answer SVG wrongly and
-silently: Direct2D's SVG document has no `<text>`, `<mask>`, `<filter>` or CSS classes and
-ignores what it cannot draw, and Qt's SVG module is SVG 1.2 Tiny without `clipPath`. Recon's
-core case is annotating diagrams, so a silent SVG mangle is a product failure, not a detail.
+### What actually favors it
 
-**Mixed Hebrew and English text needs an editing model, not just a layout engine.** Three
-of the five candidates can lay out bidirectional text. One gives the whole editing model
-for free: caret placement, selection rectangles, visual caret movement across a direction
-boundary, word boundaries and the platform's own text-editing keys. That is Chromium's, and
-hand-writing it is the largest single work item in every other candidate. The shortcut
-everyone reaches for instead, a text control floating over a canvas, is precisely what S0.6
-check 3 exists to catch.
+**Decoding is the second-largest surface here, and it belongs to the host.** Nine formats,
+orientation applied once, one color space, frames and pages addressable by index, and a
+parse path pointed at client files, so a permanent security and format-drift surface. Rust
+covers it in one toolchain with most of that parse path memory-safe: `image` for PNG, JPEG,
+BMP, GIF with frame access and WebP; `resvg` for SVG, which renders `<text>`; libavif, with
+a dav1d backend, for AVIF; windows-rs into WIC for multipage TIFF and for HEIC through
+whatever codec the machine has.
 
-**This project's own verification doctrine only works on a DOM.** `project-os/Workflow.md`
-step 9 makes driving the running app with a browser tool, and reading its console, network
-and document tree, a gate on every visible change. `project-os/QA.md` section 6 requires
-accessible names, real-keypress focus tests and heading order. The editor is the surface
-that changes for years: the toolbar, the document strip, the viewing controls, the callouts,
-Stage 3's five tools. On a Direct2D or Qt canvas there is no document tree, no console and
-no accessibility tree, so every visible change falls to a manual checklist forever and
-section 6 cannot be met at all until somebody hand-writes a UI Automation provider. That is
-the largest unpriced five-year cost in the comparison.
+**The text editing model comes from the engine.** Caret placement, selection rectangles,
+caret movement across a direction boundary, word boundaries and the platform's editing keys
+are Chromium's. That is a real saving, and §3.5's contract is what has to be met, not the
+saving.
 
-What did **not** decide it: the hotkey, the freeze, the overlays, the clipboard, the file
-associations and the storage discipline. Those are Win32 and WIC calls any native host can
-make, and part 5 already assigns them to a native host, so crediting them to one stack is
-double-counting the platform.
+**The project's existing verification tooling runs on it.** `project-os/Workflow.md` step 9
+drives the running app with a browser tool and reads its console and document tree, so the
+editor, which is the surface that changes for years, stays inside that apparatus.
 
-**Tauri is the least load-bearing part of this.** What decides the design is Rust owning
-the pixels and Chromium laying out the text; Tauri is a convenience layer over that.
-Replacing it later with a direct wry or a hand-written WebView2 host is a packaging
-decision, not a stack decision.
+### What is NOT established, and must not be argued as if it were
 
-The alternative, and the exact trigger that switches to it, is in part 8. It is a component
-swap inside this same host, not a different stack.
+**Other candidates do have editing models.** Qt's `QGraphicsTextItem` is editable inside a
+graphics scene, with a text document and a cursor behind it. That does not show it meets
+§3.5's export contract; it does refute any claim that a bidirectional editing model has to
+be built from scratch elsewhere. An earlier revision of this plan made that claim, and it
+was wrong.
+
+**Native UI is not condemned to manual verification.** WPF exposes automation peers for its
+standard controls and Qt exposes accessibility interfaces for its widgets. Custom-drawn
+annotations need their own semantic exposure in any of these candidates, including this one:
+a canvas-drawn callout is no more accessible in a web view than in Direct2D. The work to
+price is that specific exposure, not the whole native UI.
+
+**A workflow written around browser inspection is a tooling constraint, not a product
+requirement.** It is a genuine cost to price and adapt. It is not evidence that a browser
+editor is the better product.
+
+**The SVG renderer is not tied to the host language.** `resvg` ships a C interface, so any
+of these candidates can use it. What remains true is narrower: Direct2D's own SVG document
+supports a documented subset with no `<text>`, and Qt's SVG module lacks `clipPath`, though
+it has gained extensions since 6.7. Neither fact eliminates a candidate that pairs a
+different renderer with a different host.
+
+**One decode route versus two is an engineering judgment, not a measured fact.** The reason
+for one route is correctness (see the boundary rule below), and that reason stands on its
+own. Its relative cost has not been measured.
+
+### The comparison, on concrete implementations
+
+Documentation-first, as it should be: this table is what each candidate would actually use.
+Prototype only the consequential uncertainties in the strongest alternatives, and never
+build several complete applications to decide this.
+
+| Candidate | Text editing | SVG | Decoders | Automation route | Deployment | Standing update duty |
+|---|---|---|---|---|---|---|
+| **Rust host + WebView2 editor** | editable DOM, engine caret and selection | `resvg` crate | `image`, `resvg`, libavif with dav1d, WIC | document tree, plus this project's existing browser tooling; custom exposure still needed for canvas-drawn parts | WebView2 runtime, present on current Windows | the web view's own cadence, four decode crates, Tauri and wry |
+| **C# on .NET + WinUI 3** | a rich text control, or one DirectWrite layout per bubble | `resvg` through its C interface, or Direct2D's subset which drops `<text>` | WIC covers all nine, or the same crates through interop | automation peers for standard controls, custom peers for the scene | .NET runtime and WinUI packaging | .NET yearly, WinUI, plus any interop it writes |
+| **C++ + Direct2D/DirectWrite** | DirectWrite layout per bubble, caret and selection hand-written | `resvg` C interface, or Direct2D's subset | WIC plus libavif | UI Automation, hand-written for custom drawing | nothing beyond the OS | libavif, `resvg`, and everything it writes itself |
+| **Qt 6** | `QGraphicsTextItem` with a text document, editing included | QtSvg with the 6.7 extensions, or `resvg` | Qt image plugins plus libavif; frame seek in GIF and animated WebP is unproven and is F24's failure returning | `QAccessible` for widgets, custom for the scene | Qt runtime bundled | Qt feature releases twice a year, plus licensing |
+| **Electron** | editable DOM, same as the first row | via a native addon, or the engine | engine plus addons | document tree | a pinned Chromium bundled | Chromium majors, six or seven a year |
+
+### Tauri, and what replacing it would cost
+
+Tauri is not merely an installer. It supplies the tray, the global shortcut, single-instance
+argument forwarding from Explorer, the web view host, the file-association bundle and the
+updater. Replacing it means re-implementing that list, so it is a smaller decision than the
+stack and a larger one than packaging.
+
+The alternatives, and the evidence that would switch to each, are in part 8.
 
 ## The split, and why
 
@@ -720,38 +758,64 @@ implementation behind it can be replaced, or joined by a second one, without the
 noticing.
 
 **An opened file arrives through the same shape**, one image source interface, path in,
-decoded frame and metadata out, with two providers behind it and one chosen per format.
+decoded frame and metadata out, with one native implementation behind it for every format.
 Past that boundary the editor cannot tell a capture from a file, which is what lets one
 window serve both.
 
 Its contract is the decoded-image contract in §3.7, frame access included. One route, in the
 host, for all nine formats.
 
-**The decoded original never enters the web view at full resolution, and never round-trips a
-canvas.** This is pinned from day one, because retrofitting it rewrites the composer's
-relationship to the image.
+Two rules, and they are separate things. The first is a correctness boundary and is pinned.
+The second is a transport policy and is a measurement.
 
-- The web view is handed a **display-resolution proxy** to show and to annotate against.
-- Export emits **only the annotation layer**, at the original pixel dimensions, with a
-  transparent background.
-- **Native composites** that layer over the untouched preserved source and writes the file
-  or the clipboard.
+**Pinned: the preserved source is authoritative, it lives in the host, and it never
+round-trips a canvas.**
 
-Two reasons, and the second one is the sharp one. A full-resolution 4K frame crossing the
-process boundary twice per capture is a cost the plan never priced. And a canvas is
-premultiplied: a straight-alpha pixel at a low alpha does not survive the round trip, so a
-preserved image that was born in the renderer cannot satisfy the exact-equality requirement
-on any image with transparency. An opaque capture round-trips perfectly, which is exactly
-why a check written against a capture cannot catch this.
+- The host holds the decoded source, and that copy is what an export is made from.
+- Export emits **only the annotation layer**, over a transparent background, covering the
+  **full composition**: the source dimensions plus any stored annotation margin.
+- **The host composites** that layer over the untouched source at the stored margin offset,
+  then writes the file or the clipboard.
+
+The reason is exact equality. A canvas is premultiplied, so a straight-alpha pixel at low
+alpha does not survive the round trip; a preserved image born in the renderer cannot be byte
+identical for any image with transparency. An opaque capture round-trips perfectly, which is
+exactly why a check written against a capture cannot catch it.
+
+**A policy, decided by measurement: what representation the editor gets to display.** The
+boundary above does not say the editor may never receive full resolution. Showing a copy
+cannot corrupt a source that stays authoritative in the host. So S0.3 measures the crossing
+and the representation is chosen from that, not asserted here.
+
+What the policy must satisfy either way, because Recon is replacing an everyday viewer:
+
+- **The visible region always has enough detail for the current zoom.** A preview generated
+  for fit-to-window cannot be enlarged to serve 100% or 200%: fine text turns to mush. Zoom,
+  pan and window resize each fetch what the visible region needs, as an updated preview or as
+  tiles.
+- **The cache is bounded**, and a stale response that arrives after the view moved is
+  discarded rather than painted.
+- **Annotation coordinates stay in image space**, so whatever the display representation is,
+  it never leaks into the document.
+
+S0.4 tests it on the case that exposes it: a large image with fine text, at fit, at 100%, at
+an enlarged view, and again after panning.
 
 ## The annotation text layer, and how it exports
 
 The text is not drawn into a canvas. It is DOM, and the export is that same DOM.
 
 - Each bubble is an absolutely positioned element, laid out in **image-space CSS pixels**.
-- `unicode-bidi: plaintext` gives base direction from the first strong character of each
-  paragraph, which is the rule §3.5 states, without implementing it. `direction` on the
-  selected bubble is the manual override.
+- **Direction is three explicit modes on the bubble: automatic, left-to-right, and
+  right-to-left**, and the resolved value is stored in the document.
+  An earlier revision said `unicode-bidi: plaintext` plus `direction` would do this. It would
+  not: under the CSS specification `plaintext` takes each bidi paragraph's base direction from
+  the Unicode heuristics and ignores the element's own `direction`, so the manual override did
+  not exist and the contract was per paragraph rather than per bubble.
+  So: automatic resolves the bubble's base direction from its first strong character, once,
+  and applies it to the whole bubble; an override sets an explicit direction configuration
+  instead. Alignment follows the resolved direction, and the export carries the same resolved
+  value rather than re-detecting anything.
 - **Display zoom is a CSS transform on the container**, so layout is computed before the
   transform exists and zoom cannot re-wrap anything. That is R6's worst failure removed by
   construction rather than by discipline.
@@ -954,12 +1018,21 @@ anchor moves independently and the arrow follows.
 Evidence: every one of those operations exercised by hand; an empty bubble discarded when
 editing ends and absent from the output.
 
-**Plus the hidden-window check**, because this failure looks like latency and is actually
-rendering suspension, which is the easiest misdiagnosis in the design. With the browser's
-occlusion calculation disabled in its arguments, and that argument identical across every
-web view sharing a user-data folder, show the pre-created hidden window and confirm the
-first painted frame is current rather than blank or stale. Confirm a file drop works on a
-window that was created hidden.
+**Plus the hidden-window check, run in the configuration this product would ship.** This
+failure looks like latency and is actually rendering suspension, which is the easiest
+misdiagnosis in the design. Show the pre-created hidden window and confirm the first painted
+frame is current rather than blank or stale, and confirm a file drop works on a window that
+was created hidden.
+
+Disabling the browser's occlusion calculation is a diagnostic, not part of the gate. The
+vendor cautions against relying on those flags in production, because they can change or
+disappear. So: run the gate without it. If the design only passes with the flag, that is an
+unresolved dependency, recorded as one in the S0.8 report, and a supported route has to be
+found before this design is called fit for years of use.
+
+**Plus the display-detail check**, because §3.4 promises the viewer's detail matches the
+zoom: open a large image containing fine text, and read that text at fit, at 100%, at an
+enlarged view, and again after panning. An enlarged fit-to-window preview fails this.
 
 Full undo and redo are Stage 1 (S1.7), not a Stage 0 gate.
 
@@ -970,9 +1043,14 @@ Model: Opus 5. Format behavior, and a decision gate for the product surface.
 
 One decode route, in the host, for all nine formats (part 6a). The web view decodes nothing.
 
-Delivers: the image source interface, path in, decoded frame plus metadata out, with the web
-view as one provider and the host as the other; and the same canvas showing an opened file
-instead of a capture.
+Delivers: the image source interface, path in, decoded frame plus metadata out, implemented
+once in the host for all nine formats; and the same canvas showing an opened file instead of
+a capture.
+
+The route under test is the chosen one, not a comparison: `image` for PNG, JPEG, BMP, GIF and
+WebP, `resvg` for SVG, libavif with a dav1d backend for AVIF, and WIC for multipage TIFF and
+for HEIC. Name the chain and its update duty in the report: dav1d is a codec backend inside
+libavif, not an interchangeable whole-file AVIF library.
 
 Evidence, one line per format in the §3.7 list: did it decode, how long did the open take,
 and what came out. Transparency preserved where the format has it, EXIF orientation applied,
@@ -1065,6 +1143,10 @@ shipping: whether reading the pixels back from the serialized layer throws, and 
 same-engine fallback route exists if it ever does. This behavior is universally implemented
 and unspecified, so it is a watch item rather than a one-time answer.
 
+**The margin case.** Put a callout entirely inside the annotation margin, outside the source
+rectangle, and export. It survives, at the right offset, in an output whose dimensions are
+the source plus the stored margins.
+
 Plus: a paste verified in Claude and in ChatGPT, with the surface and version recorded
 beside each result.
 
@@ -1079,20 +1161,26 @@ sample that separates the live document from retained history.
 Marks: hotkey received · overlay displayed · overlay accepting input · selection completed ·
 editor displayed · editor accepting annotation input.
 
-Intervals: hotkey received to overlay accepting input, and selection completed to editor
-accepting annotation input. Everything else is diagnostic. Visible is not interactive, and
-the user's drag time is inside neither interval.
+Intervals: hotkey received to overlay usable, and selection completed to editor usable.
+Everything else is diagnostic, and the user's drag time is inside neither interval.
+
+**Usable means both halves, on one timing basis:** the correct content is on screen AND
+input is accepted. Visible is not interactive, and interactive is not visible either: input
+handlers can be live while the window still shows blank or stale pixels, and an interval that
+ends at input readiness alone would score that as ready.
 
 Evidence: thirty runs at 4K with the process already in the background, reported as raw runs
-plus the maximum and the percentile method, against the proposed targets of 250 ms to a
-usable selection and 500 ms to an editor ready for input. With thirty runs the 95th
-percentile is the second-worst run, so the raw list carries more information than the label.
+plus the maximum, against the proposed targets of 250 ms to a usable selection and 500 ms to
+a usable editor. State the percentile method explicitly: with thirty samples the second-worst
+value is the nearest-rank 95th percentile, and other methods give other answers, so the label
+means nothing without the method beside it. The raw list carries more than either.
 Process startup is measured and reported separately.
 
-**The memory sample is read as a slope, not a level.** A multi-process web view has a floor
-of its own, and a floor is not a failure; growth with the size of the library is. Report the
-floor separately from the delta across thirty captures and across a folder walk, and state
-the explicit release discipline that produced it.
+**The memory sample is read as both a floor and a slope.** Growth with the size of the
+library is a failure of R11. The floor is a separate question and it is not exempt: this
+process sits in the tray all day, so report the floor as a number to be judged on its own,
+alongside the delta across thirty captures and across a folder walk, and state the explicit
+release discipline that produced it.
 
 ----
 **[ ] S0.8 · The limits, and the go or no-go report**
@@ -1122,9 +1210,12 @@ keeping or replacing a named component rather than the whole stack.
 
 # Part 8: what Stage 0 is allowed to conclude
 
-Each failure has a next move, and none of them is a verdict on the whole stack. A failure is
-diagnosed before anything is replaced, and a failure that is not resolved is reported as a
-limitation rather than absorbed.
+Each failure has a next move, and a failure is diagnosed before anything is replaced. A
+failure that is not resolved is reported as a limitation rather than absorbed.
+
+**Stage 0 has permission to reject the recommended stack.** Most single failures accuse one
+component, and the rows below name which. But the last row exists because a gate that cannot
+return a verdict against the design is not a gate.
 
 | If this fails | Then |
 |---|---|
@@ -1136,6 +1227,7 @@ limitation rather than absorbed.
 | The export route is unavailable, or drifts from the editor, and the three remedies do not close it | Move the composer in-process: a Direct2D and DirectWrite scene inside the same Rust host, through windows-rs, keeping every other component. One text layout object per bubble then serves the caret geometry, the screen draw and the export draw, and the requirement stops being a discipline. Not a different stack, and not a different host language: the decode decision was made on its own grounds and stands. |
 | The boundary is the measured cause of a missed editor-ready target, and the proxy design does not close it | Same move as the row above. That accuses the crossing, which is what an in-process composer removes. |
 | Editing is unusable at 4K | Tile the canvas, or reconsider the editor surface, with the measurement in hand. |
+| The combined implementation and maintenance cost of this candidate turns out to be unacceptable, whether or not any single gate failed | Reopen the editor architecture, or the stack, against the comparison table in part 5. Start from documentation, prototype only the consequential uncertainties in the strongest alternative, and record the verdict in `project-os/Decisions.md` as a superseding entry. Replacing Tauri also means re-implementing the tray, the global shortcut, the Explorer argument forwarding, the file-association bundle and the updater. |
 
 No Stage 0 result justifies building the document library or the Rogers integration to
 compensate for an unproven capture or decoding path.
@@ -1278,8 +1370,8 @@ activation succeeds against such a window and against a closed one (S0.8); which
 formats Claude and ChatGPT actually accept (S0.6); what the freeze and the first paint really
 cost on this machine (S0.7); what each target format actually does here, decode or not, how
 fast, and whether orientation and color survive the whole cycle rather than just the decode
-(S0.5); whether the platform image decoder in the web view gives frame-accurate access to a
-chosen animation frame here (S0.5); whether the HEIC codec is even present on this machine
+(S0.5); whether the host's decoders give frame-accurate access to a chosen animation frame
+here, confirmed per format rather than inferred from GIF (S0.5); whether the HEIC codec is even present on this machine
 (S0.5).
 
 **Assumed until Stage 0 says otherwise:** that pre-creating the overlay and the editor at
@@ -1289,14 +1381,15 @@ display-resolution proxy is enough for accurate annotation at every zoom level; 
 stack in part 5 is right, on the argument made there rather than on anyone's familiarity
 with it.
 
-**Answered, and worth recording as answered:** whether two decode providers cost less than
-one native route. They do not, once the store and the exact-equality requirement are counted,
-which is why part 6a has one route.
+**A judgment, not a measured fact:** what one native decode route costs against two
+providers. One route is the design because of exact equality, and that reason stands on its
+own; the relative cost has not been measured and must not be quoted as if it had been.
 
 **Watch items rather than measurements:** whether the serialized export route stays
 origin-clean across web view updates; the four decode dependencies and their security watch;
 the web view's own update cadence, which makes every reference image dependent on a recorded
-engine version.
+engine version; and any reliance on a browser flag, which the vendor does not support for
+production use and which therefore cannot be part of a gate.
 
 **Not inspected:** Copy Ninja and Rogers. Both are Rotem's to point at, in a task that names
 them.
@@ -1305,7 +1398,7 @@ them.
 
 # Part 12: the review trail
 
-Thirty-two findings were raised against the plan and folded into the parts above. This table
+Thirty-nine findings were raised against the plan and folded into the parts above. This table
 is the record; the fixes themselves live where the table points. Severity is how the finding
 was rated when it was raised.
 
@@ -1328,7 +1421,7 @@ was rated when it was raised.
 | F15 | First run and the empty editor were missing | 🟡 | S0.1, S1.1 | Resolved in plan |
 | F16 | HDR was left open | 🟡 | S0.8 | Resolved in plan |
 | F17 | Viewing must never modify or import the source file | 🔴 | Part 4, §3.8, S0.5, S1.5, S1.11 | Stated as an invariant, verification pending |
-| F18 | Two target formats have no browser decoder, so common images cannot be promised | 🟠 | §3.7, part 6b D to F, S0.5 | Open: the three format decisions |
+| F18 | Two target formats have no browser decoder, so common images cannot be promised | 🟠 | §3.7, part 6a, part 6c, S0.5 | Closed by the one native decode route; the required set is in part 6c |
 | F19 | One window, two modes, and the pointer did not know which | 🟠 | §3.3, S1.5 | Resolved in plan, verification pending |
 | F20 | Two navigation lists in one window | 🟡 | §3.4, S1.4, S1.9 | Resolved in plan |
 | F21 | A folder walk could grow memory without a bound | 🟡 | §3.8, S0.7 | Resolved in plan, measured at S0.7 |
@@ -1343,6 +1436,13 @@ was rated when it was raised.
 | F30 | The two-provider decode split would have created the preserved image inside the renderer, where a premultiplied canvas cannot return a straight-alpha pixel unchanged | 🔴 | Part 5 boundary rule, part 6a, S0.6 check 1 | Resolved: one native route, and the original never enters the web view |
 | F31 | The exact-equality check used an opaque capture, so it could not fail on the only input that can | 🔴 | S0.6 check 1 | Resolved: a semi-transparent PNG case added |
 | F32 | The stack was justified by familiarity with another project, which rule 21 forbids as evidence | 🟠 | Part 5, `project-os/Mistakes.md` | Resolved: argued from this product's own requirements |
+| F33 | The replacement argument overstated what the alternatives cannot do: Qt has an editing model, native UI has automation peers, resvg has a C interface, Qt SVG has extensions since 6.7 | 🟠 | Part 5, its not-established section and comparison table | Resolved: downgraded to a recommended candidate with the overstatements named |
+| F34 | A browser flag the vendor does not support for production sat inside a readiness gate | 🟠 | S0.4, part 11 watch items | Resolved: the gate runs in the shipping configuration |
+| F35 | A fit-to-window display proxy cannot serve 100% or 200% zoom, so the everyday viewer would show mush | 🔴 | §3.4, part 5 display policy, S0.4 detail check | Resolved: detail follows the zoom, transport decided by S0.3 |
+| F36 | The stated direction override did not exist: `unicode-bidi: plaintext` ignores `direction` and resolves per paragraph, not per bubble | 🔴 | §3.5, part 5 text layer | Resolved: three explicit modes, resolved value stored |
+| F37 | The annotation export was sized to the source, so a callout inside the added margin would be cut off | 🔴 | §3.6, part 5 boundary rule, S0.6 margin case | Resolved: source plus stored margins, composited at the offset |
+| F38 | Revision leftovers: two decode providers in two places, a web view decoder question, F18 still marked open, and dav1d described as a whole-file library | 🟠 | Part 5, S0.5, part 11, this table | Resolved in place |
+| F39 | Readiness ended at input acceptance, so a blank or stale window could score as ready | 🟠 | S0.7 | Resolved: content and input, on one timing basis |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the
 two things it compares and the failure that would turn it red (`project-os/QA.md` §12), and a

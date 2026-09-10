@@ -231,6 +231,22 @@ Two ways a comparison lies, and both have already happened here:
 State the tolerance and the environment wherever either one matters. An exact
 comparison and a tolerant one answer different questions, and neither answers both.
 
+## 13. A claim carries its evidence class
+
+Every claim in a project document is one of three things, and it says which: **measured
+here**, **documented with a citation**, or **inferred**. The third one is written as
+inferred, in the sentence, not left for the reader to work out.
+
+This bites hardest on a claim about what some other technology cannot do. "That framework
+has no editing model", "that platform cannot be made accessible", "this API is the only one
+that can do X": those are the shape that gets believed and then decides an architecture.
+Cite it, or write what is actually known, which is usually "not established here".
+
+Why this is a rule: two plan revisions on one day argued from claims that were not
+established, one about a platform behavior and one about competing technologies. Both
+survived a review because they read like facts. A wrong fact in a plan is more expensive
+than a missing one, because nobody goes looking for it.
+
 ## Checklist before delivery
 
 - [ ] Task type identified, risk level stated.
@@ -248,5 +264,6 @@ comparison and a tolerant one answer different questions, and neither answers bo
 - [ ] `project-os/History.md` row added.
 - [ ] `project-os/Decisions.md` updated if a non-obvious choice was made.
 - [ ] Every check names what it compares and what failure would turn it red (§12).
+- [ ] Every claim about a platform or another technology is measured, cited, or written as inferred (§13).
 - [ ] Reply names the checks that failed or surprised you — not the ones that passed as
       expected.
