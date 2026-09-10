@@ -962,7 +962,7 @@ the evidence that closes it. The model is a suggestion for whoever picks the ste
 setting. A step is done when its evidence exists, not when its code runs.
 
 ----
-**[ ] S0.1 · Host shell: tray, hotkey, quit**
+**[x] S0.1 · Host shell: tray, hotkey, quit**
 
 Model: Sonnet 5. Mechanical, documented APIs.
 
