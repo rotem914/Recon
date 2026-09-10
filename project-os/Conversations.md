@@ -529,6 +529,21 @@ The redirect map is live.
 All 16 old links land correctly.
 ~~~
 
+### 18 · The plan travels with its change
+
+Whenever `project-os/Plan.md` changes, attach the file to the reply that reports the change.
+Never wait to be asked for it.
+An unchanged plan is not attached, and a reply that only answers a question carries nothing.
+
+Rotem reads the plan in the app, not in the repository. A change he cannot see is a change
+he has to ask for a second time, and he asked three times before this rule existed.
+
+~~~
+Part 6c is rewritten, and the four naming leftovers are gone.
+
+It is attached, so you do not have to ask.
+~~~
+
 ---
 
 Replies shaped by this file are for one reader's eye.

@@ -66,6 +66,7 @@ Mistakes in HOW you worked:
 |---|---|---|---|---|
 | 2026-09-10 | Made the commit conditional on your answer, and called the commit something waiting on you | The commit itself, unasked: rule 22 gives me the commit and gives you the push | `CLAUDE.md` working rules | 1 |
 | 2026-09-10 | Wrote an unverified Windows behavior into a plan finding as documented fact | The claim marked as unverified, with the test that would settle it | `project-os/QA.md` | 1 |
+| 2026-09-10 | Justified the technology choice by the owner having used that stack on another project | The right technologies for this task and for years of maintenance, argued on merits | `CLAUDE.md` rule 21 | 1 |
 
 ## Promoted
 

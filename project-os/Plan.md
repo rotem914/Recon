@@ -110,8 +110,8 @@ image at a predictable size, and being one keystroke from annotating it.
   shortcut.
 - The tray gives access to the editor, preferences and an explicit Quit.
 - Closing the editor hides it. Quit exits the process after saving pending changes.
-- Opening the editor without capturing restores the latest capture and its editable
-  annotations.
+- Opening the editor without capturing restores the most recent managed document, capture
+  or annotated file, with its editable annotations.
 - Preferences live outside the normal capture flow. Starting with Windows is a preference,
   not a prerequisite.
 - If a capture shortcut is unavailable, explain the conflict and allow another. Never
@@ -168,21 +168,51 @@ viewing without discarding the work.
 
 Everything else about the editor holds for both:
 
-- One editor window holds the canvas and, as the history UI develops, a capture strip at
+- One editor window holds the canvas and, as the history UI develops, a document strip at
   the bottom.
 - The image fits the available workspace without changing its pixel dimensions.
 - Zoom, pan and actual-size viewing are available, because a large image cannot be
   annotated accurately without them.
-- There is no separate viewer or library window in v1. Older captures are reachable from
+- There is no separate viewer or library window in v1. Older documents are reachable from
   the same editor.
 - Taking a new capture saves the current document and adds another. It never overwrites the
-  previous capture.
+  previous one.
 - Copying leaves the editor open. Copy and Return copies the image, then hides the editor
   and returns focus to the previous application.
 - Hide only after the clipboard operation succeeded and pending changes are saved. On
   failure, keep the work and show an actionable message.
 - If the user starts another action, or changes the document, while Copy and Return is
   completing, report the copy result without hiding their current work.
+
+### Opening a file that has been annotated before
+
+Recon history holds every managed document, captures and annotated external files alike.
+So an annotated file has two things that can be opened, and the answer is fixed:
+
+**Opening the external file shows the external file.** The original, decoded from disk as
+it is now. Never the saved edit behind its back.
+
+**When a document already exists for that path, the window says so and offers it.** One
+clear route, naming when it was edited. That is the "clear route to its saved edit", and
+it is the only way the saved edit is reached from a file open.
+
+**Annotate on a file that already has a document resumes that document.** It does not
+start a second one. Recon never holds two managed documents for the same source path,
+because two edits of one file means nobody can say which is the truth.
+
+**Annotate, then View, then Annotate, inside an open document reuses that document.**
+Toggling the mode is not a new piece of work.
+
+**A document stands on its own preserved image.** That image is stored inside the document
+and the external source is never read again for it. If the file on disk changes or
+disappears afterwards, the document opens unchanged; it says the source has moved on, and
+it changes nothing about the pixels it already holds.
+
+Worked example, the one that was undefined before. Open `a.png` and annotate it: a
+document is created, holding a's preserved image. Open `b.png`: a's document is saved
+first, and b opens as the external file it is. Return to `a.png`: the external file is
+shown, with the route to a's saved edit beside it. Take that route, or press Annotate, and
+a's existing document resumes with its callouts where they were.
 
 ## 3.4 Everyday viewing
 
@@ -201,10 +231,20 @@ This is the part that has to be good enough to use all day with no annotation in
   keystroke. A file that has since disappeared is skipped with a quiet note, never an error
   dialog.
 
-**Folder navigation and capture history are two different lists.** Walking a folder never
-moves through captures, and walking captures never moves through the folder. The window
-names the active context and its position. When both exist, the active one is whichever
-the last navigation used, and it is named on screen.
+**Folder navigation and Recon history are two different lists.** Walking a folder never
+moves through documents, and walking history never moves through the folder. The window
+names the active context and its position.
+
+Which one is active is not a guess. Four rules, and nothing else changes it:
+
+- **Opening an external file activates folder navigation**, on that file's folder.
+- **Taking a capture activates history navigation.** So does selecting a document from
+  Recon history.
+- **Entering or leaving annotation preserves the current context.** Annotate is a mode, not
+  a move.
+- **Creating a managed document never switches the context.** Annotating the third file in
+  a folder leaves the user in that folder, at position three, with a document now attached
+  to it. Nothing silently drops them into history.
 
 ## 3.5 Annotation
 
@@ -267,11 +307,22 @@ and the answer is fixed rather than clever:
 - **An animation.** Annotation starts from the frame on screen and produces a separate
   still image. The animated original is untouched, and Recon never writes an animation back
   out.
+  **The displayed frame is a real requirement, not a figure of speech.** Drawing an
+  animated image element into a canvas yields that element's default frame, which is
+  usually the first one, so the obvious implementation quietly annotates the wrong picture.
+  The image source must expose the frame by index, and the chosen frame is stored in the
+  document. S0.4 proves it end to end.
 - **A multipage image.** Annotation operates on the displayed page, and the page number
   travels with the managed document so a later reader knows which one it was.
-- **A vector file.** Annotation produces a raster composition at the displayed size, and
-  the original vector file is preserved exactly. Recon never writes vector annotations into
-  it.
+- **A vector file.** Annotation produces a raster composition, and the original vector file
+  is preserved exactly. Recon never writes vector annotations into it.
+  **Its pixel size is fixed once, when Annotate is pressed**, at the size then displayed
+  measured in physical device pixels, so what the user was looking at is what they get.
+  Those dimensions are shown at that moment and stored in the document. Later zoom never
+  changes them, and neither does resizing the window or reopening the document.
+  This is the one place where an export resolution comes from the view rather than from the
+  source, and it is an exception on purpose: a vector has no pixel size of its own until
+  someone picks one. Every other format takes its resolution from the source image.
 
 In all three the transition is explicit and stated on screen, because the user is moving
 from the file to a picture of the file.
@@ -305,7 +356,7 @@ is a contract broken on day one.
 | Delete outside text editing | Delete the selected annotation | 1 |
 | Undo and redo | While a note is being edited, undo works on the typing and never reaches object operations. Once editing ends, that text change takes its place in document history as one grouped step | 1 |
 | `Ctrl+O` | Open an image file | 1 |
-| Previous and next image, outside text editing | Walk the active navigation context, folder or captures, in the §3.4 order | 1 |
+| Previous and next image, outside text editing | Walk the active navigation context, folder or Recon history, in the §3.4 order | 1 |
 | Fit to window · actual size · zoom in · zoom out | Viewing controls, no effect on export resolution | 1 |
 | Fullscreen | Enter fullscreen | 1 |
 | `Ctrl+S` | Save As a PNG file, to a new file. Internal saving stays automatic | 1 |
@@ -332,9 +383,11 @@ again restores its previous text.
   operation actually succeeded.
 - `Ctrl+S` opens Save As with the last export folder and a unique suggested filename. A
   file dialog is right for an explicit export and wrong for taking a capture.
-- **Save As writes a new file, always.** The suggested name is derived from the source and
-  marked as annotated. An external original is never the default target, and no existing
-  file is overwritten unless the user chose it by name in the dialog.
+- **Save As writes a new file, always, with no exception.** The suggested name is derived
+  from the source and marked as annotated. An external original is never the default
+  target, and Recon overwrites nothing: if the chosen name already exists, it offers an
+  available one instead of replacing what is there. There is no confirm-and-overwrite path
+  in v1, because a product that forbids writing an original cannot also offer to.
 - File output is a rendered snapshot. It does not replace the editable internal document,
   and later edits never silently rewrite a previous export.
 - Saving into a folder that Drop Ninja already watches lets that existing workflow handle
@@ -350,19 +403,49 @@ rather than quietly dropped.
 | Format | What support means |
 |---|---|
 | **PNG** | Decode, transparency preserved, embedded color profile honored. Annotate directly. |
-| **JPG / JPEG** | Decode, EXIF orientation applied on display and carried into annotation, embedded color profile honored. Annotate directly. |
+| **JPG / JPEG** | Decode, EXIF orientation applied once at decode, so the frame handed to the viewer and to annotation is already upright, embedded color profile honored. Annotate directly. |
 | **BMP** | Decode. Annotate directly. |
-| **WebP** | Decode, transparency preserved. An animated WebP follows the animation rule in §3.5. |
-| **GIF** | Decode and play the animation, transparency included. Annotation takes a still from the displayed frame. |
+| **WebP** | Decode, transparency preserved. An animated WebP follows the animation rule in §3.5, frame access included. |
+| **GIF** | Decode and play the animation, transparency included. Frame access by index, so annotation takes a still of the frame actually on screen. |
 | **TIFF** | Decode, pages exposed as page navigation with the count visible. Annotation operates on the displayed page. |
 | **HEIC / HEIF** | Decode, orientation applied. Annotate directly. Depends on codecs installed on the machine, so a missing codec is reported as a missing codec with the way to install it, never as a corrupt file. |
-| **AVIF** | Decode, transparency preserved. An animated AVIF follows the animation rule. |
-| **SVG** | Render for viewing at the displayed size. Annotation produces a raster composition and preserves the original vector file. |
+| **AVIF** | Decode, transparency preserved. An animated AVIF follows the animation rule, frame access included. |
+| **SVG** | Render for viewing at any size. Annotation rasterizes once at the displayed size in physical device pixels, shows and stores those dimensions, and preserves the original vector file. |
 
-Across every row: orientation and color handling are applied consistently in the viewer and
-in any annotated output, so an image never rotates or shifts color when Annotate is pressed.
 An unsupported or unreadable file says so plainly, names the format, and leaves the file
 alone.
+
+### The decoded-image contract
+
+Every provider hands back the same shape, so nothing downstream has to ask where an image
+came from:
+
+- **Orientation is applied exactly once, at decode.** The frame that comes out is already
+  upright, and no later step rotates anything. Nothing in the document records a pending
+  rotation, because there is never one to apply.
+- **The dimensions are the ones after orientation.** A photograph tagged as rotated a
+  quarter turn reports the swapped width and height, and that is the document's image
+  space.
+- **The working color space is sRGB.** An embedded profile is converted at decode, once,
+  and everything after that point is sRGB: the viewer, the composer, the clipboard and the
+  exported file.
+- **The frame is addressable.** For an animation the provider takes a frame index; for a
+  multipage file, a page index. A provider that can only hand back "the image" cannot serve
+  this product.
+- **What the document stores is that decoded frame**, not the original encoded bytes. This
+  is what makes double-rotation impossible after a restart, and it is why a document
+  survives its source file changing.
+
+**A capture is the one case this contract cannot fully cover.** Its pixels come off the
+display, not out of a file, so they carry the display's color rather than a profile. v1
+treats them as sRGB, which is right on an sRGB display and an approximation on a wide-gamut
+one. S0.7 records what this machine's displays actually are, and that is the trigger for
+revisiting it. A designer judging UI color on a wide-gamut display is the case that would
+make this matter.
+
+S0.4 tests this through the whole cycle rather than at decode alone, because applying
+orientation twice and shifting color on reopen are exactly the bugs that pass a
+decode-time check.
 
 ## 3.8 Persistence, history and retention
 
@@ -408,15 +491,16 @@ or frame it came from.
 The file and database arrangement is part 5. Never couple the document format to a
 rendering library's private, unversioned serialization.
 
-### Capture strip and older history
+### The document strip and older history
 
-- The strip is recent capture history, not a new session-management product.
-- The first usable release gives previous and next through captures, and restores recent
+- The strip is recent document history, captures and annotated files together, and not a
+  new session-management product.
+- The first usable release gives previous and next through documents, and restores recent
   work after a restart.
-- Stage 2 adds the thumbnail strip and a way to reach older captures inside the same
+- Stage 2 adds the thumbnail strip and a way to reach older documents inside the same
   editor, with simple date grouping if it helps.
-- Changing a Rogers target never clears capture history.
-- Full-resolution image data is loaded when needed. Thumbnails and inactive captures must
+- Changing a Rogers target never clears history.
+- Full-resolution image data is loaded when needed. Thumbnails and inactive documents must
   not make memory grow with the size of the library.
 - The same discipline applies to a folder walk: one decoded image at a time, plus whatever
   small look-ahead measures well, and never the whole folder.
@@ -561,11 +645,11 @@ web view owns the editor.
 |---|---|---|
 | Host | native process | tray, preferences, global hotkey, window lifecycle, the return-focus target |
 | Capture | native | freezing the desktop, the captured region, physical desktop coordinates, all behind one interface |
-| Image source | web view for what it decodes, native for what it does not | opening a path, decoding, orientation and color handling, page and frame selection, also behind one interface |
+| Image source | web view for what it decodes, native for what it does not | opening a path, decoding to the contract in §3.7, orientation applied once, sRGB, frame and page access by index, all behind one interface |
 | Overlay | native, one borderless window per display | the dim, the selection rectangle, cancel, handing the region to the host |
 | Store | native | one folder per document, the preserved source, the versioned annotation data, atomic writes |
 | Clipboard | native | several image formats in one operation, success reported before any hide |
-| Editor shell | web view | toolbar, capture strip, destination indicator, keyboard routing, the viewing controls |
+| Editor shell | web view | toolbar, document strip, destination indicator, keyboard routing, the viewing controls |
 | Scene and composer | web view | the one composer: display at the current zoom, export at original scale |
 | Text editing | web view, an input layer above the canvas | caret, keyboard input, bidirectional typing, sharing the composer's wrapping |
 
@@ -590,6 +674,12 @@ noticing.
 decoded frame and metadata out, with two providers behind it and one chosen per format.
 Past that boundary the editor cannot tell a capture from a file, which is what lets one
 window serve both.
+
+Its contract is the decoded-image contract in §3.7, frame access included, and that rules
+out the easy implementation: an animated image element drawn into a canvas hands back the
+element's default frame, so the web view provider decodes through the platform's image
+decoder API rather than through an image element. Whether that API gives what this needs on
+this machine is S0.4's business, not an assumption made here.
 
 ## Coordinate spaces, and the transforms between them
 
@@ -644,7 +734,7 @@ Explorer closely enough to feel predictable is checked in S1.4, not assumed here
 | Elevated windows | Test first. No elevated mode on an unverified assumption (S0.7). |
 | Image viewing | A core capability, in one window with two entry behaviors. Recorded in `project-os/Decisions.md`. |
 | Initial capture path | One copy of the whole virtual screen: one synchronous call already spans every display and every negative coordinate, so the foundation risk is retired at the lowest cost. It sits behind the capture interface, which must leave a video source possible later while adding no video infrastructure now. A second path is earned only under part 8. |
-| Paste destinations | Claude and ChatGPT. Both read the clipboard as a web application does, so PNG is the format that decides acceptance and a bitmap-only clipboard fails rather than merely losing transparency. Record the surface and version with each result. |
+| Paste destinations | Claude and ChatGPT. Both read the clipboard the way a web application does. PNG is the implementation choice, not a proven requirement: a Chromium-based reader can convert native bitmap data into PNG for the page, so nothing here claims a bitmap-only clipboard would fail. What decides acceptance is the paste actually working in those two surfaces, recorded with the surface and its version. |
 | Reference environment | Rotem's main machine at its current display scale. The environment and font details are recorded with the reference images and in the S0.7 report. |
 
 ## 6b. Still open, and they gate S0.4 only
@@ -674,6 +764,28 @@ It cannot be promised unconditionally, because the codec is a separate component
 availability varies by machine and by Windows edition.
 The alternatives are bundling a decoder, which brings licensing and size questions, or
 deferring HEIC and naming the gap.
+
+## 6c. The minimum format set for the daily-use release
+
+"Ship the shorter list" is bounded. It is not a licence to drop a format because it turned
+out to be inconvenient.
+
+**Required in Stage 1:** PNG, JPG, GIF, WebP, BMP, AVIF and SVG. All seven decode in the
+web view, so requiring them costs little beyond meeting the decoded-image contract.
+
+**Required to attempt, allowed to degrade:** HEIC and HEIF. On a machine without the codec,
+the message that names it and says how to install it is a pass, not a gap.
+
+**The one format a Stage 0 result may defer:** TIFF, with its pages. HEIC needs the host
+provider too, so that is not what separates them: TIFF is the one host-provider format with
+no acceptable degraded state. A missing HEIC codec has a defined message that counts as a
+pass, while TIFF has nothing partial to ship, since it brings a page-navigation surface
+with it. Deferring it is a scope decision Rotem makes explicitly and
+`project-os/Decisions.md` records. S0.4 can report that TIFF is expensive; it cannot decide
+to ship without it.
+
+A required format that will not decode is not a shorter list. It is a blocked stage, and it
+comes back to Rotem as one.
 
 Details that wait for their own step: the document schema (S1.8), the placement candidate
 set (S1.6), the storage-rate note (Stage 2), the Rogers submission record (Stage 4).
@@ -751,8 +863,27 @@ as supported on the strength of another format working.
 The external-file boundary is proved here too: after opening, viewing and navigating, every
 source file is byte for byte what it was, and no managed document was created.
 
-This step is the gate for the format claims in §3.7. It is allowed to come back with a
-shorter supported list than the target list.
+**The animation frame test, end to end.** Select a frame that is not the first one,
+annotate it, save the document internally, restart Recon, then export. The same frame is
+what appears at every one of those points. A first-frame substitution anywhere, including
+after the restart, fails this step. This is the test that decides whether the chosen
+provider really exposes frame access, and the plan assumes nothing about it.
+
+**The orientation and color cycle test.** Take an EXIF-rotated JPEG and an image carrying an
+embedded color profile through the whole cycle: viewing, Annotate, an internal save, a
+restart, and an export. Orientation is applied exactly once, so the export is not rotated
+twice and not left upright-in-the-viewer-only. The color does not shift between viewing and
+annotation, and does not shift after reopening. A decode-time check alone does not close
+this: applying orientation twice and shifting color on reopen are precisely the bugs that
+pass one.
+
+**The SVG raster size test.** Rasterize at annotate time, note the dimensions the document
+recorded, then zoom, resize the window, reopen the document, and export. The exported pixel
+dimensions are the ones recorded at annotate time, every time.
+
+This step is the gate for the format claims in §3.7, inside the limits in part 6c. It may
+report that a format is expensive or unavailable; it may not decide to ship without a
+required one.
 
 ----
 **[ ] S0.5 · Output fidelity and the clipboard**
@@ -820,7 +951,9 @@ desktop, with the result recorded either way and no product decision attached to
 best-effort return-focus tested against that same window and against an application that has
 since closed; the API's own minimum Windows version stated separately from the versions Recon
 supports and tests; HDR behavior determined, with "not supported in v1, detected rather than
-silently wrong" an acceptable answer; the reference environment recorded.
+silently wrong" an acceptable answer; each connected display color gamut recorded, sRGB or
+wide, because that record is the trigger named in §3.7 and in the sRGB decision; the
+reference environment recorded.
 
 The consent prompt's own secure desktop is out of scope by design: nothing on the user
 desktop reaches it, and no product decision follows from it.
@@ -842,10 +975,10 @@ limitation rather than absorbed.
 | Activation is slower than the target | Find where the time goes first: process wake, window show, the freeze, the first paint, or input readiness. Replace the component the measurement accuses, not the one that is easiest to blame. If it accuses the freeze itself, that is the row above. |
 | The clipboard cannot satisfy the two destinations | Diagnose it: which format, which application, which failure. Fix it, or report an explicit limitation with the applications named. It does not pass the gate on the grounds that the clipboard is native by design. |
 | The export drifts from the display and shared wrapping cannot close it | Moving the composer to native code is a candidate, not a remedy: it must be revalidated for editing and output together, including the active-caret case, before it counts. |
-| A target format will not decode, or needs a component that is not on the machine | Name the format, the cause and the impact, and ship the shorter list. A gap is stated with its impact, never covered by a blanket claim. This does not fail the stack. |
+| A target format will not decode, or needs a component that is not on the machine | Name the format, the cause and the impact. If it is a deferrable format under part 6c, ship the shorter list with the gap stated. If it is a required one, this is a blocked stage and a scope decision for Rotem, not a shorter list. Either way it does not fail the stack. |
 | Editing is unusable at 4K | Tile the canvas, or reconsider the editor surface, with the measurement in hand. |
 
-No Stage 0 result justifies building the capture library or the Rogers integration to
+No Stage 0 result justifies building the document library or the Rogers integration to
 compensate for an unproven capture or decoding path.
 
 ---
@@ -866,10 +999,12 @@ work rather than a feature count.
       and the filename and pixel dimensions on screen.
 - [ ] S1.4 Folder navigation: previous and next across the supported types in the opened
       file's folder, the defined numeric-aware order, the position indicator, and the named
-      active context so it can never be confused with the capture list.
+      active context so it can never be confused with Recon history.
 - [ ] S1.5 The transition into annotation: viewing mode arms no tool and no click can create
-      a callout, an explicit Annotate action switches modes and creates the managed document
-      with its preserved source, and leaving annotation keeps the work.
+      a callout, an explicit Annotate action switches modes, and leaving annotation keeps the
+      work. Annotate creates a managed document with its preserved decoded image, or resumes
+      the one that already exists for that source, never a second one. Opening a file that
+      has a document shows the file with the route to its saved edit (§3.3).
       Model: Opus 5, it is the boundary that protects the originals.
 - [ ] S1.6 Callout completion: the deterministic candidate positions, the neutral margin when
       a bubble cannot fit, and stable numbering with gaps, identical in the editor and in
@@ -881,13 +1016,15 @@ work rather than a feature count.
       frame for an annotated file, debounced autosave, forced saves on blur, navigation,
       opening another file, hide and quit, reopen after restart, and a visible failure that
       never claims to have saved. Model: Opus 5, it touches stored work.
-- [ ] S1.9 Capture navigation: previous and next through captures, the position indicator,
-      and shortcuts to the first and last.
+- [ ] S1.9 History navigation: previous and next through documents, captures and annotated
+      files alike, the position indicator, shortcuts to the first and last, and the context
+      activation rules in §3.4.
 - [ ] S1.10 Copy and Return, including every failure path: a failed clipboard, a failed save,
       a refused activation, a closed target application, and a user who moved on
       mid-operation.
 - [ ] S1.11 PNG Save As: a new file every time, a suggested name derived from the source and
-      marked as annotated, and no path by which an external original is the default target.
+      marked as annotated, no path by which an external original is the default target, and
+      an available name offered when the chosen one exists. There is no overwrite path.
 - [ ] S1.12 The trial: thirty captures of real client feedback and a week of using Recon as
       the everyday viewer, with the friction recorded in `project-os/History.md` and anything
       deferred sent to `project-os/Backlog.md`.
@@ -907,11 +1044,21 @@ foundation Stage 4 is entitled to assume.
   Recon already running; the second case uses the existing window.
 - Drag and drop a file onto the window, and open one with `Ctrl+O`.
 - Walk a folder of mixed supported types, in the defined order, with the position indicator
-  correct at both ends, and confirm folder and capture navigation never move each other.
+  correct at both ends, and confirm folder and history navigation never move each other.
 - Move from viewing into annotation and back, and confirm no click in viewing mode ever
   created a callout.
 - Confirm every source file is byte for byte unchanged after viewing, navigating and
   annotating, and that Save As wrote a new file.
+- Open `a.png`, annotate it, open `b.png`, return to `a.png`: the external file is shown, the
+  route to its saved edit is there, and taking it resumes the same document with its
+  callouts, rather than creating a second one.
+- Change `a.png` on disk after annotating it, then reopen its document: the document is
+  unchanged, and it says the source has moved on.
+- Save As onto a name that already exists: an available name is offered, and nothing is
+  overwritten.
+- Annotate a non-first animation frame, restart, and export: the same frame throughout.
+- Annotate the third file in a folder and confirm the navigation context is still that
+  folder at position three.
 - Representative files: transparency, EXIF orientation, an embedded color profile, very large
   dimensions, an animation, and a multipage file where supported.
 - Small crops, dense images, each edge, long text, mixed Hebrew and English, and a bubble
@@ -930,12 +1077,12 @@ foundation Stage 4 is entitled to assume.
 
 A dependency outline only. Each one is planned properly when it arrives.
 
-**Stage 2, the capture library.** The thumbnail strip, older captures inside the same editor,
-intentional deletion, visible storage use with the daily rate stated, and the export options
-beyond the PNG default. Depends on S1.8.
-Acceptance: retrieve and edit yesterday's capture after a restart; exported files match the
-visible composition at original resolution; existing exports are never silently changed; old
-history is not all loaded as full-resolution images.
+**Stage 2, the document library.** The thumbnail strip, older documents inside the same
+editor, captures and annotated files together, intentional deletion, visible storage use with
+the daily rate stated, and the export options beyond the PNG default. Depends on S1.8.
+Acceptance: retrieve and edit yesterday's capture and yesterday's annotated file after a
+restart; exported files match the visible composition at original resolution; existing exports
+are never silently changed; old history is not all loaded as full-resolution images.
 
 **Stage 3, the secondary tools.** Arrow, rectangle, text, blur, highlight, ordered by what
 daily use actually demanded. Depends on the scene and composer being stable.
@@ -971,8 +1118,10 @@ while an application running as administrator holds the foreground (S0.7); wheth
 activation succeeds against such a window and against a closed one (S0.7); which clipboard
 formats Claude and ChatGPT actually accept (S0.5); what the freeze and the first paint really
 cost on this machine (S0.6); what each target format actually does here, decode or not, how
-fast, and whether orientation and color survive the trip into annotation (S0.4); whether the
-HEIC codec is even present on this machine (S0.4).
+fast, and whether orientation and color survive the whole cycle rather than just the decode
+(S0.4); whether the platform image decoder in the web view gives frame-accurate access to a
+chosen animation frame here (S0.4); whether the HEIC codec is even present on this machine
+(S0.4).
 
 **Assumed until Stage 0 says otherwise:** that pre-creating the overlay and the editor at
 startup is enough to approach the proposed latency targets; that shared wrapping plus the
@@ -987,7 +1136,7 @@ them.
 
 # Part 12: the review trail
 
-Twenty-one findings were raised against the plan and folded into the parts above. This table
+Twenty-nine findings were raised against the plan and folded into the parts above. This table
 is the record; the fixes themselves live where the table points. Severity is how the finding
 was rated when it was raised.
 
@@ -1014,6 +1163,14 @@ was rated when it was raised.
 | F19 | One window, two modes, and the pointer did not know which | 🟠 | §3.3, S1.5 | Resolved in plan, verification pending |
 | F20 | Two navigation lists in one window | 🟡 | §3.4, S1.4, S1.9 | Resolved in plan |
 | F21 | A folder walk could grow memory without a bound | 🟡 | §3.8, S0.6 | Resolved in plan, measured at S0.6 |
+| F22 | Reopening an annotated external file was undefined: original, saved edit, or a second document | 🟠 | §3.3 opening a file annotated before, S1.5 | Resolved in plan, verification at S1.5 |
+| F23 | Save As promised a new file and permitted overwriting a chosen one, which contradicted the invariant | 🔴 | §3.6, S1.11 | Resolved: no overwrite path exists |
+| F24 | "Annotate the displayed frame" was not achievable as written, since an animated element yields its default frame | 🔴 | §3.5, part 5 boundaries, S0.4 frame test | Resolved in plan, proof pending at S0.4 |
+| F25 | Rasterizing an SVG at displayed size made export resolution depend on the window | 🟠 | §3.5, §3.7, S0.4 size test | Resolved: fixed and stored at annotate time |
+| F26 | Orientation and color were checked at decode, not through the persistence cycle | 🟠 | §3.7 decoded-image contract, S0.4 cycle test | Resolved in plan, proof pending at S0.4 |
+| F27 | Which navigation context was active was left to the last navigation | 🟡 | §3.4 four rules, S1.9 | Resolved in plan |
+| F28 | The plan claimed a bitmap-only clipboard would fail in the two destinations | 🟠 | Part 6a | Claim removed; the paste itself is the criterion |
+| F29 | "Ship the shorter list" let S0.4 drop any format without a scope decision | 🟠 | Part 6c, part 8, S0.4 | Resolved: a required format is a blocked stage |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the
 two things it compares and the failure that would turn it red (`project-os/QA.md` §12), and a
@@ -1033,3 +1190,5 @@ comparison between two outputs of the same code proves only that the code is det
 - [High DPI development on Windows](https://learn.microsoft.com/en-us/windows/win32/hidpi/high-dpi-desktop-application-development-on-windows) · DPI contexts and coordinate handling.
 - [Native WIC codecs](https://learn.microsoft.com/en-us/windows/win32/wic/native-wic-codecs) · what the Windows imaging stack decodes with nothing added, and where page access comes from.
 - [Image file type and format guide](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/Image_types) · what a Chromium-based view decodes on its own, which is where the TIFF and HEIC gaps come from.
+- [Canvas image sources](https://html.spec.whatwg.org/multipage/canvas.html#image-sources-for-2d-rendering-contexts) · why drawing an animated image element gives its default frame, which is what F24 is about.
+- [Chromium clipboard on Windows](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/ui/base/clipboard/clipboard_win.cc) · the implementation that can hand native bitmap data to a page as PNG, which is why the F28 claim was withdrawn.
