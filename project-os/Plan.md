@@ -303,6 +303,18 @@ several bubbles before improving the heuristic.
   resolves from the bubble's first strong character and applies to the whole bubble, not per
   paragraph. Alignment follows the resolved direction, and the anchor-side edge stays fixed
   while the opposite edge grows.
+- **A note's text size is 20 image pixels by default, and it is the user's to change.** The
+  size is stored per note and stepped along a fixed ladder from 10 to 80, and the size last
+  used is what the next note gets. The bubble's padding, its number badge and its corner
+  radius are proportions of that size, and a new note's width is proportional to it too, so
+  a larger note is a larger note rather than a big font in a small box. An existing note
+  keeps its width when its size changes, so it grows downwards.
+- **A note scales with the image, and there is no minimum on-screen size.** At a
+  fit-to-window view of a wide capture that means small text: 20 image pixels reads as five
+  on screen at 25%. That is Rotem's answer to F46, and the size control is the answer rather
+  than an on-screen floor. A floor would put the editor and the export at different sizes,
+  because the export has one scale, and it would make a note cover more of the picture at
+  one zoom than at another.
 - The editor and the rendered output agree on wrapping, alignment, font rendering and arrow
   positions. Part 7 step S0.6 is where that is proved rather than asserted.
 
@@ -355,6 +367,8 @@ is a contract broken on day one.
 | `Ctrl+Shift+C` anywhere in the editor | Copy the full composed image, current text edits included | 1 |
 | `Ctrl+Enter` anywhere in the editor | Copy the full composed image, then return to the previous application after success | 1 |
 | `Enter` while editing a note | Insert a newline | 1 |
+| `Ctrl +` (or `Ctrl =`) in the editor | One text size up, on the note being edited or the selected one, and it becomes the default for the next note | 0 |
+| `Ctrl -` in the editor | One text size down, the same way | 0 |
 | `Esc` during capture | Cancel the capture | 1 |
 | `Esc` during text editing | Leave text editing, keep the text | 1 |
 | `Esc` with an annotation selected | Clear the selection | 1 |
@@ -906,6 +920,7 @@ Explorer closely enough to feel predictable is checked in S1.4, not assumed here
 | Decoding | One native route for all nine formats. The web view decodes nothing, and the decoded original never crosses into it at full resolution. This flips the earlier two-provider recommendation, because a preserved image born in the renderer cannot survive a premultiplied canvas byte for byte. Recorded in `project-os/Decisions.md`. |
 | TIFF and HEIC | Both through WIC in the host: TIFF with its pages, HEIC through whatever codec the machine has, with the named missing-codec message rather than a corrupt-file one. |
 | The annotation text layer | DOM in image-space pixels with `unicode-bidi: plaintext`, zoom as a CSS transform so layout precedes it, and export through a serialized `foreignObject` with fonts and styles inlined. Recorded in `project-os/Decisions.md`. |
+| Note text size | 20 image pixels by default, stored per note, stepped with `Ctrl +` and `Ctrl -`, and the size last used becomes the next note's default. A note scales with the image and there is no minimum on-screen size. Rotem's call on F46, recorded in `project-os/Decisions.md`. |
 
 ## 6b. What used to be open here
 
@@ -1124,6 +1139,14 @@ is why.
 
 **Four things this step found in total**, none of them in its own evidence list: F43 to F46
 in part 12.
+
+**Text size, added 2026-09-11.** F46 asked whether a note needs a minimum on-screen size,
+and the answer is no: 20 image pixels by default, and the size is the user's, stepped with
+`Ctrl +` and `Ctrl -`. Five more checks, thirty-three in total. The one that matters reports
+instead of asserting, because the number is what the decision is about: a 20-pixel note is
+72 px tall in the image and 24 px on screen at a 33% fit view, so its text reads as about
+6.7 px. Looking at it on a 5120x1440 capture says the same in one picture: the 20-pixel note
+is unreadable at 25%, and a 40-pixel one is comfortable.
 
 ----
 **[ ] S0.5 · Open and decode an existing image**
@@ -1594,7 +1617,7 @@ was rated when it was raised.
 | F43 | The fit-to-window view costs 1.1 s, because it resamples the whole image, and it is the first thing anyone sees when opening one | 🟠 | Part 11, S0.4, and S1.3's viewing surface | Open: the fit view needs a cheap downscale, not a good one |
 | F44 | The editor window is not DPI-scaled: the monitor is at 225% and the window reports 96 dpi, so the interface renders at a third of the size the display asks for | 🟠 | Part 11, S0.4's closing note | Open: the image path is correct, the interface is not, and the cause is not yet established |
 | F45 | An image smaller than the window sat in its top-left corner instead of the middle, which twenty-six passing assertions did not notice | 🟠 | S0.4, the editor's own paint path | Resolved: centred, and the callout layer carries the same offset |
-| F46 | A note is unreadable at fit zoom on a wide capture, because annotations live in image space and scale with the image | 🟡 | §3.5, S1.2 | Open: scaling with the image is what other tools do and is probably right, but a minimum on-screen size is Rotem's call |
+| F46 | A note is unreadable at fit zoom on a wide capture, because annotations live in image space and scale with the image | 🟡 | §3.5, S0.4, S1.6 | Resolved: no on-screen floor. The default note text is 20 image pixels and the size is the user's, which is Rotem's call |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the
 two things it compares and the failure that would turn it red (`project-os/QA.md` §12), and a

@@ -255,6 +255,78 @@ export async function runChecks(editor, invoke) {
     await editor.paintRegion();
   }
 
+  // ---------------------------------------------------------------- 8. the text size
+  say('');
+  say('text size: 20 image pixels by default, and the user\'s to change');
+  {
+    model.callouts = [];
+    model.textSize = 20;
+    const first = editor.createCallout({ x: 300, y: 300 });
+    first.text = 'a note at the size a note gets by default';
+    model.selected = first;
+    editor.layoutScene();
+    const sizeOf = (callout) => getComputedStyle(el(callout)).fontSize;
+    check('a new note is 20 image pixels', first.textSize === 20 && sizeOf(first) === '20px',
+      `stored ${first.textSize}, laid out at ${sizeOf(first)}`);
+
+    const smallHeight = el(first).offsetHeight;
+    editor.nudgeTextSize(1);
+    check('one step up is the next size on the ladder, and it reaches the element',
+      first.textSize === 24 && sizeOf(first) === '24px', `now ${sizeOf(first)}`);
+    editor.nudgeTextSize(-1);
+    check('one step down comes back', first.textSize === 20 && sizeOf(first) === '20px');
+
+    // The size has to change the LAYOUT and not only the stored number. A size that never
+    // reaches the box is exactly the defect the two checks above could still miss.
+    first.textSize = 40;
+    editor.layoutScene();
+    const bigHeight = el(first).offsetHeight;
+    check('the size changes the laid-out height', bigHeight > smallHeight * 1.5,
+      `${smallHeight}px tall at 20, ${bigHeight}px at 40`);
+
+    first.textSize = 20;
+    editor.nudgeTextSize(1);
+    const second = editor.createCallout({ x: 1200, y: 300 });
+    second.text = 'the next note';
+    editor.layoutScene();
+    check('the size last used is what the next note gets', second.textSize === 24,
+      `the new note is ${second.textSize}`);
+    check('and a new note is as wide as its text is big', second.box.width === 24 * 13,
+      `${second.box.width}px wide`);
+
+    model.selected = second;
+    for (let i = 0; i < 20; i += 1) editor.nudgeTextSize(-1);
+    const smallest = second.textSize;
+    for (let i = 0; i < 30; i += 1) editor.nudgeTextSize(1);
+    const largest = second.textSize;
+    check('the ladder stops at both ends rather than running away',
+      smallest === editor.TEXT_SIZES[0]
+      && largest === editor.TEXT_SIZES[editor.TEXT_SIZES.length - 1],
+      `down to ${smallest}, up to ${largest}`);
+
+    // What F46 settled: a note scales with the image and there is no on-screen floor. The
+    // number this prints is the thing that was decided, so it is measured, not asserted.
+    model.callouts = [];
+    model.selected = null;
+    model.textSize = 20;
+    const note = editor.createCallout({ x: 300, y: 300 });
+    note.text = 'a note at the default size';
+    editor.layoutScene();
+    await editor.setZoom(model.fitZoom);
+    const box = el(note);
+    const laid = box.offsetHeight;
+    const onScreen = box.getBoundingClientRect().height;
+    const expected = (laid * model.zoom) / editor.ratioOf();
+    check('a note scales with the image, with no minimum on-screen size',
+      Math.abs(onScreen - expected) < 1.5,
+      `${laid}px in the image is ${onScreen.toFixed(1)}px on screen at fit ` +
+      `(${(model.zoom * 100).toFixed(0)}%), so 20px text reads as about ` +
+      `${((20 * model.zoom) / editor.ratioOf()).toFixed(1)}px`);
+
+    model.callouts = [];
+    editor.layoutScene();
+  }
+
   say('');
   if (failures === 0) {
     say('RESULT: every check passed.');

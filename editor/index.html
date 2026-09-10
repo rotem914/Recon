@@ -21,13 +21,17 @@
   #scene { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
   #arrows { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
 
-  .callout { position: absolute; display: flex; gap: 6px; align-items: flex-start;
-             padding: 8px 10px; border-radius: 8px; background: #1b1f24; color: #f2f2f2;
+  /* The text size is set per note, from the model, in image pixels. Everything else
+     about the bubble is a proportion of it, so a bigger note is a bigger note rather than
+     a large font crammed into a small box. At the default of 20 these ems are exactly the
+     6, 8, 10 and 8 pixels the first version hard-coded. */
+  .callout { position: absolute; display: flex; gap: .3em; align-items: flex-start;
+             padding: .4em .5em; border-radius: .4em; background: #1b1f24; color: #f2f2f2;
              border: 1px solid #3a4149; box-shadow: 0 2px 10px rgba(0,0,0,.45);
-             font-size: 15px; line-height: 1.35; }
+             line-height: 1.35; }
   .callout.selected { border-color: #7aa7ff; }
-  .callout .n { flex: 0 0 auto; min-width: 18px; height: 18px; border-radius: 9px;
-                background: #7aa7ff; color: #0d1014; font-size: 12px; font-weight: 700;
+  .callout .n { flex: 0 0 auto; font-size: .7em; min-width: 1.6em; height: 1.6em;
+                border-radius: .8em; background: #7aa7ff; color: #0d1014; font-weight: 700;
                 display: grid; place-items: center; }
   /* Outline and background only: a caret or a selection ring must never change layout,
      because the export has to agree with what is on screen (part 5's third remedy). */
@@ -107,6 +111,9 @@
     // by looking at the thing, where a 5120x1440 capture sat in the top-left corner of a
     // 1280x800 window with two thirds of the window empty below it.
     offset: { x: 0, y: 0 },
+    // The size the NEXT note gets, in image pixels. Each note then carries its own, so
+    // changing the size later never rewrites the notes already written.
+    textSize: 20,
     callouts: [],
     nextNumber: 1,
     selected: null,
@@ -228,8 +235,33 @@
     return strongDirection(callout.text) || 'ltr';
   };
 
+  // The sizes a note can take, in image pixels, with 20 as the default. A ladder rather
+  // than a multiplier: the same key press has to land on the same size every time.
+  const TEXT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 64, 80];
+
+  const stepTextSize = (from, direction) => {
+    const at = TEXT_SIZES.findIndex((size) => size >= from);
+    const index = at < 0 ? TEXT_SIZES.length - 1 : at;
+    return TEXT_SIZES[Math.min(TEXT_SIZES.length - 1, Math.max(0, index + direction))];
+  };
+
+  // One step up or down. It applies to the note being edited, or the selected one, and it
+  // always becomes the default for the next note: the size last used is the size wanted.
+  const nudgeTextSize = (direction) => {
+    const target = model.editing || model.selected;
+    const next = stepTextSize(target ? target.textSize : model.textSize, direction);
+    model.textSize = next;
+    if (target) target.textSize = next;
+    layoutScene();
+    drawHud();
+    return next;
+  };
+
   const createCallout = (anchor) => {
-    const width = 260;
+    const textSize = model.textSize;
+    // Proportional to the text, so a note at 48 px is not three words per line. Thirteen
+    // times the size is the 260 px the first version used, at the default of 20.
+    const width = Math.round(textSize * 13);
     const callout = {
       id: `c${model.nextNumber}`,
       number: model.nextNumber++,
@@ -237,6 +269,7 @@
       // A deterministic first position, offset from the anchor. The candidate set is S1.2.
       box: { x: Math.round(anchor.x) + 28, y: Math.round(anchor.y) + 24, width },
       text: '',
+      textSize,
       dirMode: 'auto',
       resolvedDir: 'ltr',
     };
@@ -278,6 +311,9 @@
       el.style.left = `${callout.box.x}px`;
       el.style.top = `${callout.box.y}px`;
       el.style.width = `${callout.box.width}px`;
+      // In IMAGE pixels, like every other number in this layer, so one transform scales
+      // the text with the picture and the wrapping is decided before the zoom exists.
+      el.style.fontSize = `${callout.textSize || model.textSize}px`;
       el.style.direction = callout.resolvedDir;
       el.style.textAlign = callout.resolvedDir === 'rtl' ? 'right' : 'left';
       el.classList.toggle('selected', model.selected === callout);
@@ -340,14 +376,16 @@
   };
 
   const drawHud = () => {
+    const target = model.editing || model.selected;
+    const sizeShown = target ? (target.textSize || model.textSize) : model.textSize;
     const zoomText = Math.abs(model.zoom - model.fitZoom) < 0.0005
       ? `fit (${(model.zoom * 100).toFixed(0)}%)`
       : `${(model.zoom * 100).toFixed(0)}%`;
     hud.textContent =
       `${model.image.width}x${model.image.height}  ${model.image.source}\n` +
       `zoom ${zoomText}   pan ${Math.round(model.pan.x)},${Math.round(model.pan.y)}   ` +
-      `callouts ${model.callouts.length}   dpr ${dpr()}\n` +
-      `0 fit  1 actual size  +/- zoom  arrows pan  click to add  Esc commit  Del remove`;
+      `callouts ${model.callouts.length}   text ${sizeShown}px   dpr ${dpr()}\n` +
+      `0 fit  1 actual size  +/- zoom  Ctrl +/- text size  arrows pan  click to add  Esc commit  Del remove`;
   };
 
   // ---------------------------------------------------------------- editing
@@ -450,6 +488,18 @@
   stage.addEventListener('pointercancel', endDrag);
 
   window.addEventListener('keydown', (event) => {
+    // Text size, and it works while typing too: Ctrl is not a character, so the note being
+    // written can be resized without leaving it.
+    if (event.ctrlKey && !event.altKey && (event.key === '+' || event.key === '=')) {
+      nudgeTextSize(1);
+      event.preventDefault();
+      return;
+    }
+    if (event.ctrlKey && !event.altKey && (event.key === '-' || event.key === '_')) {
+      nudgeTextSize(-1);
+      event.preventDefault();
+      return;
+    }
     if (event.key === 'Escape') {
       if (model.editing) { commitEditing(); event.preventDefault(); return; }
       if (model.selected) { model.selected = null; layoutScene(); event.preventDefault(); }
@@ -531,6 +581,9 @@
     ratioOf: () => ratio,
     createCallout,
     removeCallout,
+    TEXT_SIZES,
+    stepTextSize,
+    nudgeTextSize,
     startEditing,
     commitEditing,
     resolveDirection,
@@ -558,6 +611,9 @@
       await loadImage(shot);
       const a = createCallout({ x: Math.round(shot.width * 0.22), y: Math.round(shot.height * 0.28) });
       a.text = 'This label is the wrong one: it shows the group status, not the item.';
+      // The second one after a couple of Ctrl+ steps, so the shot shows the default size
+      // and a chosen one side by side.
+      model.textSize = 40;
       const b = createCallout({ x: Math.round(shot.width * 0.62), y: Math.round(shot.height * 0.55) });
       b.text = 'הכיתוב הזה צריך להיות מיושר לימין, וגם באנגלית in the same bubble.';
       b.box.x += 40;

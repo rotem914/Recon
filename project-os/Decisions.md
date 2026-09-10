@@ -71,6 +71,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-10 · The annotation text layer is DOM, and the export is that same DOM.
 - 2026-09-10 · Why the required format set is affordable, superseding one paragraph.
 - 2026-09-10 · The stack is a recommended candidate, not a settled decision.
+- 2026-09-11 · A note's text size is the user's, with no minimum on-screen size.
 
 ---
 
@@ -551,3 +552,49 @@ answered fact and is not one. One route stays, because exact equality requires i
 reason needs no cost claim.
 
 Revisit at the S0.8 report, which is now allowed to recommend against this stack.
+
+---
+
+## 2026-09-11 · A note's text size is the user's, with no minimum on-screen size
+
+### Context
+
+Looking at the editor for the first time found a note that cannot be read at a
+fit-to-window view of a wide capture (F46). Annotations are laid out in image pixels and
+one transform scales them, which is exactly what keeps zoom from re-wrapping a line, and
+the same property shrinks a note along with the image. The editor had one hard-coded size
+of 15 pixels and no way to change it.
+
+### Options
+
+1. Leave it: one fixed size, scaling with the image.
+2. Give a note a minimum on-screen size, so it stops shrinking past a floor.
+3. Give the size to the user: a default of 20 image pixels, adjustable per note.
+
+### Decision
+
+Option 3, Rotem's call on 2026-09-11. The default is 20 image pixels and the size steps
+along a fixed ladder with `Ctrl +` and `Ctrl -`, on the note being edited or the selected
+one. The size last used becomes the next note's default.
+
+### Consequences
+
+The architecture keeps the property it depends on: layout is computed in image pixels
+before the transform exists, so zoom still cannot re-wrap a line, and the export is that
+same layer at that same size. Option 2 was the one to reject for a reason beyond taste:
+an on-screen floor applies at a display zoom, the export has one scale, so the two would
+disagree about what a note looks like, and a note would cover more of the picture at one
+zoom than at another.
+
+The cost is state. A note's size has to survive an internal save, a reopen and an export,
+so the S1.8 schema carries it per note, and the export takes the size from the note rather
+than from a stylesheet. Everything about the bubble that used to be a fixed pixel value,
+its padding, its number badge and its corner radius, is now a proportion of the text size;
+at 20 those proportions are the values the first version hard-coded, so nothing moved at
+the default.
+
+What this does not solve: at a fit view of a 5120-pixel-wide capture, 20 image pixels is
+five pixels on screen, so the default alone does not make a note readable there. The
+answer today is the size control and the zoom. Revisit if real use in S1.12 shows the size
+being raised on nearly every note, which would argue for a default derived from the
+image's own dimensions rather than an absolute one.
