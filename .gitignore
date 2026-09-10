@@ -6,3 +6,6 @@
 
 # Rust build output.
 /host/target/
+
+# Tauri regenerates these from tauri.conf.json on every build.
+/host/gen/
