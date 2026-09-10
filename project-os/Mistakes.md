@@ -72,6 +72,7 @@ Mistakes in HOW you worked:
 
 | Date | The slip | Where its rule now lives |
 |---|---|---|
+| 2026-09-10 | Designed a fidelity check that could not detect the failure it targeted, twice in two passes | `project-os/QA.md` §12 |
 
 ## Retired
 

@@ -215,6 +215,22 @@ refused, use another route, and never report it as "no tools available".
 The failure mode this blocks: declaring early in a task that you have no browser, then
 repeating it for the rest of the task to stay consistent with yourself.
 
+## 12. A check must be able to fail
+
+Name the two things a check compares, and the defect it would reveal. If you cannot say
+what failure would turn it red, it is not a check.
+
+Two ways a comparison lies, and both have already happened here:
+
+- **It compares two outputs of the same code.** That proves the code is deterministic,
+  not that either output is correct. Whatever you actually doubt has to sit on one side
+  of the comparison.
+- **It compares things that were never meant to match.** A check that fails by design
+  gets muted, and a muted check protects nothing.
+
+State the tolerance and the environment wherever either one matters. An exact
+comparison and a tolerant one answer different questions, and neither answers both.
+
 ## Checklist before delivery
 
 - [ ] Task type identified, risk level stated.
@@ -231,5 +247,6 @@ repeating it for the rest of the task to stay consistent with yourself.
 - [ ] QA wording is concrete, not vague (§10).
 - [ ] `project-os/History.md` row added.
 - [ ] `project-os/Decisions.md` updated if a non-obvious choice was made.
+- [ ] Every check names what it compares and what failure would turn it red (§12).
 - [ ] Reply names the checks that failed or surprised you — not the ones that passed as
       expected.

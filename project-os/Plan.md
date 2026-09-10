@@ -1,17 +1,48 @@
 # Recon, build plan
 
-The plan of record. Read it at task pickup, alongside `project-os/Backlog.md`.
+The plan of record. Read all three at task pickup:
 
-Status: revision 2, after Rotem's correction pass. Waiting on part 3 only.
+`project-os/Product_plan.md`, the product baseline. The detailed keyboard, output,
+persistence, lifecycle and delivery contracts live there, and the short step lists in
+parts 5 to 8 do not replace them.
+
+`project-os/Plan.md`, this file.
+
+`project-os/Backlog.md`, the open items.
+
+Where this file and the product plan differ, an explicit approved revision here wins,
+and every one of them is listed in the revision blocks below. Everything else in the
+product plan stands as written.
+
+Status: revision 3, approved for the Stage 0 experiment. One input still outstanding,
+part 3 item B, which blocks S0.4 acceptance only.
 Written: 2026-09-10.
-Product baseline: Rotem's product plan and Claude handoff dated 2026-09-10.
+Product baseline: `project-os/Product_plan.md`, dated 2026-09-10.
 
 Nothing here is built yet. No code was run and no timing was measured in writing it.
 
-Ten parts: the review of the product plan, the six decisions and their answers, what
-must be settled before Stage 0 starts, the architecture, Stage 0, what Stage 0 may
-conclude, Stage 1, the later stages, the evidence status of every claim here, and the
-sources behind it.
+Ten parts: the review of the product plan, the six decisions and their answers, the
+answers for Stage 0, the architecture, Stage 0, what Stage 0 may conclude, Stage 1, the
+later stages, the evidence status of every claim here, and the sources behind it.
+
+### What changed in revision 3
+
+The capture-path fallback conditions in part 3 and part 6 now say the same thing, and a
+performance failure traced to the capture implementation is one of them.
+
+The active-typing check in S0.4 now compares the live editor against the copied image.
+Comparing the clipboard against the composer proved nothing: both come out of the same
+renderer.
+
+The task-pickup instruction names the product plan and its path, and says which document
+wins where they differ.
+
+Every finding carries a status line, so a correction already applied no longer reads as
+an open blocker.
+
+Part 3 carries Rotem's directions: the initial capture path is chosen and sits behind a
+small interface, the reference environment is settled, and only the two paste
+destinations are still outstanding.
 
 ### What changed in revision 2
 
@@ -36,16 +67,22 @@ Stage 1 no longer prepares anything for Rogers.
 
 ## Part 1: the review of the product plan
 
-Verdict vocabulary per finding: **fix** (change the plan now), **drop** (never mind),
-**backlog** (record it and move on). Only `backlog` writes a row to
+Every finding below carries a status line. The severity marker records how the finding
+was rated when it was raised, and the status line is its current state, so a correction
+already applied does not keep reading as an open blocker.
+
+For a finding raised from here on, the verdict vocabulary is **fix** (do it now), **drop**
+(never mind) and **backlog** (record it and move on). Only `backlog` writes a row to
 `project-os/Backlog.md`.
 
 **In one line.** The plan is unusually sound on product behavior and unusually thin on
 the two mechanisms that decide whether that behavior is achievable: how the exported
 image is produced, and how the Stage 0 numbers are measured.
 
-Sixteen findings: two blocking, eight important, six small.
-Nothing in them changes the product definition or the stage order.
+Sixteen findings as raised: two blocking, eight important, six small.
+All sixteen are resolved at the planning level, so what remains on each one is
+implementation and testing at the step its status line names.
+Nothing in them changed the product definition or the stage order.
 
 ### What is strong
 
@@ -89,12 +126,11 @@ A shared wrapping function narrows that risk. It does not prove the two agree.
 The failure is invisible in the editor: it appears only in the file the client gets.
 
 Suggestion: one scene model and one composer, used for display and for export, plus
-the three checks in S0.4, one of which exercises copying while the caret is still
-active. The product forbids an Apply step, so that case is the contract, not an edge.
+the three checks in S0.4, one of which compares the live editor against the copied image
+while the caret is still active. The product forbids an Apply step, so that case is the
+contract, not an edge.
 
-Carried into: part 4 boundaries, S0.4.
-
-Verdict: [ ] fix  [ ] drop  [ ] backlog
+Status: resolved in plan. Implementation verification pending, part 4 and S0.4.
 
 ----
 **F2 · 🟠 The elevated-window behavior is unknown, and the plan treats fast access as certain**
@@ -118,9 +154,7 @@ by design: nothing on the user desktop reaches it, and no product decision follo
 Suggestion: keep the test in Stage 0, record what it finds, and decide nothing about an
 elevated launch mode until a problem is demonstrated.
 
-Carried into: S0.6, part 9 under behavior to verify, decision 6.
-
-Verdict: [ ] fix  [ ] drop  [ ] backlog
+Status: resolved in plan, and the claim withdrawn. Behavior verification pending, S0.6.
 
 ----
 **F3 · 🔴 Stage 0 asks for two latency numbers and the timestamps cannot produce one of them**
@@ -146,9 +180,7 @@ Report the raw runs and the percentile method, not only a summary: with thirty r
 95th percentile is the second-worst run, so the maximum and the list carry more
 information than the label does.
 
-Carried into: S0.5.
-
-Verdict: [ ] fix  [ ] drop  [ ] backlog
+Status: resolved in plan. Implementation verification pending, S0.5.
 
 ----
 **F4 · 🟠 Clipboard formats are unspecified, so a passing paste test proves little**
@@ -165,9 +197,7 @@ than through the web view API, and name the destinations by actual use.
 Two real destinations are the acceptance boundary. A longer list is not a stronger test,
 it is a longer test.
 
-Carried into: part 4 split, S0.4, part 3 decision B.
-
-Verdict: [ ] fix  [ ] drop  [ ] backlog
+Status: resolved in plan. Acceptance pending the two destinations, part 3 item B, then S0.4.
 
 ----
 **F5 · 🟠 The selection overlay should not be a web view**
@@ -186,9 +216,7 @@ Native code owns the hotkey, the freeze, the overlay and the clipboard; the web 
 owns the editor only.
 Stage 0 then measures the editor's fidelity instead of the capture path's viability.
 
-Carried into: part 4, the whole of it.
-
-Verdict: [ ] fix  [ ] drop  [ ] backlog
+Status: resolved in plan. It is part 4.
 
 ----
 **F6 · 🟠 Text direction is named but not defined**
@@ -207,9 +235,7 @@ Alignment follows base direction.
 The bubble's anchor-side edge stays fixed while the opposite edge grows, so a note
 never walks away from the thing it points at.
 
-Carried into: S0.4, decision 1.
-
-Verdict: [ ] fix  [ ] drop  [ ] backlog
+Status: decided, decision 1. Implementation verification pending, S0.4.
 
 ----
 **F7 · 🟠 Undo is specified by context, and the user cannot see the context**
@@ -226,9 +252,7 @@ one grouped step.
 
 Its acceptance sequence is in S1.3, and it is the test that settles this.
 
-Carried into: S1.3, decision 2.
-
-Verdict: [ ] fix  [ ] drop  [ ] backlog
+Status: decided, decision 2. Its acceptance sequence is in S1.3.
 
 ----
 **F8 · 🟠 The document format is deferred, but three stated requirements already depend on it**
@@ -245,9 +269,7 @@ An index database, if any, holds pointers and never the images.
 Writes go to a temporary file and are renamed into place, per `project-os/QA.md` §5.
 Autosave is debounced while typing and forced on blur, navigation, hide and quit.
 
-Carried into: part 4 split, part 4 coordinates, S1.4.
-
-Verdict: [ ] fix  [ ] drop  [ ] backlog
+Status: resolved in plan. The schema itself is settled at S1.4.
 
 ----
 **F9 · 🟠 Ctrl+S sits in the v1 contract while file export is Stage 2**
@@ -261,9 +283,7 @@ The Rogers row is marked conditional; the export row is not.
 Suggestion: add a stage column to the table, or mark the two deferred rows the way
 the Rogers row is marked.
 
-Carried into: S1.3.
-
-Verdict: [ ] fix  [ ] drop  [ ] backlog
+Status: resolved in plan. Applied at S1.3.
 
 ----
 **F10 · 🟠 Returning focus to the previous application needs a named mechanism and a failure path**
@@ -279,9 +299,7 @@ anything, and never report a return that did not happen.
 Test it in Stage 0 against an elevated window and against an application that has
 since closed.
 
-Carried into: S0.6, S1.6.
-
-Verdict: [ ] fix  [ ] drop  [ ] backlog
+Status: resolved in plan. Behavior verification pending, S0.6 and S1.6.
 
 ----
 **F11 · 🟡 Numbering: gaps stay, renumbering is rejected**
@@ -301,9 +319,7 @@ clipboard, the file and the Rogers text.
 An explicit Renumber action stays a backlog idea and enters nothing now.
 Recorded in `project-os/Decisions.md`.
 
-Carried into: S1.2, decision 3.
-
-Verdict: resolved, kept as the record.
+Status: decided, decision 3. Recorded in `project-os/Decisions.md`, applied at S1.2.
 
 ----
 **F12 · 🟡 "Keep forever" has an unstated cost**
@@ -316,9 +332,7 @@ Thirty 4K captures a day is roughly 60 to 250 MB a day depending on content, so
 Suggestion: put the expected rate in the plan so the default is chosen knowingly.
 Stage 2 already shows usage; revisit limits with data rather than a rule.
 
-Carried into: part 8, Stage 2.
-
-Verdict: [ ] fix  [ ] drop  [ ] backlog
+Status: resolved in plan. Applied at Stage 2, part 8.
 
 ----
 **F13 · 🟡 In Stage 1, capture 1 is twenty-nine keypresses away**
@@ -331,9 +345,7 @@ Stage 1 ships previous and next only.
 Suggestion: add a position indicator and shortcuts to the first and last capture in
 Stage 1. The thumbnail strip still waits for Stage 2.
 
-Carried into: S1.5, decision 4.
-
-Verdict: [ ] fix  [ ] drop  [ ] backlog
+Status: decided, decision 4. Applied at S1.5.
 
 ----
 **F14 · 🟡 Three different questions are being answered as one**
@@ -353,9 +365,7 @@ tested versions as a product decision, and keep runtime packaging as a distribut
 decision that does not block the experiment.
 Recorded in `project-os/Decisions.md`.
 
-Carried into: S0.6, decision 5.
-
-Verdict: [ ] fix  [ ] drop  [ ] backlog
+Status: decided, decision 5. Recorded in `project-os/Decisions.md`, applied at S0.6.
 
 ----
 **F15 · 🟡 First run and the empty editor are missing**
@@ -368,9 +378,7 @@ yet, the hotkey may be taken, and the tray icon is undiscovered.
 Suggestion: one empty-state line in the editor naming the current hotkey, and a
 first-run check that reports a hotkey conflict rather than failing quietly.
 
-Carried into: S0.1, S1.1.
-
-Verdict: [ ] fix  [ ] drop  [ ] backlog
+Status: resolved in plan. Applied at S0.1 and S1.1.
 
 ----
 **F16 · 🟡 HDR is left as an open question**
@@ -383,9 +391,7 @@ invites Stage 0 to spend a day on it.
 Suggestion: make "not supported in v1, and documented" an acceptable Stage 0 exit,
 with detection so the output is never silently washed out.
 
-Carried into: S0.6.
-
-Verdict: [ ] fix  [ ] drop  [ ] backlog
+Status: resolved in plan. Applied at S0.6.
 
 ## Part 2: the six decisions, answered
 
@@ -400,27 +406,31 @@ Rotem's answers, as given. The rest of this plan follows them.
 | 5 · Windows support | Separate the API minimum from the supported and tested versions. Runtime packaging is its own distribution decision. | S0.6, F14, `project-os/Decisions.md` |
 | 6 · Elevated windows | Test first. No elevated mode on an unverified assumption. | S0.6, F2 |
 
-## Part 3: what must be settled before Stage 0 starts
+## Part 3: the answers for Stage 0
 
-Three answers are needed to begin. Everything else in this plan can be resolved as the
-step arrives.
+Two are settled. One is outstanding, and it blocks nothing before S0.4.
 
-**A · Which single capture path is built first.**
-Stage 0 implements one, and a second only if the first demonstrably fails.
-My recommendation: start with one copy of the whole virtual screen, because it is a
-single synchronous call that already spans every display and negative coordinate, so it
-retires the foundation risk at the lowest cost.
-Move to the modern per-display capture API if that copy misses window content, mangles
-a hardware-composited surface, or measures slow against the target in F3.
-Say if you would rather start from the per-display API instead.
+**A · The initial capture path. Settled.**
+Stage 0 builds one path: a single copy of the whole virtual screen, chosen because one
+synchronous call already spans every display and every negative coordinate, so the
+foundation risk is retired at the lowest cost.
+It sits behind a small capture interface, freeze and region in, image out, so the editor
+never learns which implementation produced its pixels and a path can be replaced without
+touching it.
+That interface must leave a video source possible later. It adds no video infrastructure
+now, and video stays out of v1.
+A second path is earned only under the conditions in part 6, and diagnosis comes first.
 
-**B · Which two destination applications are the acceptance boundary for output.**
-Name the two you paste into most. They decide S0.4, and I do not want to guess them.
+**B · The two paste destinations. Outstanding.**
+Name the two applications you paste into most.
+They are the acceptance boundary for output, so they are needed before S0.4 is accepted.
+S0.1 to S0.3 do not wait for them.
 
-**C · The reference environment for the fidelity checks.**
-One machine, one display scale, and a pinned font for the reference images, so a
-comparison failure means the renderer changed rather than the font did.
-I propose your own main machine and its current scale, recorded in the S0.6 report.
+**C · The reference environment. Settled.**
+Your own main machine at its current display scale.
+Record the environment and the font details alongside the reference images and in the
+S0.6 report, so a later comparison failure means the renderer changed rather than the
+machine or the font did.
 
 Details that wait for their step: the exact document schema (S1.4), the placement
 candidate set (S1.2), the shortcut table's stage column (S1.3), the storage rate note
@@ -435,7 +445,7 @@ is in doubt (F5).
 | Layer | Runs as | Owns |
 |---|---|---|
 | Host | native process | tray, preferences, global hotkey, window lifecycle, the return-focus target |
-| Capture | native | freezing the desktop, the captured region, physical desktop coordinates |
+| Capture | native | freezing the desktop, the captured region, physical desktop coordinates, all behind one interface |
 | Overlay | native, one borderless window per display | the dim, the selection rectangle, cancel, handing the region to the host |
 | Store | native | one folder per capture, the untouched original, the versioned document, atomic writes |
 | Clipboard | native | several image formats in one operation, success reported before any hide |
@@ -443,7 +453,7 @@ is in doubt (F5).
 | Scene and composer | web view | the one composer: display at the current zoom, export at original scale |
 | Text editing | web view, an input layer above the canvas | caret, keyboard input, bidirectional typing, sharing the composer's wrapping |
 
-Three boundaries hold this together, and each one exists to stop a specific failure:
+Four boundaries hold this together, and each one exists to stop a specific failure:
 
 The web view never touches the screen or the clipboard, so a web view limitation can
 never break capture (F5, F4).
@@ -453,6 +463,10 @@ composer at original scale (F1).
 
 The document never stores a screen coordinate, so it cannot be invalidated by moving a
 monitor (below).
+
+The rest of the application reaches capture through one small interface, freeze and
+region in, image out, so the implementation behind it can be replaced, or joined by a
+second one, without the editor noticing (part 3 A).
 
 ### Coordinate spaces, and the transforms between them
 
@@ -502,9 +516,9 @@ Model: Opus 5. DPI, native APIs, irreversible shape.
 
 Depends on decision A.
 
-Delivers: the frozen desktop image by the chosen path, one overlay window per display,
-drag to select, cancel, and the region handed back in desktop coordinates and converted
-once into image space.
+Delivers: the capture interface from part 3 A with the chosen path as its one
+implementation, one overlay window per display, drag to select, cancel, and the region
+handed back in desktop coordinates and converted once into image space.
 
 Evidence: two displays at 100% and at 150% or 200%, with the secondary placed left of
 the primary so coordinates go negative; the selected rectangle and the resulting pixels
@@ -547,10 +561,16 @@ covering Hebrew, English, mixed direction, a long wrapped note, an anchor agains
 edge, and a document that added a margin. State the reference environment and the
 comparison tolerance, since font rendering is what the tolerance is for.
 
-The editor and the output agree while typing. Copy with the caret still active, mid
-note, in each of the three text cases, and compare against the composed output. The
-product forbids an Apply step, so this is the case that matters, and committed text is
-the easy half (F1).
+The live editor and the output agree while typing. Copy with the caret still active, mid
+note, in each of the three text cases, and compare what the EDITOR IS SHOWING against
+the copied image: the text itself, the wrapping, the alignment and the position.
+Not the composed output against the clipboard. Those two come out of the same renderer,
+so they can agree with each other while both differ from the layer you are typing into,
+which is the failure this check exists to catch.
+Exclude the editing decorations, the caret and the selection handles, from the
+comparison.
+The product forbids an Apply step, so this is the case that matters, and committed text
+is the easy half (F1).
 
 Plus: a paste verified in the two destination applications from decision B.
 
@@ -595,8 +615,8 @@ reported as a limitation rather than absorbed.
 
 | If this fails | Then |
 |---|---|
-| The chosen freeze path is wrong on DPI, or misses window content | Locate the cause, then implement the other capture path and compare. This is the only condition that earns a second path. |
-| Activation is slower than the target | Find where the time goes first: process wake, window show, the freeze, the first paint, or input readiness. Replace the component the measurement accuses, not the one that is easiest to blame. |
+| The chosen freeze path is wrong on DPI, misses window content, or is the diagnosed cause of a missed latency target | Locate the cause first, then implement the other capture path and compare. These are the only conditions that earn a second path, and a demonstrated performance failure traced to the capture implementation is one of them. |
+| Activation is slower than the target | Find where the time goes first: process wake, window show, the freeze, the first paint, or input readiness. Replace the component the measurement accuses, not the one that is easiest to blame. If it accuses the freeze itself, that is the row above. |
 | The clipboard cannot satisfy the two destinations | Diagnose it: which format, which application, which failure. Fix it, or report an explicit limitation with the applications named. It does not pass the gate on the grounds that the clipboard is native by design. |
 | The export drifts from the display and shared wrapping cannot close it | Moving the composer to native code is a candidate, not a remedy: it must be revalidated for editing and output together, including the active-caret case, before it counts. |
 | Editing is unusable at 4K | Tile the canvas, or reconsider the editor surface, with the measurement in hand. |
