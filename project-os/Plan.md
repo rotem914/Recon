@@ -14,8 +14,7 @@ Where this file and the product plan differ, an explicit approved revision here 
 and every one of them is listed in the revision blocks below. Everything else in the
 product plan stands as written.
 
-Status: revision 3, approved for the Stage 0 experiment. One input still outstanding,
-part 3 item B, which blocks S0.4 acceptance only.
+Status: revision 4. Approved for the Stage 0 experiment, with nothing outstanding.
 Written: 2026-09-10.
 Product baseline: `project-os/Product_plan.md`, dated 2026-09-10.
 
@@ -24,6 +23,15 @@ Nothing here is built yet. No code was run and no timing was measured in writing
 Ten parts: the review of the product plan, the six decisions and their answers, the
 answers for Stage 0, the architecture, Stage 0, what Stage 0 may conclude, Stage 1, the
 later stages, the evidence status of every claim here, and the sources behind it.
+
+### What changed in revision 4
+
+The two paste destinations are named: Claude and ChatGPT. Part 3 is closed, and Stage 0
+has no input left to wait for.
+
+Both are web applications, which decides the clipboard question: PNG is the format that
+matters, and a bitmap-only clipboard would fail the acceptance test rather than merely
+lose transparency.
 
 ### What changed in revision 3
 
@@ -197,7 +205,7 @@ than through the web view API, and name the destinations by actual use.
 Two real destinations are the acceptance boundary. A longer list is not a stronger test,
 it is a longer test.
 
-Status: resolved in plan. Acceptance pending the two destinations, part 3 item B, then S0.4.
+Status: resolved in plan. Destinations named in part 3 B. Acceptance at S0.4.
 
 ----
 **F5 · 🟠 The selection overlay should not be a web view**
@@ -408,7 +416,7 @@ Rotem's answers, as given. The rest of this plan follows them.
 
 ## Part 3: the answers for Stage 0
 
-Two are settled. One is outstanding, and it blocks nothing before S0.4.
+All three are settled. Stage 0 can start.
 
 **A · The initial capture path. Settled.**
 Stage 0 builds one path: a single copy of the whole virtual screen, chosen because one
@@ -421,10 +429,15 @@ That interface must leave a video source possible later. It adds no video infras
 now, and video stays out of v1.
 A second path is earned only under the conditions in part 6, and diagnosis comes first.
 
-**B · The two paste destinations. Outstanding.**
-Name the two applications you paste into most.
-They are the acceptance boundary for output, so they are needed before S0.4 is accepted.
-S0.1 to S0.3 do not wait for them.
+**B · The two paste destinations. Settled.**
+Claude and ChatGPT.
+They are the acceptance boundary for output at S0.4.
+Both read the clipboard as a web application does, so PNG is the format that decides
+acceptance, and a clipboard that publishes only a device-independent bitmap fails here
+rather than merely losing transparency.
+Record the surface with the result, the browser and its version or the desktop
+application and its version, since the same product can consume the clipboard
+differently on each.
 
 **C · The reference environment. Settled.**
 Your own main machine at its current display scale.
@@ -545,7 +558,7 @@ Full undo and redo are Stage 1 (S1.3), not a Stage 0 gate.
 
 Model: Opus 5. Fidelity, and the one place work can be lost.
 
-Depends on decisions B, C and 1.
+Depends on part 3 items B and C, and on decision 1.
 
 Delivers: the composer used for both display and export, and a native clipboard
 operation publishing several image formats.
@@ -572,7 +585,8 @@ comparison.
 The product forbids an Apply step, so this is the case that matters, and committed text
 is the easy half (F1).
 
-Plus: a paste verified in the two destination applications from decision B.
+Plus: a paste verified in Claude and in ChatGPT, the destinations in part 3 B, with the
+surface and version recorded beside each result.
 
 ----
 **[ ] S0.5 · Instrumentation and the thirty-run measurement**
