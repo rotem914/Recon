@@ -1,0 +1,2 @@
+# A `Go backup` snapshot never enters git.
+/backups/

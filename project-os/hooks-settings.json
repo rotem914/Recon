@@ -1,0 +1,48 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"console.log('PROJECT RULES for Recon: read CLAUDE.md and every file in project-os now, in full, if you have not. Conversations.md governs every reply you write. Workflow.md governs every task. Map.md says what exists here. When a decision is Rotem to make, ask him.')\"",
+            "timeout": 10,
+            "suppressOutput": true
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"console.log('STANDING RULES for this reply and this task: 1) Reply exactly as project-os/Conversations.md prescribes, layout and length included. 2) Read CLAUDE.md and project-os in full before the first reply of a session. 3) Change only what was asked, nothing else, however tempting. 4) When a decision is Rotem to make, ask instead of deciding. 5) State the risk level at pickup; medium or high arms project-os/Code_review.md. 6) After any completed change, add its History row. 7) Never claim a check passed unless it ran, never write outside this project, never push to main.')\"",
+            "timeout": 10,
+            "suppressOutput": true
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|NotebookEdit|Bash|PowerShell|Monitor",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"{{ROOT}}/project-os/guards/path-guard.mjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell|Monitor",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"{{ROOT}}/project-os/guards/destructive-guard.mjs\""
+          }
+        ]
+      }
+    ]
+  }
+}
