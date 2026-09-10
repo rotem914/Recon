@@ -58,4 +58,65 @@ would make it worth revisiting.
 Every decision below, oldest first. Read this list; open only the entries your
 task touches. A line in _italics_ means part of that entry no longer holds.
 
-- (empty — add a line here with every new entry)
+- 2026-09-10 · Callout numbers never change, gaps included.
+- 2026-09-10 · The capture API minimum is not the product support baseline.
+
+---
+
+## 2026-09-10 · Callout numbers never change, gaps included
+
+### Context
+
+Callouts are numbered by creation order, and deleting one leaves a gap, so a feedback
+list can read 1, 2, 4, 7. The plan review proposed renumbering at export or at send so
+the client would see a clean sequence.
+
+### Options
+
+1. Renumber automatically at export or at send.
+2. An explicit Renumber action, triggered by the user.
+3. Keep stable numbers, gaps included, in every output.
+
+### Decision
+
+Option 3, chosen by Rotem.
+
+### Consequences
+
+A number, once shown, means the same thing in the editor, in the clipboard, in an
+exported file and in a Rogers task, so a reference made in a chat message or a task
+comment stays valid for good.
+Cost: a list can look untidy after deletions, and that is accepted.
+Future work must never derive a displayed number from a position in a list, and must
+never renumber on any output path.
+Option 2 stays a backlog idea if real use asks for it.
+Revisit only if a client actually misreads a gap.
+
+---
+
+## 2026-09-10 · The capture API minimum is not the product support baseline
+
+### Context
+
+The per-display capture call documents Windows 10 version 1903 as its own minimum, and
+the first build plan treated that one number as the versions Recon supports, the
+versions it tests, and the installer strategy all at once.
+
+### Options
+
+1. Adopt the API minimum as the product baseline and let it settle packaging too.
+2. Keep three separate answers: the API constraint, the supported and tested versions,
+   and how the web view runtime reaches a user.
+
+### Decision
+
+Option 2, chosen by Rotem.
+
+### Consequences
+
+The API minimum is stated where that API is chosen and constrains that component only.
+The supported and tested versions become a product decision made with Stage 0 evidence,
+and runtime packaging is a distribution decision that cannot block the experiment.
+Cost: three answers to track instead of one.
+Future work must not quote an API requirement as a support promise.
+Revisit when the capture path is chosen for good.
