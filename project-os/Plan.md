@@ -1474,6 +1474,10 @@ is resampled. A fit-to-window region of the 3840x2160 probe costs **1.1 to 1.15 
 is the resampler and is F43: the fit view is the first thing anyone sees when they open an
 image, so a second of it is the viewer's core promise broken.
 
+**A caution about every number above:** this machine's display arrangement changed three
+times during Stage 0, between 5120x1440 and 3840x2160 at 225%. Every measurement therefore
+carries the display it was taken on, and a figure quoted without one means nothing here.
+
 **And the window is not DPI-scaled at all**, which is F44. The monitor's effective DPI is
 216, 225%, but the editor window reports 96, its scale factor is 1, its physical and CSS
 sizes are both 1280x800, and a band just outside that rectangle is not part of the window.
