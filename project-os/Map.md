@@ -39,11 +39,18 @@ Recon/
 ├── host/                           # the Rust host process: native, owns the pixels
 │   ├── Cargo.toml
 │   ├── build.rs
-│   ├── tauri.conf.json             # zero windows on purpose, S0.1 runs without one
+│   ├── tauri.conf.json             # zero windows on purpose: the host runs without one
 │   ├── icons/                      # placeholder tray icon, the real one is a design task
 │   └── src/
-│       ├── main.rs                 # tray, hotkey registration, the run loop
-│       └── config.rs               # the hotkey, and where it was read from
+│       ├── main.rs                 # tray, hotkey, the capture flow, the selection guard
+│       ├── config.rs               # the hotkey, and where it was read from
+│       ├── overlay.rs              # the Win32 selection overlay, one window per display
+│       ├── selftest.rs             # --selftest: S0.2's evidence, without a human
+│       └── capture/
+│           ├── mod.rs              # the capture interface and the frame it produces
+│           ├── coords.rs           # the ONE desktop-to-image conversion, with its tests
+│           ├── display.rs          # DPI awareness and the live display layout
+│           └── screen.rs           # the chosen path: one copy of the whole virtual screen
 ├── editor/                         # the web view surface, a placeholder until S0.4
 │   └── index.html
 └── project-os/                     # the process docs and their enforcement
@@ -96,5 +103,6 @@ anything.
 | Enforcement | `project-os/guards/*`, `project-os/hooks-settings.json`, `project-os/install-hooks.mjs` | Hooks are read at session start. Re-run the installer after editing the settings file. |
 | Outside servers | `project-os/mcp/*` | One folder per server, read before that server's first call. |
 | The plan | `project-os/Plan.md` | One file, and there is never a second: the product, the decisions, the architecture and the stages. Free-standing documents go in `notes/`, created when one is needed, never at the root. |
-| The host | `host/*` | Tray and hotkey today; capture, decode, the store and the clipboard later. It never renders an annotation. |
+| The host | `host/*` | Tray, hotkey, freeze, overlay and the region today; decode, the store and the clipboard later. It never renders an annotation. |
+| The one conversion | `host/src/capture/coords.rs` | The only place allowed to subtract a frame origin. Part 5 names the four coordinate spaces; this file is the edge between two of them. |
 | The editor | `editor/*` | The web view surface. A placeholder until S0.4. |

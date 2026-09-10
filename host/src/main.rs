@@ -13,16 +13,50 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod capture;
 mod config;
+mod overlay;
+mod selftest;
 
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use capture::{desktop_to_image, CaptureSource};
+use overlay::Outcome;
 
 use tauri::image::Image;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
 use tauri::RunEvent;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+
+/// Held while a selection is on screen, so a second hotkey press is ignored rather than
+/// stacking a second overlay on top of the first.
+///
+/// A plain flag was the first version, and the review caught what it cost: if the selection
+/// thread ever panicked, the flag stayed set and the hotkey was dead until a restart. This
+/// releases on drop, so the panic path releases it too.
+pub struct Selecting;
+
+static SELECTION_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+impl Selecting {
+    /// `Some` if no selection was on screen, and nothing else can acquire it until the
+    /// returned value is dropped.
+    pub fn acquire() -> Option<Selecting> {
+        if SELECTION_ACTIVE.swap(true, Ordering::SeqCst) {
+            None
+        } else {
+            Some(Selecting)
+        }
+    }
+}
+
+impl Drop for Selecting {
+    fn drop(&mut self) {
+        SELECTION_ACTIVE.store(false, Ordering::SeqCst);
+    }
+}
 
 /// How many times the hotkey has fired this run. Printed with each fire so a missed
 /// keypress and a repeated one look different in the log.
@@ -43,10 +77,114 @@ fn log(line: &str) {
     let _ = std::io::stdout().flush();
 }
 
+/// The hotkey path: freeze, choose a rectangle, convert once, crop.
+///
+/// Runs on its own thread because the overlay owns a message pump of its own (part 5), and
+/// because the hotkey handler must return immediately: a handler that blocks is a hotkey
+/// that stops arriving.
+fn begin_capture() {
+    let Some(guard) = Selecting::acquire() else {
+        log("ignored: a selection is already on screen");
+        return;
+    };
+
+    std::thread::spawn(move || {
+        // Moved into the thread so it is released when this closure ends, whether that is a
+        // return, an error path, or a panic unwinding out of the overlay.
+        let _guard = guard;
+        let source = capture::screen::WholeVirtualScreen;
+        let started = std::time::Instant::now();
+
+        match source.freeze() {
+            Ok(frame) => {
+                log(&format!(
+                    "freeze: {}x{} at {},{} in {} ms via {}",
+                    frame.width(),
+                    frame.height(),
+                    frame.geometry.origin_x,
+                    frame.geometry.origin_y,
+                    started.elapsed().as_millis(),
+                    frame.source
+                ));
+
+                let shown = std::time::Instant::now();
+                match overlay::select_region(&frame) {
+                    Outcome::Selected(rect) => {
+                        log(&format!(
+                            "selected {}x{} at desktop {},{} after {} ms on screen",
+                            rect.width,
+                            rect.height,
+                            rect.x,
+                            rect.y,
+                            shown.elapsed().as_millis()
+                        ));
+                        // The one conversion, at the edge, exactly as part 5 requires.
+                        match desktop_to_image(frame.geometry, rect) {
+                            Ok(image_rect) => match frame.crop(image_rect) {
+                                Some(pixels) => {
+                                    log(&format!(
+                                        "cropped to image space {},{} {}x{}, {} bytes",
+                                        image_rect.x,
+                                        image_rect.y,
+                                        image_rect.width,
+                                        image_rect.height,
+                                        pixels.len()
+                                    ));
+                                    write_capture(image_rect.width, image_rect.height, pixels);
+                                }
+                                None => log("CROP REFUSED: the rectangle is not inside the frame"),
+                            },
+                            Err(err) => log(&format!(
+                                "CONVERSION REFUSED: {err:?}. The rectangle is not inside the frozen frame, \
+                                 which means the desktop layout changed under the capture."
+                            )),
+                        }
+                    }
+                    Outcome::Cancelled => log("cancelled: nothing captured, nothing replaced"),
+                }
+            }
+            Err(err) => log(&format!("FREEZE FAILED: {err}")),
+        }
+    });
+}
+
+/// Writes the capture beside the executable so a Stage 0 run leaves something to look at.
+/// This is diagnostic output, not the store: the managed document arrives at S1.8, and
+/// nothing here writes anywhere near a file the user owns.
+fn write_capture(width: u32, height: u32, pixels: Vec<u8>) {
+    let Ok(exe) = std::env::current_exe() else {
+        log("capture not written: the executable path is unknown");
+        return;
+    };
+    let dir = exe.with_file_name("s02-captures");
+    if let Err(err) = std::fs::create_dir_all(&dir) {
+        log(&format!("capture not written: {err}"));
+        return;
+    }
+    let path = dir.join(format!("capture-{}.png", now_ms()));
+    match image::RgbaImage::from_raw(width, height, pixels) {
+        Some(buffer) => match buffer.save(&path) {
+            Ok(()) => log(&format!("capture written: {}", path.display())),
+            Err(err) => log(&format!("capture not written: {err}")),
+        },
+        None => log("capture not written: the pixel buffer did not match its dimensions"),
+    }
+}
+
 fn main() {
+    // Before anything else, and before any window or device context exists.
+    let awareness = capture::display::make_per_monitor_aware();
+
+    if std::env::args().any(|a| a == "--selftest") {
+        println!("dpi at startup  : {awareness}");
+        let failures = selftest::run();
+        std::process::exit(if failures == 0 { 0 } else { 1 });
+    }
+
     let cfg = config::load();
 
-    log(&format!("recon-host S0.1, pid {}", std::process::id()));
+    log(&format!("recon-host, pid {}", std::process::id()));
+    log(&format!("dpi awareness: {awareness}"));
     log(&format!("hotkey source: {}", cfg.source));
     log(&format!("hotkey wanted: {}", cfg.hotkey));
 
@@ -58,18 +196,18 @@ fn main() {
                 .with_handler(|_app, shortcut, event| {
                     if event.state == ShortcutState::Pressed {
                         let n = FIRES.fetch_add(1, Ordering::SeqCst) + 1;
-                        log(&format!(
-                            "HOTKEY FIRED: {shortcut} (fire {n}; no window has been created this run)"
-                        ));
+                        log(&format!("HOTKEY FIRED: {shortcut} (fire {n})"));
+                        begin_capture();
                     }
                 })
                 .build(),
         )
         .setup(move |app| {
             // ---- the tray, which is the only user interface this step has ----
-            let hotkey_item = MenuItemBuilder::with_id("hotkey", format!("Capture: {hotkey_label}"))
-                .enabled(false)
-                .build(app)?;
+            let hotkey_item =
+                MenuItemBuilder::with_id("hotkey", format!("Capture: {hotkey_label}"))
+                    .enabled(false)
+                    .build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Quit Recon").build(app)?;
             let menu = MenuBuilder::new(app)
                 .item(&hotkey_item)

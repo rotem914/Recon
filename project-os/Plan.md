@@ -1361,8 +1361,20 @@ success close work or take focus.
 
 # Part 11: the evidence status of every claim here
 
-**Measured:** nothing. This project has no code yet, so no timing and no memory figure in this
-document was produced by running anything.
+**Measured, on this machine, 2026-09-11:** the display is one 3840x2160 panel at 225%
+scaling, at the desktop origin. Freezing the whole virtual screen with the chosen path costs
+**166 to 176 ms** across five runs, which is most of the 250 ms budget from the hotkey to a
+usable overlay and is the number part 8's freeze row now watches. The tray-only process sits
+at **20 MB** with no window, which is the floor before any web view exists. Two per-pixel
+passes are on that path and unoptimised: the freeze converts to RGBA, and the overlay
+converts back to the byte order Windows wants.
+
+**Also found by running it:** the process is DPI-unaware unless it says otherwise, and an
+unaware process is told this display is 1707x960. Every coordinate, blit and comparison is
+then wrong while still looking plausible, so the host now declares per-monitor awareness as
+its first act and the self test asserts it.
+
+Everything else below is still unmeasured.
 
 **Documented platform behavior:** the per-display capture call's own minimum Windows version;
 that injected input is subject to privilege restrictions; that a request to bring a window to
