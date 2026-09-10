@@ -1,0 +1,18 @@
+[package]
+name = "recon-host"
+version = "0.0.1"
+edition = "2021"
+description = "Recon host process: tray, global hotkey, capture, decode, store, clipboard."
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-global-shortcut = "2"
+serde_json = "1"
+
+# S0.1 is a diagnostic build, so keep the debug profile honest and fast to iterate.
+[profile.dev]
+incremental = true

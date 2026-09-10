@@ -29,13 +29,23 @@ Not chosen yet. This repository holds the ProjectOS docs and nothing else.
 | Checks | none yet, there is nothing to run |
 ## Tree
 
-The real tree, as of the ProjectOS install. There is no application code yet.
+The real tree. The host is the first code in the project, from step S0.1.
 
 ```text
 Recon/
 ├── CLAUDE.md                       # entry file, read first every session
 ├── Installation.md                 # the record of how ProjectOS was installed here
-├── .gitignore                      # keeps backups/ out of git
+├── .gitignore                      # keeps backups/, .tmp/ and host/target/ out of git
+├── host/                           # the Rust host process: native, owns the pixels
+│   ├── Cargo.toml
+│   ├── build.rs
+│   ├── tauri.conf.json             # zero windows on purpose, S0.1 runs without one
+│   ├── icons/                      # placeholder tray icon, the real one is a design task
+│   └── src/
+│       ├── main.rs                 # tray, hotkey registration, the run loop
+│       └── config.rs               # the hotkey, and where it was read from
+├── editor/                         # the web view surface, a placeholder until S0.4
+│   └── index.html
 └── project-os/                     # the process docs and their enforcement
     ├── Plan.md                     # the whole plan, read at task pickup
     ├── Workflow.md                 # the path every task walks
@@ -72,7 +82,8 @@ Where state lives and who is allowed to write it.
 |---|---|---|---|
 | The process docs | `CLAUDE.md`, `project-os/*.md` | Markdown | the assistant, under the rules each file states |
 | The hooks setting | `.claude/settings.local.json` | JSON | `project-os/install-hooks.mjs` only. Machine-local, not committed. |
-| Application data | none yet | | arrives with the first application code |
+| The hotkey setting | `%APPDATA%\Recon\recon.json` | JSON | nobody yet. Recon only reads it, and says in its log where the value came from. |
+| Managed documents | none yet | | arrive with the store at S1.8 |
 
 ## Ownership
 
@@ -85,4 +96,5 @@ anything.
 | Enforcement | `project-os/guards/*`, `project-os/hooks-settings.json`, `project-os/install-hooks.mjs` | Hooks are read at session start. Re-run the installer after editing the settings file. |
 | Outside servers | `project-os/mcp/*` | One folder per server, read before that server's first call. |
 | The plan | `project-os/Plan.md` | One file, and there is never a second: the product, the decisions, the architecture and the stages. Free-standing documents go in `notes/`, created when one is needed, never at the root. |
-| Application code | none yet | Arrives when this project gains a stack. |
+| The host | `host/*` | Tray and hotkey today; capture, decode, the store and the clipboard later. It never renders an annotation. |
+| The editor | `editor/*` | The web view surface. A placeholder until S0.4. |

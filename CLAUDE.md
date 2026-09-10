@@ -27,7 +27,7 @@ reading time.
 |---|---|
 | Project root | this repository, wherever this copy of it lives |
 | Local app | none yet, this project has no dev server |
-| Checks | none yet, there is nothing to run |
+| Checks | in `host/`: `cargo fmt --check`, then `cargo clippy --all-targets -- -D warnings`, then `cargo build`. No tests yet. |
 
 ## Read these before you work
 
@@ -631,7 +631,7 @@ Commit everything accumulated up to now, across sessions, not only this chat.
    is already in the file before rotation decides what is old. Stage whatever
    they changed with the rest.
 3. `git status` plus `git diff`: see the whole uncommitted scope.
-4. Run the project checks [none exist yet, see the setup block above] and continue only if they
+4. Run the project checks, the three in the table above, and continue only if they
    pass. A red check stops the commit; report it instead.
 5. Stage the intended files only. Never a blind add-everything, and never
    env files, secrets, or generated junk.

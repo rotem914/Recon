@@ -3,3 +3,6 @@
 
 # Scratch files, per CLAUDE.md rule 12.
 /.tmp/
+
+# Rust build output.
+/host/target/
