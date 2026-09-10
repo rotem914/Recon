@@ -1116,8 +1116,14 @@ that took 12 to 22 ms. Asking the page what it drew would have proved nothing, b
 suspended surface has a perfectly correct document behind it. The occlusion flag the review
 struck from this gate was not used, so this is the shipping configuration.
 
-**Two things this step found, and neither is in its own evidence list.** They are F43 and
-F44 in part 12, and the second one is product-facing.
+**And then it was looked at, which found two more.** Twenty-six passing assertions did not
+notice that the image sat in the top-left corner of the window with two thirds of it empty,
+or that a note is unreadable at fit zoom on a wide capture. Those are F45, fixed, and F46,
+which is Rotem's to decide. Workflow step 9 asks for the look on anything visible, and this
+is why.
+
+**Four things this step found in total**, none of them in its own evidence list: F43 to F46
+in part 12.
 
 ----
 **[ ] S0.5 · Open and decode an existing image**
@@ -1533,7 +1539,7 @@ them.
 
 # Part 12: the review trail
 
-Forty-four findings were raised against the plan and folded into the parts above. This table
+Forty-six findings were raised against the plan and folded into the parts above. This table
 is the record; the fixes themselves live where the table points. Severity is how the finding
 was rated when it was raised.
 
@@ -1583,6 +1589,8 @@ was rated when it was raised.
 | F42 | The plan said the annotation layer crosses back, without saying it crosses encoded, which is two orders of magnitude cheaper | 🟡 | Part 5 boundary rule, S0.3 | Resolved: encoded, and the numbers are in part 11 |
 | F43 | The fit-to-window view costs 1.1 s, because it resamples the whole image, and it is the first thing anyone sees when opening one | 🟠 | Part 11, S0.4, and S1.3's viewing surface | Open: the fit view needs a cheap downscale, not a good one |
 | F44 | The editor window is not DPI-scaled: the monitor is at 225% and the window reports 96 dpi, so the interface renders at a third of the size the display asks for | 🟠 | Part 11, S0.4's closing note | Open: the image path is correct, the interface is not, and the cause is not yet established |
+| F45 | An image smaller than the window sat in its top-left corner instead of the middle, which twenty-six passing assertions did not notice | 🟠 | S0.4, the editor's own paint path | Resolved: centred, and the callout layer carries the same offset |
+| F46 | A note is unreadable at fit zoom on a wide capture, because annotations live in image space and scale with the image | 🟡 | §3.5, S1.2 | Open: scaling with the image is what other tools do and is probably right, but a minimum on-screen size is Rotem's call |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the
 two things it compares and the failure that would turn it red (`project-os/QA.md` §12), and a

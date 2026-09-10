@@ -178,6 +178,15 @@ fn write_capture(width: u32, height: u32, pixels: Vec<u8>) {
 /// The window is created hidden exactly as the product would, so the first-frame check is
 /// testing the real thing rather than a window made visible for the occasion.
 fn editor_check() -> i32 {
+    editor_run(false)
+}
+
+/// The same window, with a couple of example callouts on a real capture, and a screenshot.
+fn editor_demo() -> i32 {
+    editor_run(true)
+}
+
+fn editor_run(demo: bool) -> i32 {
     let app = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             editor::editor_image_info,
@@ -189,6 +198,8 @@ fn editor_check() -> i32 {
             editor::editor_checks_done,
             editor::editor_wants_checks,
             editor::editor_window_metrics,
+            editor::editor_wants_demo,
+            editor::editor_shoot_window,
             editor::editor_log,
         ])
         .register_asynchronous_uri_scheme_protocol("region", |_ctx, request, responder| {
@@ -216,8 +227,12 @@ fn editor_check() -> i32 {
                 ),
             });
         })
-        .setup(|app| {
-            editor::request_checks();
+        .setup(move |app| {
+            if demo {
+                editor::request_demo();
+            } else {
+                editor::request_checks();
+            }
             tauri::WebviewWindowBuilder::new(
                 app,
                 "editor",
@@ -225,7 +240,7 @@ fn editor_check() -> i32 {
             )
             .title("Recon")
             .inner_size(1280.0, 800.0)
-            .visible(false)
+            .visible(demo)
             .build()?;
             Ok(())
         })
@@ -250,6 +265,11 @@ fn main() {
     if std::env::args().any(|a| a == "--editor-check") {
         println!("dpi at startup  : {awareness}");
         std::process::exit(editor_check());
+    }
+
+    if std::env::args().any(|a| a == "--editor-demo") {
+        println!("dpi at startup  : {awareness}");
+        std::process::exit(editor_demo());
     }
 
     if std::env::args().any(|a| a == "--bench") {

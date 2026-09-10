@@ -144,6 +144,47 @@ pub fn editor_wants_checks() -> bool {
     WANTS_CHECKS.load(std::sync::atomic::Ordering::SeqCst)
 }
 
+/// Whether this run wants the page to place a couple of example callouts, so the editor can
+/// be LOOKED at. The Workflow's step 9 asks for that on anything visible, and no number of
+/// assertions substitutes for seeing the thing once.
+static WANTS_DEMO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn request_demo() {
+    WANTS_DEMO.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+#[tauri::command]
+pub fn editor_wants_demo() -> bool {
+    WANTS_DEMO.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// Writes a PNG of the editor window's own area of the screen, then exits.
+#[tauri::command]
+pub fn editor_shoot_window(app: AppHandle) -> Result<String, String> {
+    let window = app
+        .get_webview_window("editor")
+        .ok_or("there is no editor window")?;
+    let position = window.outer_position().map_err(|e| e.to_string())?;
+    let size = window.outer_size().map_err(|e| e.to_string())?;
+    let rect = DesktopRect {
+        x: position.x,
+        y: position.y,
+        width: size.width,
+        height: size.height,
+    };
+    let pixels = screen::copy_rect(rect).map_err(|err| err.to_string())?;
+    let path = std::env::current_exe()
+        .map(|exe| exe.with_file_name("s04-editor.png"))
+        .unwrap_or_else(|_| "s04-editor.png".into());
+    let image = image::RgbaImage::from_raw(rect.width, rect.height, pixels)
+        .ok_or("the window pixels did not match its size")?;
+    image.save(&path).map_err(|err| err.to_string())?;
+    let shown = path.display().to_string();
+    println!("editor screenshot: {shown}");
+    app.exit(0);
+    Ok(shown)
+}
+
 /// Everything the page says, on the terminal.
 ///
 /// Without this a web view failure is invisible from a shell: the page throws, the window is

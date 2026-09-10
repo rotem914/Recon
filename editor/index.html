@@ -102,6 +102,11 @@
     fitZoom: 1,
     // Top-left of the visible region, in image pixels.
     pan: { x: 0, y: 0 },
+    // Where the canvas sits inside the viewport, in CSS pixels. Non-zero whenever the
+    // image is smaller than the window, which at fit-to-window is most of the time: found
+    // by looking at the thing, where a 5120x1440 capture sat in the top-left corner of a
+    // 1280x800 window with two thirds of the window empty below it.
+    offset: { x: 0, y: 0 },
     callouts: [],
     nextNumber: 1,
     selected: null,
@@ -140,8 +145,8 @@
 
   const toImage = (event) => {
     const box = stage.getBoundingClientRect();
-    const cssX = event.clientX - box.left;
-    const cssY = event.clientY - box.top;
+    const cssX = event.clientX - box.left - model.offset.x;
+    const cssY = event.clientY - box.top - model.offset.y;
     return {
       x: model.pan.x + (cssX * dpr()) / model.zoom,
       y: model.pan.y + (cssY * dpr()) / model.zoom,
@@ -189,8 +194,16 @@
 
     canvas.width = width;
     canvas.height = height;
-    canvas.style.width = `${width / dpr()}px`;
-    canvas.style.height = `${height / dpr()}px`;
+    const cssW = width / dpr();
+    const cssH = height / dpr();
+    canvas.style.width = `${cssW}px`;
+    canvas.style.height = `${cssH}px`;
+    // Centred when the image does not fill the window, which is what anyone expects of a
+    // viewer and is not what the first version did.
+    model.offset.x = Math.max(0, Math.round((vp.w - cssW) / 2));
+    model.offset.y = Math.max(0, Math.round((vp.h - cssH) / 2));
+    canvas.style.left = `${model.offset.x}px`;
+    canvas.style.top = `${model.offset.y}px`;
     context.putImageData(new ImageData(new Uint8ClampedArray(bytes), width, height), 0, 0);
     lastRegion = { x, y, w: srcW, h: srcH, width, height, ms: Math.round(performance.now() - askedAt) };
     console.log(`painted ${width}x${height} at zoom ${model.zoom.toFixed(3)} in ${lastRegion.ms} ms`);
@@ -240,8 +253,11 @@
   };
 
   const layoutScene = () => {
+    // The same offset the canvas got, so the callout layer stays registered with the
+    // pixels it is annotating.
     scene.style.transform =
-      `translate(${(-model.pan.x * model.zoom) / dpr()}px, ${(-model.pan.y * model.zoom) / dpr()}px)` +
+      `translate(${model.offset.x - (model.pan.x * model.zoom) / dpr()}px, ` +
+      `${model.offset.y - (model.pan.y * model.zoom) / dpr()}px)` +
       ` scale(${model.zoom / dpr()})`;
 
     for (const callout of model.callouts) {
@@ -535,6 +551,24 @@
       await loadImage(info);
     }
     drawHud();
+    if (await invoke('editor_wants_demo')) {
+      // A real capture rather than the probe, two notes with the two directions this
+      // product exists for, and one of them re-anchored so the arrow is doing something.
+      const shot = await invoke('editor_load_screen');
+      await loadImage(shot);
+      const a = createCallout({ x: Math.round(shot.width * 0.22), y: Math.round(shot.height * 0.28) });
+      a.text = 'This label is the wrong one: it shows the group status, not the item.';
+      const b = createCallout({ x: Math.round(shot.width * 0.62), y: Math.round(shot.height * 0.55) });
+      b.text = 'הכיתוב הזה צריך להיות מיושר לימין, וגם באנגלית in the same bubble.';
+      b.box.x += 40;
+      b.box.y += 90;
+      model.selected = b;
+      layoutScene();
+      drawHud();
+      await new Promise((r) => setTimeout(r, 900));
+      await invoke('editor_shoot_window');
+      return;
+    }
     if (await invoke('editor_wants_checks')) {
       console.log('running the S0.4 checks');
       const { runChecks } = await import('./editor-checks.js');
