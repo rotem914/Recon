@@ -980,7 +980,7 @@ One number to carry into S0.7: the tray-only process sat at 20 MB with no window
 the floor before any web view exists.
 
 ----
-**[ ] S0.2 · Freeze, overlay, region selection**
+**[x] S0.2 · Freeze, overlay, region selection**
 
 Model: Opus 5. DPI, native APIs, irreversible shape.
 
@@ -993,6 +993,28 @@ primary so coordinates go negative; the selected rectangle and the resulting pix
 exactly; the overlay and the editor never appear in the output; cancel restores the previous
 context and creates no capture; a second hotkey press during selection is ignored; an open
 menu is either captured or the limitation is written down.
+
+**Closed 2026-09-11, with one condition deferred rather than met.**
+
+What held: all four corners of the 3840x2160 display at 225% crop identical to a fresh
+screen copy, byte for byte, so the conversion is right at both extremes and a scale error is
+ruled out along with an origin error. A synthesized drag returns exactly the rectangle
+dragged. The captured pixels equal the screen with the overlay gone, which is the
+overlay-never-in-the-output check. Escape captures nothing. A second hotkey during a
+selection is ignored. A context menu, shadow included, is in the freeze.
+
+What is deferred, and why it is not a blocker: the two-display case, mixed scaling and a
+display arranged left of the primary so desktop coordinates go negative. Rotem has one
+display, so the machine cannot produce either condition, and hardware is not being bought
+for a Stage 0 gate. What is actually untested is Windows reporting a negative origin, which
+is documented behaviour rather than code written here; the code's own handling of it is
+covered by seven unit tests in `capture/coords.rs` built on synthetic layouts, including a
+display to the left, a display above, and a rectangle that would wrap a u32 if the
+arithmetic were not done in i64. The drag clamp added by the review is unreachable here for
+the same reason, since a single-display cursor cannot leave its own display.
+
+It moves to part 11 as a watch item: the first time a second display is ever attached, run
+`--selftest` and read section A.
 
 ----
 **[ ] S0.3 · The boundary, measured before anything is built on it**
@@ -1381,6 +1403,13 @@ that injected input is subject to privilege restrictions; that a request to brin
 the foreground can be refused; which image formats a Chromium-based view decodes on its own,
 and which ones the Windows imaging stack decodes without an extra component. Sources in part
 13.
+
+**Deferred until the hardware exists:** whether Windows reports a negative desktop origin
+and a mixed-scale layout the way the coordinate arithmetic expects, and whether the drag
+clamp in the overlay behaves when a drag crosses onto another display. One display is
+attached, so neither can be produced. The arithmetic is unit-tested against synthetic
+layouts; the platform half runs the first time a second display appears, with `--selftest`
+section A.
 
 **Behavior to verify, currently unknown:** whether a registered global hotkey is delivered
 while an application running as administrator holds the foreground (S0.8); whether best-effort
