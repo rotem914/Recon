@@ -46,13 +46,15 @@ Recon/
 │       ├── config.rs               # the hotkey, and where it was read from
 │       ├── overlay.rs              # the Win32 selection overlay, one window per display
 │       ├── selftest.rs             # --selftest: S0.2's evidence, without a human
+│       ├── bench.rs                 # --bench: S0.3's boundary measurement
 │       └── capture/
 │           ├── mod.rs              # the capture interface and the frame it produces
 │           ├── coords.rs           # the ONE desktop-to-image conversion, with its tests
 │           ├── display.rs          # DPI awareness and the live display layout
 │           └── screen.rs           # the chosen path: one copy of the whole virtual screen
 ├── editor/                         # the web view surface, a placeholder until S0.4
-│   └── index.html
+│   ├── index.html
+│   └── bench.html                  # the web view half of S0.3, not product code
 └── project-os/                     # the process docs and their enforcement
     ├── Plan.md                     # the whole plan, read at task pickup
     ├── Workflow.md                 # the path every task walks

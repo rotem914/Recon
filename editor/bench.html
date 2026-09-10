@@ -1,0 +1,204 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Recon boundary measurement</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; padding: 16px 20px; font: 13px/1.5 ui-monospace, Consolas, monospace;
+         background: #14171a; color: #e6e6e6; }
+  h1 { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
+  p { margin: 0 0 12px; color: #9aa0a6; }
+  pre { margin: 0; white-space: pre; }
+  .done { color: #7ec699; }
+</style>
+
+<h1>Recon, S0.3: the process boundary</h1>
+<p id="status">starting</p>
+<pre id="out"></pre>
+
+<script>
+  // S0.3's web view half. Every number here is this page's own clock, which is the clock
+  // that matters: how long until the editor holds the pixels, and how long until the host
+  // has acknowledged what the editor sent.
+  //
+  // Nothing in this file is product code. The editor arrives at S0.4.
+
+  const invoke = window.__TAURI__.core.invoke;
+  const out = document.getElementById('out');
+  const status = document.getElementById('status');
+  const lines = [];
+  const rows = [];
+  const REPS = 5;
+
+  const say = (text) => {
+    lines.push(text);
+    out.textContent = lines.join('\n');
+    window.scrollTo(0, document.body.scrollHeight);
+  };
+
+  const median = (values) => {
+    const sorted = [...values].sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+  };
+
+  // A checksum over a sample of the bytes, so a route that truncates or pads is caught
+  // rather than timed. Sampling rather than every byte, because hashing 33 MB in JS would
+  // become the measurement.
+  const sample = (bytes) => {
+    let sum = 0;
+    const step = Math.max(1, Math.floor(bytes.length / 4096));
+    for (let i = 0; i < bytes.length; i += step) sum = (sum + bytes[i] * (i % 7 + 1)) % 1000003;
+    return `${bytes.length}:${sum}`;
+  };
+
+  let port = 0;
+
+  // ---- the three ways in ----
+
+  const viaIpc = async (kind) => {
+    const buffer = await invoke('bench_frame', { kind });
+    return new Uint8Array(buffer);
+  };
+
+  const viaProtocol = async (kind) => {
+    const response = await fetch(`http://frame.localhost/${kind}`, { cache: 'no-store' });
+    return new Uint8Array(await response.arrayBuffer());
+  };
+
+  const viaLoopback = async (kind) => {
+    const response = await fetch(`http://127.0.0.1:${port}/frame/${kind}`, { cache: 'no-store' });
+    return new Uint8Array(await response.arrayBuffer());
+  };
+
+  // ---- the two ways out ----
+
+  const outViaIpc = async (bytes) => invoke('bench_layer', bytes);
+
+  const outViaLoopback = async (bytes) => {
+    const response = await fetch(`http://127.0.0.1:${port}/layer`, {
+      method: 'POST',
+      body: bytes,
+      headers: { 'Content-Type': 'application/octet-stream' },
+    });
+    return (await response.json()).received;
+  };
+
+  // A mostly transparent 4K annotation layer: what an export actually sends back. Built
+  // once, because building it is the editor's cost and not the boundary's.
+  const buildLayer = (width, height) => {
+    const bytes = new Uint8Array(width * height * 4);
+    // A few opaque strokes on an otherwise empty layer, which is what a handful of callouts
+    // over a screenshot really looks like.
+    for (let stroke = 0; stroke < 12; stroke++) {
+      const y0 = Math.floor((height / 13) * (stroke + 1));
+      for (let y = y0; y < y0 + 24 && y < height; y++) {
+        for (let x = 100; x < Math.min(width - 100, 1600); x++) {
+          const i = (y * width + x) * 4;
+          bytes[i] = 240; bytes[i + 1] = 240; bytes[i + 2] = 240; bytes[i + 3] = 255;
+        }
+      }
+    }
+    return bytes;
+  };
+
+  const measure = async (label, sizeBytes, run) => {
+    const times = [];
+    let checksum = '';
+    for (let rep = 0; rep < REPS; rep++) {
+      const started = performance.now();
+      const result = await run();
+      times.push(performance.now() - started);
+      if (result instanceof Uint8Array) {
+        const seen = sample(result);
+        if (checksum && seen !== checksum) {
+          say(`  ${label}: PAYLOAD CHANGED between repetitions (${checksum} then ${seen})`);
+        }
+        checksum = seen;
+      }
+      await new Promise((r) => setTimeout(r, 60));
+    }
+    const mid = median(times);
+    const mb = sizeBytes / (1024 * 1024);
+    rows.push({ label, mb, mid, min: Math.min(...times), max: Math.max(...times), checksum });
+    say(
+      `  ${label.padEnd(34)} ${mb.toFixed(1).padStart(6)} MB  median ${mid.toFixed(1).padStart(8)} ms` +
+      `  ${(mid / mb).toFixed(2).padStart(7)} ms/MB   min ${Math.min(...times).toFixed(1)}  max ${Math.max(...times).toFixed(1)}`
+    );
+  };
+
+  const main = async () => {
+    port = await invoke('bench_port');
+    say(`loopback port ${port}`);
+    say('');
+
+    status.textContent = 'measuring: the baseline, so protocol and transfer can be told apart';
+    say('baseline, the protocol with almost nothing in it');
+    await measure('tiny via ipc', 1024, () => viaIpc('tiny'));
+    await measure('tiny via custom protocol', 1024, () => viaProtocol('tiny'));
+    await measure('tiny via loopback', 1024, () => viaLoopback('tiny'));
+    const tinyOut = new Uint8Array(1024);
+    await measure('tiny out via ipc', 1024, () => outViaIpc(tinyOut));
+    await measure('tiny out via loopback', 1024, () => outViaLoopback(tinyOut));
+    say('');
+
+    status.textContent = 'measuring: into the web view';
+    say('into the web view');
+    for (const kind of ['full4k', 'proxy1080', 'png1080', 'walk']) {
+      const probe = await viaIpc(kind);
+      const size = probe.length;
+      await measure(`${kind} via ipc`, size, () => viaIpc(kind));
+      await measure(`${kind} via custom protocol`, size, () => viaProtocol(kind));
+      await measure(`${kind} via loopback`, size, () => viaLoopback(kind));
+    }
+    say('');
+
+    status.textContent = 'measuring: back out to the host';
+    say('back out to the host, a mostly transparent annotation layer');
+    const layer4k = buildLayer(3840, 2160);
+    await measure('layer 4k out via ipc', layer4k.length, () => outViaIpc(layer4k));
+    await measure('layer 4k out via loopback', layer4k.length, () => outViaLoopback(layer4k));
+
+    // And the same layer as a PNG, which is what an export would really send: the encode is
+    // the editor's cost and is timed on its own, because it is not the boundary.
+    status.textContent = 'measuring: encoding the layer, then sending it';
+    const canvas = document.createElement('canvas');
+    canvas.width = 3840; canvas.height = 2160;
+    const context = canvas.getContext('2d');
+    const bitmap = new ImageData(new Uint8ClampedArray(layer4k), 3840, 2160);
+    context.putImageData(bitmap, 0, 0);
+    const encodeStart = performance.now();
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    const encodeMs = performance.now() - encodeStart;
+    const png = new Uint8Array(await blob.arrayBuffer());
+    say(`  encoding that layer to png in the web view took ${encodeMs.toFixed(0)} ms and produced ${(png.length / 1024).toFixed(0)} KB`);
+    await measure('layer png out via ipc', png.length, () => outViaIpc(png));
+    await measure('layer png out via loopback', png.length, () => outViaLoopback(png));
+
+    // ---- the report ----
+    const csv = ['label,megabytes,median_ms,min_ms,max_ms,ms_per_mb,checksum']
+      .concat(rows.map((r) => `${r.label},${r.mb.toFixed(3)},${r.mid.toFixed(2)},${r.min.toFixed(2)},${r.max.toFixed(2)},${(r.mid / r.mb).toFixed(3)},${r.checksum}`))
+      .join('\n');
+
+    const table = [
+      '',
+      '=== S0.3: the boundary, as measured by the web view itself ===',
+      `repetitions per row: ${REPS}, median reported`,
+      `web view png encode of the 4K layer: ${encodeMs.toFixed(0)} ms, ${(png.length / 1024).toFixed(0)} KB`,
+      '',
+    ]
+      .concat(lines.filter((l) => l.startsWith('  ')))
+      .join('\n');
+
+    await invoke('bench_report', { csv, table });
+    status.textContent = 'done';
+    status.className = 'done';
+    say('');
+    say('reported to the host.');
+  };
+
+  main().catch((err) => {
+    status.textContent = 'failed';
+    say(`FAILED: ${err && err.message ? err.message : err}`);
+    invoke('bench_report', { csv: '', table: `the page failed: ${err}` }).catch(() => {});
+  });
+</script>

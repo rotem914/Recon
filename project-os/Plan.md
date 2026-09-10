@@ -773,7 +773,9 @@ round-trips a canvas.**
 
 - The host holds the decoded source, and that copy is what an export is made from.
 - Export emits **only the annotation layer**, over a transparent background, covering the
-  **full composition**: the source dimensions plus any stored annotation margin.
+  **full composition**: the source dimensions plus any stored annotation margin, and it
+  crosses **encoded**, not raw. S0.3 measured that same layer at 31.6 MB and 359 ms raw
+  against 162 KB and 3.5 ms as a PNG the web view encoded in 78 ms.
 - **The host composites** that layer over the untouched source at the stored margin offset,
   then writes the file or the clipboard.
 
@@ -1017,7 +1019,7 @@ It moves to part 11 as a watch item: the first time a second display is ever att
 `--selftest` and read section A.
 
 ----
-**[ ] S0.3 · The boundary, measured before anything is built on it**
+**[x] S0.3 · The boundary, measured before anything is built on it**
 
 Model: Opus 5. It decides whether the pinned design was ever optional.
 
@@ -1033,6 +1035,31 @@ Part 5's design is adopted either way, because exact equality and the clipboard 
 regardless. What this step settles is whether the naive full-resolution design was ever
 available, and it replaces the estimate this design was reasoned against, a maintainer's own
 explicitly unscientific figure, with a number from this machine.
+
+**Closed 2026-09-11.** Measured by the web view's own clock, five repetitions per row,
+median reported, with the empty round trip measured separately at about 2 ms so protocol and
+transfer can be told apart. Full numbers in part 11.
+
+**The naive design was never available, but not for the reason the plan assumed.** A whole
+31.6 MB frame crosses in 290 ms through the message channel and the custom protocol, or
+140 ms through a local socket. On top of a 166 ms freeze that is most of the budget spent
+before the editor has done anything. The proxy the design pins costs 40 to 74 ms for the
+same view, and an encoded proxy 6 to 16 ms.
+
+**The figure the design was reasoned against was two to four times pessimistic.** It said
+roughly 200 ms per 10 MB; the measurement says 90 ms per 10 MB through the message channel
+and 44 ms through a socket. The design does not change, because exact equality is what pins
+it, but the plan should stop quoting a number that was wrong.
+
+**The route matters more than the plan expected.** The message channel and the custom
+protocol are indistinguishable, at about 9 ms per MB in both directions. A local socket is
+roughly twice as fast for large payloads, 4.4 ms per MB in and 5.7 ms out. So if a large
+crossing is ever genuinely needed, there is a route for it, and part 8's boundary trigger did
+NOT fire.
+
+**And the layer should cross encoded, which the plan did not say.** The same 4K annotation
+layer is 31.6 MB raw at 359 ms, or 162 KB at 3.5 ms once the web view encodes it to PNG,
+which takes 78 ms there. Encoded wins by two orders of magnitude, and part 5 now says so.
 
 ----
 **[ ] S0.4 · Editor window, scene, one callout**
@@ -1253,7 +1280,7 @@ return a verdict against the design is not a gate.
 | The export drifts from the display and shared wrapping cannot close it | Moving the composer to native code is a candidate, not a remedy: it must be revalidated for editing and output together, including the active-caret case, before it counts. |
 | A target format will not decode, or needs a component that is not on the machine | Name the format, the cause and the impact. If it is a deferrable format under part 6c, ship the shorter list with the gap stated. If it is a required one, this is a blocked stage and a scope decision for Rotem, not a shorter list. Either way it does not fail the stack. |
 | The export route is unavailable, or drifts from the editor, and the three remedies do not close it | Move the composer in-process: a Direct2D and DirectWrite scene inside the same Rust host, through windows-rs, keeping every other component. One text layout object per bubble then serves the caret geometry, the screen draw and the export draw, and the requirement stops being a discipline. Not a different stack, and not a different host language: the decode decision was made on its own grounds and stands. |
-| The boundary is the measured cause of a missed editor-ready target, and the proxy design does not close it | Same move as the row above. That accuses the crossing, which is what an in-process composer removes. |
+| The boundary is the measured cause of a missed editor-ready target, and the proxy design does not close it | Same move as the row above. That accuses the crossing, which is what an in-process composer removes. **Measured at S0.3 and it did not fire:** the pinned proxy costs 40 to 74 ms raw and 6 to 16 ms encoded, against 290 ms for the whole frame. A local socket is the escape route if a large crossing is ever needed, at roughly half the cost of the message channel. |
 | Editing is unusable at 4K | Tile the canvas, or reconsider the editor surface, with the measurement in hand. |
 | The combined implementation and maintenance cost of this candidate turns out to be unacceptable, whether or not any single gate failed | Reopen the editor architecture, or the stack, against the comparison table in part 5. Start from documentation, prototype only the consequential uncertainties in the strongest alternative, and record the verdict in `project-os/Decisions.md` as a superseding entry. Replacing Tauri also means re-implementing the tray, the global shortcut, the Explorer argument forwarding, the file-association bundle and the updater. |
 
@@ -1391,6 +1418,27 @@ at **20 MB** with no window, which is the floor before any web view exists. Two 
 passes are on that path and unoptimised: the freeze converts to RGBA, and the overlay
 converts back to the byte order Windows wants.
 
+**The boundary, measured at S0.3 on 2026-09-11**, by the web view's own clock, five
+repetitions per row, median, with an empty round trip of about 2 ms measured separately:
+
+| Crossing | Message channel | Custom protocol | Local socket |
+|---|---|---|---|
+| 31.6 MB frame in | 290 ms | 290 ms | 140 ms |
+| 7.9 MB proxy in | 74 ms | 82 ms | 40 ms |
+| 2.2 MB encoded proxy in | 15.5 ms | 15.4 ms | 5.8 ms |
+| 3.5 MB folder-walk proxy in | 37 ms | 37 ms | 31 ms |
+| 31.6 MB layer out | 359 ms | not applicable | 181 ms |
+| 162 KB encoded layer out | 3.5 ms | not applicable | 3.9 ms |
+
+About 9 ms per MB through the message channel and the custom protocol, which measure the
+same; about 4.4 ms per MB in and 5.7 ms out through a local socket. The web view encodes a
+4K layer to PNG in 78 ms, producing 162 KB.
+
+**One number that is a problem for later:** the host's own PNG encoder, at its default
+settings, took **633 ms** to encode a 1920x1080 image, while the web view encoded a larger
+one in 78 ms. That sits on the Save As path in S1.11, not on the capture path, and it needs a
+faster setting or a different encoder before it ships.
+
 **Also found by running it:** the process is DPI-unaware unless it says otherwise, and an
 unaware process is told this display is 1707x960. Every coordinate, blit and comparison is
 then wrong while still looking plausible, so the host now declares per-monitor awareness as
@@ -1445,7 +1493,7 @@ them.
 
 # Part 12: the review trail
 
-Thirty-nine findings were raised against the plan and folded into the parts above. This table
+Forty-two findings were raised against the plan and folded into the parts above. This table
 is the record; the fixes themselves live where the table points. Severity is how the finding
 was rated when it was raised.
 
@@ -1490,6 +1538,9 @@ was rated when it was raised.
 | F37 | The annotation export was sized to the source, so a callout inside the added margin would be cut off | 🔴 | §3.6, part 5 boundary rule, S0.6 margin case | Resolved: source plus stored margins, composited at the offset |
 | F38 | Revision leftovers: two decode providers in two places, a web view decoder question, F18 still marked open, and dav1d described as a whole-file library | 🟠 | Part 5, S0.5, part 11, this table | Resolved in place |
 | F39 | Readiness ended at input acceptance, so a blank or stale window could score as ready | 🟠 | S0.7 | Resolved: content and input, on one timing basis |
+| F40 | The boundary figure the design was argued against was two to four times pessimistic, and it came from a discussion thread | 🟡 | Part 11's measured table, S0.3 | Resolved: measured here, and the plan quotes the measurement |
+| F41 | The host's PNG encoder takes 633 ms for a 1920x1080 image at default settings, and it sits on the Save As path | 🟠 | Part 11, S1.11 | Open: needs a faster setting or another encoder before S1.11 ships |
+| F42 | The plan said the annotation layer crosses back, without saying it crosses encoded, which is two orders of magnitude cheaper | 🟡 | Part 5 boundary rule, S0.3 | Resolved: encoded, and the numbers are in part 11 |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the
 two things it compares and the failure that would turn it red (`project-os/QA.md` §12), and a

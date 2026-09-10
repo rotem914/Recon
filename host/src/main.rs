@@ -13,6 +13,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod bench;
 mod capture;
 mod config;
 mod overlay;
@@ -174,6 +175,11 @@ fn write_capture(width: u32, height: u32, pixels: Vec<u8>) {
 fn main() {
     // Before anything else, and before any window or device context exists.
     let awareness = capture::display::make_per_monitor_aware();
+
+    if std::env::args().any(|a| a == "--bench") {
+        println!("dpi at startup  : {awareness}");
+        std::process::exit(bench::run());
+    }
 
     if std::env::args().any(|a| a == "--selftest") {
         println!("dpi at startup  : {awareness}");
