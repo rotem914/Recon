@@ -65,6 +65,7 @@ Mistakes in HOW you worked:
 | Date | What I did | What was wanted | Home if it repeats | Times |
 |---|---|---|---|---|
 | 2026-09-10 | Made the commit conditional on your answer, and called the commit something waiting on you | The commit itself, unasked: rule 22 gives me the commit and gives you the push | `CLAUDE.md` working rules | 1 |
+| 2026-09-10 | Split one requested plan into a review file and a plan file | One organized plan, in one file, as asked | `CLAUDE.md` working rules | 1 |
 
 ## Promoted
 
