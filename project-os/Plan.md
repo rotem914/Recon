@@ -973,6 +973,12 @@ Evidence: the hotkey fires while the process has never shown a window; a hotkey 
 taken by another application is reported as a conflict rather than silently lost; quit
 leaves no process behind.
 
+**Closed 2026-09-10.** All three hold. The third was closed by Rotem clicking Quit himself,
+after three automation routes failed to hold the hidden-icons flyout open long enough; the
+logs and the two gaps that run exposed are in `project-os/History.md`.
+One number to carry into S0.7: the tray-only process sat at 20 MB with no window, which is
+the floor before any web view exists.
+
 ----
 **[ ] S0.2 · Freeze, overlay, region selection**
 
