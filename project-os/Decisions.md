@@ -65,7 +65,11 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-10 · Save As never overwrites anything.
 - 2026-09-10 · An SVG raster size is fixed when annotation begins.
 - 2026-09-10 · sRGB is the working color space for v1.
-- 2026-09-10 · The minimum format set for the daily-use release.
+- 2026-09-10 · _The minimum format set for the daily-use release._ (membership stands, its stated reason is superseded)
+- 2026-09-10 · The stack: a Rust host owning the pixels, a web view laying out the text.
+- 2026-09-10 · One native decode route, and the original never enters the web view.
+- 2026-09-10 · The annotation text layer is DOM, and the export is that same DOM.
+- 2026-09-10 · Why the required format set is affordable, superseding one paragraph.
 
 ---
 
@@ -338,3 +342,164 @@ ship. Cost: if the web view turns out to decode less than
 expected on this machine, the blocked-stage path is more expensive than a shorter list would
 have been, which is the point.
 Revisit when S0.4 reports, or when real use shows a format nobody opens.
+
+---
+
+## 2026-09-10 · The stack: a Rust host owning the pixels, a web view laying out the text
+
+### Context
+
+The plan named Tauri, React and Rust and justified them with the owner having used that
+stack on another project. That is not a reason, and rule 21 of CLAUDE.md forbids treating
+another project as evidence about this one. What the choice has to answer is fit for this
+product and years of maintenance by one person.
+
+### Options
+
+Five were evaluated against the plan's twelve requirements, each one attacked afterwards by
+a second reviewer:
+
+1. A Rust host with windows-rs plus a WebView2 editor, packaged with Tauri v2.
+2. C# on .NET with WinUI 3. WPF was struck: no text-layout surface of the kind needed, no
+   SVG.
+3. C++ with Direct2D and DirectWrite.
+4. Qt 6, standing for the cross-platform toolkits. Avalonia and Flutter were excluded on
+   format coverage and on per-display window support.
+5. Electron with native addons.
+
+### Decision
+
+Option 1. Chosen here, on the argument in part 5 of the plan, and open to Rotem's veto.
+
+### Consequences
+
+Three requirements decided it. Decoding nine formats with orientation and color applied once
+is the second-largest surface in the product and it is a host problem: Rust answers it in one
+toolchain with most of the parse path memory-safe, while every alternative writes interop for
+four native libraries, and two of them render SVG wrongly and silently, which matters because
+annotating diagrams is a core case. Mixed Hebrew and English needs an editing model, not just
+a layout engine, and only a browser gives the caret, the selection geometry and the direction
+handling without hand-writing them. And this project's own QA doctrine, the browser-driven
+gate in Workflow.md step 9 and the accessibility checks in QA.md section 6, only functions on
+a document tree; on a canvas toolkit every visible change would fall to a manual checklist
+forever.
+
+Costs, all real: a web view memory floor before the image is even loaded; a runtime that
+updates fortnightly, so reference images need re-baselining and re-baselining is where
+tolerances get quietly widened; the packaging layer's own taxes, including file associations
+that need hand-written installer hooks rather than a config key; and four decode dependencies
+to watch for security fixes.
+
+Tauri is the least load-bearing part: replacing it later with a direct web view host is a
+packaging decision, not a stack decision. The alternative, and the exact trigger that
+switches to it, is one row in part 8 of the plan: move the composer in-process to Direct2D
+and DirectWrite inside the same Rust host, keeping every other component. Revisit at the S0.6
+result, or if the boundary measurement in S0.3 accuses the crossing.
+
+---
+
+## 2026-09-10 · One native decode route, and the original never enters the web view
+
+### Context
+
+The plan's first answer was to let the web view decode the seven formats it can and give the
+host only TIFF and HEIC. That cannot coexist with the rest of the plan: the store is native,
+the document keeps the decoded frame, and an export has to carry the original pixels with
+exact equality rather than a tolerance.
+
+### Options
+
+1. Two providers: the web view decodes what it can, the host decodes the rest.
+2. One native route for all nine formats, with the web view decoding nothing.
+
+### Decision
+
+Option 2, which flips the plan's earlier recommendation.
+
+### Consequences
+
+A canvas is premultiplied. A straight-alpha pixel at low alpha does not survive the round
+trip, so a preserved image created inside the renderer cannot be byte-identical for any image
+with transparency. An opaque capture round-trips perfectly, which is exactly why the check
+written against a capture could not have caught it; a semi-transparent case is now part of
+S0.6. Beyond correctness: orientation-once and sRGB-once get exactly one place they can be
+wrong, S0.5's matrix narrows to one route, and exact equality becomes structural, because the
+host copies the untouched source and blends the annotation layer over it.
+
+The rule this pins, from day one and before any editor code exists: the decoded original
+never enters the web view at full resolution and never round-trips a canvas. The web view
+gets a display-resolution proxy; the export emits only the annotation layer; the host
+composites. Retrofitting that would rewrite the composer's relationship to the image.
+Cost: four decode dependencies in the host and their security watch, forever, which is the
+cheapest available version of that cost rather than its absence.
+Revisit only if the boundary measurement in S0.3 shows the proxy path cannot serve accurate
+annotation.
+
+---
+
+## 2026-09-10 · The annotation text layer is DOM, and the export is that same DOM
+
+### Context
+
+The requirement that the editor and the exported image agree exactly on wrapping, alignment
+and geometry, in mixed Hebrew and English, is the plan's hardest. Two render paths for the
+same text is how that requirement fails, and the usual shortcut, a text input floating over a
+canvas that draws the text separately, is exactly the failure.
+
+### Options
+
+1. Draw the text into the canvas and implement the caret, selection and direction handling.
+2. Keep the text as DOM for editing, and serialize that same DOM for the export.
+
+### Decision
+
+Option 2. Bubbles are absolutely positioned in image-space pixels, base direction comes from
+`unicode-bidi: plaintext` with a per-bubble override, display zoom is a CSS transform on the
+container, and the export serializes the subtree into an SVG `foreignObject` at the original
+dimensions.
+
+### Consequences
+
+Layout is computed before the zoom transform exists, so zoom cannot re-wrap text: the worst
+version of the failure is removed by construction rather than by discipline. The editing
+model, caret placement, selection rectangles, movement across a direction boundary and the
+platform's editing keys, comes from the engine instead of being written by hand, which is the
+largest single work item in every alternative.
+
+Three things become mandatory, and each is a silent failure if skipped: fonts inlined as
+base64 in the serialization, because an SVG loaded as an image fetches nothing external and
+substitutes silently; every bubble style inlined rather than inherited; and caret and
+selection decorations that cannot affect layout. The bubble style vocabulary stays small,
+because rasterizing embedded HTML has a long tail. This path deliberately avoids the newer
+canvas text-metrics APIs, which are not settled across engines.
+Revisit at the trigger in part 8, or if the export route stops being origin-clean and no
+same-engine replacement works.
+
+---
+
+## 2026-09-10 · Why the required format set is affordable, superseding one paragraph
+
+### Context
+
+The entry above that names the required format set justified it with "all seven decode in the
+web view, so requiring them costs little". The decode route then changed to one native path,
+which makes that reason false while leaving the set itself right.
+
+### Options
+
+1. Leave the reason standing, since the membership did not change.
+2. Supersede the reason explicitly, so nobody later defends the set with an argument that no
+   longer holds.
+
+### Decision
+
+Option 2. The membership of the required set is unchanged: PNG, JPG, GIF, WebP, BMP, AVIF and
+SVG required, HEIC and HEIF required to attempt, TIFF deferrable.
+
+### Consequences
+
+The set is affordable because `image` covers five of the seven and `resvg` and libavif cover
+the other two, all inside the host's own toolchain, not because a browser was going to do it
+for free. The price is four decode dependencies and their security watch, which part 11 of
+the plan now records as a standing cost rather than an absence. Nothing about the membership
+moves, and dropping a required format is still a scope decision that comes back to Rotem.
