@@ -65,7 +65,6 @@ Mistakes in HOW you worked:
 | Date | What I did | What was wanted | Home if it repeats | Times |
 |---|---|---|---|---|
 | 2026-09-10 | Made the commit conditional on your answer, and called the commit something waiting on you | The commit itself, unasked: rule 22 gives me the commit and gives you the push | `CLAUDE.md` working rules | 1 |
-| 2026-09-10 | Split one requested plan into a review file and a plan file | One organized plan, in one file, as asked | `CLAUDE.md` working rules | 1 |
 | 2026-09-10 | Wrote an unverified Windows behavior into a plan finding as documented fact | The claim marked as unverified, with the test that would settle it | `project-os/QA.md` | 1 |
 
 ## Promoted
@@ -73,6 +72,7 @@ Mistakes in HOW you worked:
 | Date | The slip | Where its rule now lives |
 |---|---|---|
 | 2026-09-10 | Designed a fidelity check that could not detect the failure it targeted, twice in two passes | `project-os/QA.md` §12 |
+| 2026-09-10 | Split the plan into two documents twice: first a review beside the plan, then a product plan beside the build plan | `CLAUDE.md` rule 13, one plan file |
 
 ## Retired
 

@@ -150,7 +150,7 @@ Format support becomes a product surface. Each format is stated per row, and one
 cannot make the first release is named as a gap with its impact instead of being covered
 by a claim about common images. Two of the target formats have no browser decoder, so
 decoding needs two providers behind one interface and three decisions are open in
-`project-os/Plan.md` part 3, items D to F.
+`project-os/Plan.md` part 6b, items D to F.
 
 External files gain the invariant in CLAUDE.md rule 11: viewing never modifies and never
 imports, so a folder of originals is safe to point Recon at.

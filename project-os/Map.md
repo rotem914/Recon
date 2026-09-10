@@ -37,8 +37,7 @@ Recon/
 ├── Installation.md                 # the record of how ProjectOS was installed here
 ├── .gitignore                      # keeps backups/ out of git
 └── project-os/                     # the process docs and their enforcement
-    ├── Plan.md                     # the build plan, read at task pickup
-    ├── Product_plan.md             # the product baseline, read at task pickup
+    ├── Plan.md                     # the whole plan, read at task pickup
     ├── Workflow.md                 # the path every task walks
     ├── QA.md                       # what must be true before anything is done
     ├── Conversations.md            # how every reply is written
@@ -85,5 +84,5 @@ anything.
 | Process and rules | `CLAUDE.md`, `project-os/*.md` | One rule has one home. Never write the same rule in two files. |
 | Enforcement | `project-os/guards/*`, `project-os/hooks-settings.json`, `project-os/install-hooks.mjs` | Hooks are read at session start. Re-run the installer after editing the settings file. |
 | Outside servers | `project-os/mcp/*` | One folder per server, read before that server's first call. |
-| The plans | `project-os/Product_plan.md`, `project-os/Plan.md` | The product baseline, and the build plan that reviews and revises it. Where they differ, an approved revision in the build plan wins. Free-standing documents go in `notes/`, created when one is needed, never at the root. |
+| The plan | `project-os/Plan.md` | One file, and there is never a second: the product, the decisions, the architecture and the stages. Free-standing documents go in `notes/`, created when one is needed, never at the root. |
 | Application code | none yet | Arrives when this project gains a stack. |

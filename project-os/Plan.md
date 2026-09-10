@@ -1,588 +1,561 @@
-# Recon, build plan
+# Recon, the plan
 
-The plan of record. Read all three at task pickup:
+One document. What Recon is, how it behaves, what was decided, and how it gets built.
 
-`project-os/Product_plan.md`, the product baseline. The detailed keyboard, output,
-persistence, lifecycle and delivery contracts live there, and the short step lists in
-parts 5 to 8 do not replace them.
+Read this file and `project-os/Backlog.md` at task pickup. There is no second plan.
 
-`project-os/Plan.md`, this file.
+Status: consolidated on 2026-09-10. Approved for the Stage 0 experiment.
+Open: the three format decisions in part 6b, which gate step S0.4 only.
+Not built: nothing here exists yet, and no timing or memory figure in this document came
+from running anything.
 
-`project-os/Backlog.md`, the open items.
+Owner: Rotem. Personal tool, intended for an open-source release.
 
-Where this file and the product plan differ, an explicit approved revision here wins,
-and every one of them is listed in the revision blocks below. Everything else in the
-product plan stands as written.
+**How to read it.** Parts 1 to 4 are the product: what it is, how it behaves, what must
+never break. Parts 5 to 10 are the build: the architecture, the decisions, and the stages
+with the evidence that closes each one. Part 11 says which claims here are measured, which
+are documented, and which are still assumptions. Part 12 is the record of the review that
+shaped it, in one table, and part 13 lists the sources behind every documented claim.
 
-Status: revision 5. Stage 0 approved. Three format decisions outstanding, part 3 items D,
-E and F, which gate S0.4 only.
-Written: 2026-09-10.
-Product baseline: `project-os/Product_plan.md`, dated 2026-09-10.
+This file replaces the two documents that came before it, the product plan and the build
+plan. Their whole content is here. Every revision, and what changed in it, is recorded in
+`project-os/History.md`.
 
-Nothing here is built yet. No code was run and no timing was measured in writing it.
+---
 
-Ten parts: the review of the product plan, the six decisions and their answers, the
-answers for Stage 0, the architecture, Stage 0, what Stage 0 may conclude, Stage 1, the
-later stages, the evidence status of every claim here, and the sources behind it.
+# Part 1: what Recon is
 
-### What changed in revision 5
+Recon is a general-purpose tool for viewing an image, taking a screenshot, adding clear
+annotations, and getting the result to its destination quickly.
 
-Rotem clarified the product scope: Recon is his primary everyday image viewer as well as
-his capture and annotation tool, and it opens common image formats from disk. This
-supersedes the earlier deferral of opening existing images. Every other settled decision
-stands.
+**One line:** open or capture an image, annotate it, and get it where it needs to go,
+without losing the thread of the work you were doing.
 
-The product plan carries the behavior, and its own revision note lists section by section
-what changed there.
+Three core capabilities, and none of them is an add-on to the others:
 
-Here: five findings arrived, F17 to F21. Part 3 gained three open format decisions, D, E
-and F. Stage 0 gained S0.4, open and decode an existing image, which renumbered the steps
-after it. Stage 1 grew from seven items to twelve, with file opening, the viewing surface,
-folder navigation, the annotation transition and PNG Save As. Part 4 gained the image
-source interface beside the capture interface. Part 6 gained the row for a format that
-will not decode.
+- **Viewing** an image that already exists on the computer.
+- **Capturing** a region of the screen.
+- **Annotating** either of them.
 
-One invariant went into CLAUDE.md rule 11, stated by Rotem: viewing an external file never
-modifies it and never imports it.
+The first version replaces Rotem's everyday region-capture and annotation workflow in
+Snagit, and his everyday image viewer. Full Snagit feature parity is not a v1
+requirement, and neither is a full image-management application.
 
-### What changed in revision 4
+The central interaction is an integrated callout: an anchor point, a connecting arrow and
+an editable text bubble form one object.
 
-The two paste destinations are named: Claude and ChatGPT. Part 3 is closed, and Stage 0
-has no input left to wait for.
+Two workloads matter, and they are different:
 
-Both are web applications, which decides the clipboard question: PNG is the format that
-matters, and a bitmap-only clipboard would fail the acceptance test rather than merely
-lose transparency.
+- **Capture.** A sequence of 20 to 30 captures, with occasional returns to earlier images
+  for corrections. Client feedback is the first concrete one to validate.
+- **Viewing.** Opening a file from Explorer and looking at it, or walking a folder of
+  images, many times a day, with no annotation at all.
 
-### What changed in revision 3
+Recon must also work well for a screenshot with no annotations, and for a single
+annotated image copied into another application. Rogers is one output workflow, not the
+definition of the product.
 
-The capture-path fallback conditions in part 3 and part 6 now say the same thing, and a
-performance failure traced to the capture implementation is one of them.
+## Naming, and staying separate
 
-The active-typing check in S0.5 now compares the live editor against the copied image.
-Comparing the clipboard against the composer proved nothing: both come out of the same
-renderer.
+**Recon** refers to reconnaissance: move across a screen, document what is seen, mark
+points of interest, and return with a report.
 
-The task-pickup instruction names the product plan and its path, and says which document
-wins where they differ.
+It is a standalone product. Copy Ninja and its Drop Ninja module remain a separate
+application, and a shared visual language can connect the tools without merging their
+names, their processes, their libraries or their release cycles.
 
-Every finding carries a status line, so a correction already applied no longer reads as
-an open blocker.
+## Positioning, honestly
 
-Part 3 carries Rotem's directions: the initial capture path is chosen and sits behind a
-small interface, the reference environment is settled, and only the two paste
-destinations are still outstanding.
+Describe the advantage through Recon's defaults and measured experience.
 
-### What changed in revision 2
+Snagit already supports global capture shortcuts and a Copy All command; see the
+[official shortcut guide](https://www.techsmith.com/learn/tutorials/snagit/snagit-hotkeys/).
+Do not build on claims that those capabilities are absent, or that an old capture library
+necessarily makes an application slow.
 
-F2 lost its blocking rating and its documentation claim: the elevated-window hotkey
-limitation is now something to verify, not something known.
-
-F3 gained the timestamp it was missing, so the second latency target can actually be
-measured.
-
-F11 flipped. Numbering gaps stay in every output, and renumbering is rejected, on
-Rotem's argument that a shifting number breaks a reference already shared.
-
-The coordinate contract in part 4 is now four named spaces instead of one slogan.
-
-The fidelity tests in part 5 are three separate checks, because the old single hash
-check was wrong: annotations change pixels inside the image area by design.
-
-Stage 0 shrank to one capture path, two real destination applications, and no
-packaging decision. Undo moved to Stage 1 in full.
-
-Stage 1 no longer prepares anything for Rogers.
-
-## Part 1: the review of the product plan
-
-Every finding below carries a status line. The severity marker records how the finding
-was rated when it was raised, and the status line is its current state, so a correction
-already applied does not keep reading as an open blocker.
-
-For a finding raised from here on, the verdict vocabulary is **fix** (do it now), **drop**
-(never mind) and **backlog** (record it and move on). Only `backlog` writes a row to
-`project-os/Backlog.md`.
-
-**In one line.** The plan is unusually sound on product behavior and unusually thin on
-the two mechanisms that decide whether that behavior is achievable: how the exported
-image is produced, and how the Stage 0 numbers are measured.
-
-Twenty-one findings as raised: three blocking, ten important, eight small.
-Twenty are resolved at the planning level, so what remains on each one is implementation
-and testing at the step its status line names.
-One is open: F18 carries the three format decisions in part 3.
-F17 to F21 arrived with the viewing clarification. None of the sixteen before them changed
-the product definition or the stage order; the clarification did.
-
-### What is strong
-
-Stage 0 as a real gate, with acceptance evidence and an explicit "these are proposed
-targets, not validated promises". Most plans skip the gate and keep the promise.
-
-The callout as one object, with selection, movement, deletion and undo required from
-the first usable version. That is the correct primitive and the correct floor.
-
-Idempotent Send: a persisted submission identifier reused on retry, a snapshot taken
-at Send, and a refusal to read a timeout as either success or failure.
-
-"Extend the canvas with a neutral margin rather than crop the captured pixels."
-Non-obvious, and the right way round.
-
-The focus discipline: never steal foreground on a background completion, and never
-close work the user has moved on from.
-
-Honest positioning against Snagit, including the refusal to claim missing features.
-A plan built on a false premise fails later and expensively.
-
-The out-of-scope list, and "no Done or Apply step" as an invariant rather than a
-preference.
-
-### Findings
-
-----
-**F1 · 🔴 Nothing guarantees the exported image matches the editor**
-
-Where: §4.3 last line, §5 Image output.
-
-The requirement is stated ("the editor and rendered output must agree on wrapping,
-alignment, font rendering, and arrow positions") and no mechanism is named to keep
-it true.
-
-The specific risk being tested: an input layer for typing sits above the canvas that
-composes the output, so the same note is laid out twice while the caret is live, and
-Hebrew wrapping, font fallback and arrow geometry are where the two can disagree.
-A shared wrapping function narrows that risk. It does not prove the two agree.
-
-The failure is invisible in the editor: it appears only in the file the client gets.
-
-Suggestion: one scene model and one composer, used for display and for export, plus
-the three checks in S0.5, one of which compares the live editor against the copied image
-while the caret is still active. The product forbids an Apply step, so that case is the
-contract, not an edge.
-
-Status: resolved in plan. Implementation verification pending, part 4 and S0.5.
-
-----
-**F2 · 🟠 The elevated-window behavior is unknown, and the plan treats fast access as certain**
-
-Where: §2 principle 1, §3.1, §3.2.
-
-Revised: the earlier version of this finding claimed that Windows stops delivering a
-registered global hotkey while an elevated window is in the foreground, and cited that
-as documented. It is not. Registering a system hotkey, installing a keyboard hook,
-injecting input and activating a foreground window are four different mechanisms, and
-the documented restriction covers injection, not hotkey registration.
-
-What remains: nobody here knows what happens when an application running as
-administrator holds the foreground, and "fast access is a core feature" depends on the
-answer.
-
-Two cases, and they are not the same. An elevated application on the normal desktop is
-a question to answer by test. The consent prompt's own secure desktop is out of scope
-by design: nothing on the user desktop reaches it, and no product decision follows.
-
-Suggestion: keep the test in Stage 0, record what it finds, and decide nothing about an
-elevated launch mode until a problem is demonstrated.
-
-Status: resolved in plan, and the claim withdrawn. Behavior verification pending, S0.7.
-
-----
-**F3 · 🔴 Stage 0 asks for two latency numbers and the timestamps cannot produce one of them**
-
-Where: §9 Stage 0 acceptance.
-
-The second target is 500 ms from a completed selection to an editor ready for input, and
-the earlier timestamp list had no selection-completed mark, so that interval could not be
-computed at all. The drag itself is the user's time and must not be inside the number.
-
-Visible is also not interactive. An overlay that has painted but is not yet taking the
-mouse looks finished and measures fast.
-
-Suggestion: six marks per run, and two reported intervals.
-
-Marks: hotkey received · overlay displayed · overlay accepting input · selection
-completed · editor displayed · editor accepting annotation input.
-
-Intervals: hotkey received to overlay accepting input, and selection completed to editor
-accepting annotation input. Everything else is diagnostic.
-
-Report the raw runs and the percentile method, not only a summary: with thirty runs the
-95th percentile is the second-worst run, so the maximum and the list carry more
-information than the label does.
-
-Status: resolved in plan. Implementation verification pending, S0.6.
-
-----
-**F4 · 🟠 Clipboard formats are unspecified, so a passing paste test proves little**
-
-Where: §5 Image output, §9 Stage 0 acceptance.
-
-Windows applications disagree about image formats.
-Some read only the older device-independent bitmap and lose transparency; others
-prefer PNG; a few take only the plain bitmap handle.
-Publishing one format satisfies whichever applications happened to be tested.
-
-Suggestion: publish several formats in one clipboard operation, from native code rather
-than through the web view API, and name the destinations by actual use.
-Two real destinations are the acceptance boundary. A longer list is not a stronger test,
-it is a longer test.
-
-Status: resolved in plan. Destinations named in part 3 B. Acceptance at S0.5.
-
-----
-**F5 · 🟠 The selection overlay should not be a web view**
-
-Where: §9 Stage 0, "evaluate Tauri + React + Rust".
-
-The overlay is the latency-critical and DPI-critical surface, and a web view window
-spread across mixed-scale displays adds cold start, scaling and input-transparency
-problems that have nothing to do with the editor.
-
-Judging one stack for both surfaces risks failing the whole stack for a reason that
-belongs to one component.
-
-Suggestion: split the architecture before Stage 0 starts.
-Native code owns the hotkey, the freeze, the overlay and the clipboard; the web view
-owns the editor only.
-Stage 0 then measures the editor's fidelity instead of the capture path's viability.
-
-Status: resolved in plan. It is part 4.
-
-----
-**F6 · 🟠 Text direction is named but not defined**
-
-Where: §4.3.
-
-"Support Hebrew, English, and mixed-direction text" leaves three things open: the
-base direction of a bubble, its alignment, and which way it grows as text is added.
-
-This is the highest-risk area for your own daily use, and it shapes the wrapping that
-F1 depends on.
-
-Suggestion: base direction per bubble from its first strong character, with a manual
-override on the selected bubble.
-Alignment follows base direction.
-The bubble's anchor-side edge stays fixed while the opposite edge grows, so a note
-never walks away from the thing it points at.
-
-Status: decided, decision 1. Implementation verification pending, S0.5.
-
-----
-**F7 · 🟠 Undo is specified by context, and the user cannot see the context**
-
-Where: §5, the Undo/Redo row.
-
-Context-scoped undo means the same keystroke does different things depending on state
-nobody can see, and the first surprise costs a whole note instead of a word.
-
-Suggestion: specify the observable behavior instead of the number of stacks.
-While a note is being edited, undo works on the typing and never reaches into object
-operations. Once editing ends, that text change takes its place in document history as
-one grouped step.
-
-Its acceptance sequence is in S1.7, and it is the test that settles this.
-
-Status: decided, decision 2. Its acceptance sequence is in S1.7.
-
-----
-**F8 · 🟠 The document format is deferred, but three stated requirements already depend on it**
-
-Where: §6.1.
-
-Autosave with no Apply step, recovery to the last successful save, and "no coupling to
-a rendering library's serialization" cannot be judged while the shape is unnamed.
-
-Suggestion, as a starting position: one folder per capture, holding the original
-screenshot as a PNG that is never rewritten, plus a JSON document with a schema
-version.
-An index database, if any, holds pointers and never the images.
-Writes go to a temporary file and are renamed into place, per `project-os/QA.md` §5.
-Autosave is debounced while typing and forced on blur, navigation, hide and quit.
-
-Status: resolved in plan. The schema itself is settled at S1.8.
-
-----
-**F9 · 🟠 Ctrl+S sits in the v1 contract while file export is Stage 2**
-
-Where: §5 table, against §9 Stage 2.
-
-The shortcut table reads as the shipping contract, so Stage 1 promises a key that
-does nothing.
-The Rogers row is marked conditional; the export row is not.
-
-Suggestion: add a stage column to the table, or mark the two deferred rows the way
-the Rogers row is marked.
-
-Status: resolved in plan. The table has a stage column, and Save As is no longer a
-promise: it is real in Stage 1 at S1.11.
-
-----
-**F10 · 🟠 Returning focus to the previous application needs a named mechanism and a failure path**
-
-Where: §3.1, §3.3.
-
-Windows restricts which process may bring a window forward, and it may refuse the
-request outright. Doing it next to the hide improves the odds and guarantees nothing.
-
-Suggestion: store the target window at capture time, attempt activation on the way out
-as best effort, and treat refusal as the plan's own fallback: hide without activating
-anything, and never report a return that did not happen.
-Test it in Stage 0 against an elevated window and against an application that has
-since closed.
-
-Status: resolved in plan. Behavior verification pending, S0.7 and S1.10.
-
-----
-**F11 · 🟡 Numbering: gaps stay, renumbering is rejected**
-
-Where: §4.3.
-
-The original finding said that a feedback list jumping 1, 2, 4, 7 reads as a mistake to
-the client, and suggested renumbering at send or export.
-
-Rotem rejected that, and the argument is stronger than the finding: a number that
-changes on export breaks every reference already made in the image, in a chat message
-or in a Rogers task, and a second export could quietly change what a shared number
-means.
-
-Resolved: stable numbers everywhere, gaps included, identical in the editor, the
-clipboard, the file and the Rogers text.
-An explicit Renumber action stays a backlog idea and enters nothing now.
-Recorded in `project-os/Decisions.md`.
-
-Status: decided, decision 3. Recorded in `project-os/Decisions.md`, applied at S1.6.
-
-----
-**F12 · 🟡 "Keep forever" has an unstated cost**
-
-Where: §6.3.
-
-Thirty 4K captures a day is roughly 60 to 250 MB a day depending on content, so
-"no expiry" is a real disk decision currently made without a number.
-
-Suggestion: put the expected rate in the plan so the default is chosen knowingly.
-Stage 2 already shows usage; revisit limits with data rather than a rule.
-
-Status: resolved in plan. Applied at Stage 2, part 8.
-
-----
-**F13 · 🟡 In Stage 1, capture 1 is twenty-nine keypresses away**
-
-Where: §6.2, §9 Stage 1.
-
-The workload is defined as 20 to 30 captures with returns to earlier images, and
-Stage 1 ships previous and next only.
-
-Suggestion: add a position indicator and shortcuts to the first and last capture in
-Stage 1. The thumbnail strip still waits for Stage 2.
-
-Status: decided, decision 4. Applied at S1.9.
-
-----
-**F14 · 🟡 Three different questions are being answered as one**
-
-Where: §10 point 3.
-
-A capture API's minimum Windows version, the versions Recon claims to support and
-tests, and how the web view runtime reaches a user are three separate decisions, and
-the plan treats them as one.
-
-The per-display capture call documents Windows 10 version 1903 as its own minimum.
-That is a constraint on the API, not a product support baseline, and not an installer
-strategy.
-
-Suggestion: state the API minimum where the API is chosen, state the supported and
-tested versions as a product decision, and keep runtime packaging as a distribution
-decision that does not block the experiment.
-Recorded in `project-os/Decisions.md`.
-
-Status: decided, decision 5. Recorded in `project-os/Decisions.md`, applied at S0.7.
-
-----
-**F15 · 🟡 First run and the empty editor are missing**
-
-Where: §3.1, §3.3.
-
-For an open-source release the first two minutes are the product: no capture exists
-yet, the hotkey may be taken, and the tray icon is undiscovered.
-
-Suggestion: one empty-state line in the editor naming the current hotkey, and a
-first-run check that reports a hotkey conflict rather than failing quietly.
-
-Status: resolved in plan. Applied at S0.1 and S1.1.
-
-----
-**F16 · 🟡 HDR is left as an open question**
-
-Where: §9 Stage 0.
-
-Tone mapping high dynamic range content is a project of its own, and leaving it open
-invites Stage 0 to spend a day on it.
-
-Suggestion: make "not supported in v1, and documented" an acceptable Stage 0 exit,
-with detection so the output is never silently washed out.
-
-Status: resolved in plan. Applied at S0.7.
-
-----
-**F17 · 🔴 Viewing must never modify or import the source file**
-
-Where: the viewing clarification, product plan §6.0 and §8, principle 8.
-
-Recon is about to be pointed at folders of originals, client material included, and every
-way of getting this wrong is silent: a metadata rewrite on open, a re-encode on save, a
-thumbnail dropped beside the file, or a Save As that defaults to the source path.
-None of it is visible until the original is already gone.
-
-Suggestion: it is an invariant, not a preference, and it is written into CLAUDE.md rule 11.
-Save As writes a new file every time (S1.11), viewing creates no managed document, and
-S0.4 proves it by comparing every source file byte for byte after a viewing and
-navigation pass.
-
-Status: stated as an invariant by Rotem. Verification pending, S0.4 and S1.5.
-
-----
-**F18 · 🟠 Two target formats have no browser decoder, so common images cannot be promised yet**
-
-Where: the clarification item 4, product plan §5b.
-
-A Chromium-based view decodes JPG, PNG, BMP, GIF, WebP, AVIF and SVG on its own, which
-covers most of the target list at no cost.
-TIFF it does not decode at all. HEIC and HEIF depend on codecs installed on the machine
-rather than shipped with the application, and their availability varies.
-So two rows of the list need another path, and one of them can fail on a machine that is
-missing a component. Advertising support for common images before that is settled is the
-overclaim the product plan forbids.
-
-Suggestion: the three decisions in part 3, items D, E and F, and a per-format verdict out
-of S0.4 that is allowed to come back shorter than the target list.
-
-Status: open. The three format decisions are in part 3.
-
-----
-**F19 · 🟠 One window, two modes, and the pointer does not know which**
-
-Where: the clarification item 2, product plan §3.3.
-
-The click that starts a note in annotation mode must do nothing in viewing mode. Get that
-boundary wrong and the first stray click lands a callout on a client photograph, in a
-window the user believes is read only.
-
-Suggestion: viewing mode arms no tool, a click pans or does nothing, the mode is named on
-screen, and the only way across is the explicit Annotate action, which also creates the
-managed document.
-
-Status: resolved in plan. Verification pending, S1.5.
-
-----
-**F20 · 🟡 Two navigation lists in one window**
-
-Where: the clarification item 3, product plan §3.4.
-
-The folder and the capture history are different lists, and previous and next has to mean
-one of them. Ambiguity here arrives as the question where did my screenshot go.
-
-Suggestion: name the active context with its position, and never let a navigation step
-cross from one list to the other.
-
-Status: resolved in plan. Applied at S1.4 and S1.9.
-
-----
-**F21 · 🟡 A folder walk can grow memory without a bound**
-
-Where: the clarification item 3, product plan §6.2.
-
-A folder of 240 large images, decoded eagerly or cached generously, is hundreds of
-megabytes of pixels for images nobody is looking at any more. The capture side already
-has this rule; the folder side is new and has the same failure.
-
-Suggestion: one decoded image at a time plus whatever small look-ahead measures well, the
-folder listing read once per navigation context, and the S0.6 memory sample covering a
-folder walk as well as a capture run.
-
-Status: resolved in plan. Measured at S0.6.
-
-## Part 2: the six decisions, answered
-
-Rotem's answers, as given. The rest of this plan follows them.
-
-| Decision | Answer | Where it lands |
+The same honesty applies to viewing. Windows Photos exists and opens most of these
+formats. The claim Recon can make is the one it can measure: opening quickly, showing the
+image at a predictable size, and being one keystroke from annotating it.
+
+---
+
+# Part 2: design principles
+
+1. **Fast access is a core feature.** Measure the time until a region can be selected and
+   the time until an annotation can be typed. Opening a file gets the same treatment:
+   measure activation to a visible image.
+2. **No routine decisions during capture.** Preferences and destinations are chosen
+   outside the capture loop. No format prompt, no save dialog in the normal path.
+3. **Keyboard-first operation.** Repeated actions get discoverable shortcuts, and normal
+   text-editing behavior survives while typing.
+4. **The image is always ready.** Copying and exporting use the current visible edits.
+   There is no Done or Apply step for annotations.
+5. **Repeated use is the baseline.** Judge 30 captures, navigation and corrections, and a
+   folder of images, not the first successful screenshot.
+6. **Automation remains correctable.** Automatic callout placement is a starting position.
+   The user can always move it.
+7. **Work survives normal navigation and closure.** Hiding the editor, taking another
+   capture, opening another file or exiting normally must not silently discard work.
+8. **Viewing never changes the file.** Looking at an image does not modify it, move it,
+   re-encode it or copy it into Recon's own storage. This is the promise that makes Recon
+   safe to point at a folder of originals.
+
+---
+
+# Part 3: how it behaves
+
+## 3.1 Application and lifecycle
+
+- Recon runs in the background with a tray entry and a configurable global capture
+  shortcut.
+- The tray gives access to the editor, preferences and an explicit Quit.
+- Closing the editor hides it. Quit exits the process after saving pending changes.
+- Opening the editor without capturing restores the latest capture and its editable
+  annotations.
+- Preferences live outside the normal capture flow. Starting with Windows is a preference,
+  not a prerequisite.
+- If a capture shortcut is unavailable, explain the conflict and allow another. Never
+  silently take over another application's shortcut.
+- Remember the last external application as the return target, including when another
+  capture starts from inside Recon. If that application has closed, hide Recon without
+  activating an unrelated one. A background completion never steals focus.
+
+**Opening a file is a normal way in, not a special case.** All four reach the same window:
+
+- Double-click in Explorer, through a file association.
+- Open With, for a type Recon is not the default for.
+- Drag and drop a file, or a selection of files, onto the window.
+- `Ctrl+O` from inside Recon.
+
+Both starting states work: Recon already running in the background, and Recon starting
+because a file was activated. A second activation while it runs opens that file in the
+existing window, brings that window forward, and does not start another instance. Opening
+a file never discards unsaved annotation work; §3.8 says what happens to it.
+
+**Registration and defaults.** Recon registers the file types in §3.7 that it can actually
+display, and its preferences link straight into Windows' own default-apps settings so it
+can be made the default viewer. Recon never silently takes an association it was not
+given, and never re-takes one the user changed.
+
+## 3.2 Capture flow
+
+Global shortcut, freeze the desktop image, dimmed selection overlay, drag a region, open
+the editor with that region.
+
+- If Recon is visible, hide its windows before the snapshot. Its editor, dimming and
+  selection decorations must never appear in the result.
+- Selection happens on the frozen image, so content cannot change under the pointer
+  mid-drag.
+- A region can be selected on any connected display. A single region spanning two displays
+  is out of v1: selection stays within its starting display.
+- `Esc` cancels and restores the preceding context. A cancelled capture creates nothing and
+  replaces nothing.
+- Overlapping capture requests are ignored while a selection is already active.
+- No save dialog, no format choice, no intermediate confirmation.
+
+## 3.3 One window, two entry behaviors
+
+The same main window serves both, and which one is active must be obvious at a glance.
+
+**A new capture opens ready for annotation.** The callout tool is live and a click starts a
+note.
+
+**An existing file opens in viewing mode.** Ordinary clicking and dragging pan, select
+nothing and create nothing, so no stray callout can land on someone's photograph because
+the pointer moved. An explicit **Annotate** action switches that window into annotation,
+arms the tools, and creates the managed document in §3.8. Leaving annotation returns to
+viewing without discarding the work.
+
+Everything else about the editor holds for both:
+
+- One editor window holds the canvas and, as the history UI develops, a capture strip at
+  the bottom.
+- The image fits the available workspace without changing its pixel dimensions.
+- Zoom, pan and actual-size viewing are available, because a large image cannot be
+  annotated accurately without them.
+- There is no separate viewer or library window in v1. Older captures are reachable from
+  the same editor.
+- Taking a new capture saves the current document and adds another. It never overwrites the
+  previous capture.
+- Copying leaves the editor open. Copy and Return copies the image, then hides the editor
+  and returns focus to the previous application.
+- Hide only after the clipboard operation succeeded and pending changes are saved. On
+  failure, keep the work and show an actionable message.
+- If the user starts another action, or changes the document, while Copy and Return is
+  completing, report the copy result without hiding their current work.
+
+## 3.4 Everyday viewing
+
+This is the part that has to be good enough to use all day with no annotation involved.
+
+- **Fit to window** on open, **actual size** on demand, zoom in and out, and pan. Zoom
+  re-encodes nothing and never changes what an export would contain.
+- **Fullscreen**, one key in, the same key or `Esc` out.
+- **The filename and the pixel dimensions are visible** without hunting for them.
+- **Previous and next walk the folder** the opened file came from, across the supported
+  types in it, with a position indicator such as 12 of 240.
+- **The order is defined, not incidental.** A numeric-aware, case-insensitive filename
+  order, so `img2` sorts before `img10` and the sequence is predictable against Explorer.
+  Part 5 names the exact comparison to use.
+- **The folder listing is read once per navigation context**, not rescanned on every
+  keystroke. A file that has since disappeared is skipped with a quiet note, never an error
+  dialog.
+
+**Folder navigation and capture history are two different lists.** Walking a folder never
+moves through captures, and walking captures never moves through the folder. The window
+names the active context and its position. When both exist, the active one is whichever
+the last navigation used, and it is named on screen.
+
+## 3.5 Annotation
+
+### The callout, the primary object
+
+With the callout tool active:
+
+1. Click the point the note refers to.
+2. A bubble is created anchored near it, with the text cursor inside.
+3. Type. The visible text is immediately part of the composed image.
+4. `Esc` leaves text editing and keeps the text.
+
+Clicking an existing bubble selects it rather than creating another. Double-click, or
+Enter on a selected bubble, starts text editing. A bubble left empty is discarded when
+editing ends and never reaches the output.
+
+Each callout is one editable object holding its anchor, arrow, bubble, text and displayed
+number. It supports selection, movement, text editing, deletion and undo from the first
+usable version. The anchor can be moved on its own, and the arrow stays attached.
+
+### Placement, and correcting it
+
+- A small deterministic set of candidate positions near the anchor, avoiding the anchor
+  itself and existing bubbles where possible.
+- No promise to understand image content or to always find empty space. Content-aware
+  placement is a later improvement, not a prerequisite.
+- Manual movement is allowed at any time. Moving a bubble keeps its anchor and updates the
+  arrow.
+- After a manual move, that placement is preserved. The bubble does not jump elsewhere as
+  the user types or adds another.
+- Long text wraps. The bubble's chosen origin stays put while its size changes, and all of
+  the text stays visible and in the output.
+- If a bubble cannot fit without clipping or covering its anchor, the canvas is extended
+  with a neutral annotation margin. The captured pixels are never shrunk or cropped to make
+  room, and an export includes the margin.
+- Manual placement may cover image content. Automatic placement must stay easy to correct.
+
+Validate on a small crop, a dense interface, anchors near each edge, long notes and
+several bubbles before improving the heuristic.
+
+### Numbering and text
+
+- Callouts are numbered by creation order, starting at 1 for each image.
+- **Numbers are stable, gaps included.** A deleted number is not reused, undo restores the
+  original number, and moving a bubble never renumbers it. The numbers in the editor, in
+  the clipboard, in an exported file and in the Rogers text are the same numbers.
+  Renumbering on output is rejected; the reason is in `project-os/Decisions.md`.
+- Hebrew, English and mixed-direction text are supported in the first callout
+  implementation. Base direction comes from the first strong character of the bubble, with
+  a manual override on the selected bubble; alignment follows base direction; the
+  anchor-side edge stays fixed while the opposite edge grows.
+- The editor and the rendered output agree on wrapping, alignment, font rendering and arrow
+  positions. Part 7 step S0.5 is where that is proved rather than asserted.
+
+### Annotating something that is not a single still frame
+
+Annotation always operates on one still raster image. Which image depends on what was open,
+and the answer is fixed rather than clever:
+
+- **An animation.** Annotation starts from the frame on screen and produces a separate
+  still image. The animated original is untouched, and Recon never writes an animation back
+  out.
+- **A multipage image.** Annotation operates on the displayed page, and the page number
+  travels with the managed document so a later reader knows which one it was.
+- **A vector file.** Annotation produces a raster composition at the displayed size, and
+  the original vector file is preserved exactly. Recon never writes vector annotations into
+  it.
+
+In all three the transition is explicit and stated on screen, because the user is moving
+from the file to a picture of the file.
+
+### The secondary tools
+
+Arrow, rectangle, text, blur and highlight, prioritized after the core loop has been used
+for real work (part 10, Stage 3). Selection, movement, deletion and undo are core editing
+behavior and do not wait for that stage.
+
+## 3.6 Keyboard and output contract
+
+Initial defaults, to be verified with Hebrew and English input layouts. Capture uses a
+separately configurable global shortcut; everything below is local to Recon.
+
+The **Stage** column says when a row becomes real. A row promising a key that does nothing
+is a contract broken on day one.
+
+| Action or context | Default behavior | Stage |
 |---|---|---|
-| 1 · Text direction | Detect from the first strong character, with a manual override. | S0.5, F6 |
-| 2 · Undo | Specify observable behavior, not a stack count. Typing undoes typing; once editing ends, the text change joins document history as one grouped step. | S1.7, F7 |
-| 3 · Numbering | Stable numbers and gaps in every output. Renumbering rejected. | S1.6, F11, `project-os/Decisions.md` |
-| 4 · Stage 1 navigation | Position indicator, plus shortcuts to the first and last capture. | S1.9, F13 |
-| 5 · Windows support | Separate the API minimum from the supported and tested versions. Runtime packaging is its own distribution decision. | S0.7, F14, `project-os/Decisions.md` |
-| 6 · Elevated windows | Test first. No elevated mode on an unverified assumption. | S0.7, F2 |
+| `Ctrl+C` while editing text | Normal text copy. It does not copy an image by surprise | 1 |
+| `Ctrl+C` outside text editing | Copy the full composed image, even with an annotation selected | 1 |
+| `Ctrl+Shift+C` anywhere in the editor | Copy the full composed image, current text edits included | 1 |
+| `Ctrl+Enter` anywhere in the editor | Copy the full composed image, then return to the previous application after success | 1 |
+| `Enter` while editing a note | Insert a newline | 1 |
+| `Esc` during capture | Cancel the capture | 1 |
+| `Esc` during text editing | Leave text editing, keep the text | 1 |
+| `Esc` with an annotation selected | Clear the selection | 1 |
+| `Esc` in fullscreen | Leave fullscreen | 1 |
+| `Esc` in the otherwise idle editor | Save pending changes and hide the editor | 1 |
+| Delete outside text editing | Delete the selected annotation | 1 |
+| Undo and redo | While a note is being edited, undo works on the typing and never reaches object operations. Once editing ends, that text change takes its place in document history as one grouped step | 1 |
+| `Ctrl+O` | Open an image file | 1 |
+| Previous and next image, outside text editing | Walk the active navigation context, folder or captures, in the §3.4 order | 1 |
+| Fit to window · actual size · zoom in · zoom out | Viewing controls, no effect on export resolution | 1 |
+| Fullscreen | Enter fullscreen | 1 |
+| `Ctrl+S` | Save As a PNG file, to a new file. Internal saving stays automatic | 1 |
+| `Ctrl+Shift+Enter` | Send to Rogers, once that exists and is configured | 4 |
 
-## Part 3: the answers for Stage 0
+Ordinary typing and editing keys are never intercepted to trigger a tool while a text field
+has focus. **That covers the viewing and navigation keys too:** they are inert while a note
+is being edited, so typing a letter into a note never navigates away from the image it
+belongs to. Copying a single annotation object is not required for v1.
 
-Items A, B and C are settled. Items D, E and F arrived with the viewing clarification and
-are open. They gate S0.4 only, so S0.1 to S0.3 can start.
+Undo has one acceptance sequence, and it is the test that settles the design: edit an
+existing bubble, leave text editing, move the bubble, undo restores its position, undo
+again restores its previous text.
 
-**A · The initial capture path. Settled.**
-Stage 0 builds one path: a single copy of the whole virtual screen, chosen because one
-synchronous call already spans every display and every negative coordinate, so the
-foundation risk is retired at the lowest cost.
-It sits behind a small capture interface, freeze and region in, image out, so the editor
-never learns which implementation produced its pixels and a path can be replaced without
-touching it.
-That interface must leave a video source possible later. It adds no video infrastructure
-now, and video stays out of v1.
-A second path is earned only under the conditions in part 6, and diagnosis comes first.
+### Image output
 
-**B · The two paste destinations. Settled.**
-Claude and ChatGPT.
-They are the acceptance boundary for output at S0.5.
-Both read the clipboard as a web application does, so PNG is the format that decides
-acceptance, and a clipboard that publishes only a device-independent bitmap fails here
-rather than merely losing transparency.
-Record the surface with the result, the browser and its version or the desktop
-application and its version, since the same product can consume the clipboard
-differently on each.
+- Clipboard and file output carry the original captured or source pixels, plus the visible
+  annotations, plus any annotation margin.
+- Copy and export snapshot the composition when invoked. Their completion never discards or
+  overwrites an edit made afterwards.
+- Selection outlines, editing handles, the caret and tool UI are never in the output.
+- Display zoom does not change export resolution. PNG is the initial file-export default.
+- A brief, non-blocking success indication appears only after the clipboard or export
+  operation actually succeeded.
+- `Ctrl+S` opens Save As with the last export folder and a unique suggested filename. A
+  file dialog is right for an explicit export and wrong for taking a capture.
+- **Save As writes a new file, always.** The suggested name is derived from the source and
+  marked as annotated. An external original is never the default target, and no existing
+  file is overwritten unless the user chose it by name in the dialog.
+- File output is a rendered snapshot. It does not replace the editable internal document,
+  and later edits never silently rewrite a previous export.
+- Saving into a folder that Drop Ninja already watches lets that existing workflow handle
+  the file. Recon needs no Drop Ninja integration of its own.
 
-**C · The reference environment. Settled.**
-Your own main machine at its current display scale.
-Record the environment and the font details alongside the reference images and in the
-S0.7 report, so a later comparison failure means the renderer changed rather than the
-machine or the font did.
+## 3.7 Format support, stated per format
 
-**D · How decoding is split between the two providers. Outstanding.**
-Recommendation: let the web view decode everything it can, JPG, PNG, BMP, GIF, WebP, AVIF
-and SVG, and give the host only what it cannot, TIFF and HEIC, both behind one image
-source interface.
-It is the cheapest path, it adds the fewest dependencies, and moving a format from one
-provider to the other later touches no editor code.
-The cost is two decode paths, so orientation and color handling have to be checked on
-both, which is what S0.4 does.
-The alternative is one native path for every format: uniform behavior and a single place
-for color management, paid for with a decoder dependency for formats the view already
-handles for free.
+"Common images" is not a specification. Each row says what support means. The decoding
+approach and its dependencies are verified in S0.4 before any of this is advertised, and a
+format that cannot make the first daily-use release is named as a gap with its impact
+rather than quietly dropped.
 
-**E · TIFF, including multiple pages. Outstanding.**
-Recommendation: decode through the Windows imaging stack, expose the pages, and annotate
-the displayed one.
-If that proves expensive in S0.4, the honest fallbacks are page one only in the first
-release, or TIFF named as a gap and left out. Both beat a blanket claim.
+| Format | What support means |
+|---|---|
+| **PNG** | Decode, transparency preserved, embedded color profile honored. Annotate directly. |
+| **JPG / JPEG** | Decode, EXIF orientation applied on display and carried into annotation, embedded color profile honored. Annotate directly. |
+| **BMP** | Decode. Annotate directly. |
+| **WebP** | Decode, transparency preserved. An animated WebP follows the animation rule in §3.5. |
+| **GIF** | Decode and play the animation, transparency included. Annotation takes a still from the displayed frame. |
+| **TIFF** | Decode, pages exposed as page navigation with the count visible. Annotation operates on the displayed page. |
+| **HEIC / HEIF** | Decode, orientation applied. Annotate directly. Depends on codecs installed on the machine, so a missing codec is reported as a missing codec with the way to install it, never as a corrupt file. |
+| **AVIF** | Decode, transparency preserved. An animated AVIF follows the animation rule. |
+| **SVG** | Render for viewing at the displayed size. Annotation produces a raster composition and preserves the original vector file. |
 
-**F · HEIC and HEIF. Outstanding.**
-Recommendation: decode through the OS, and when the codec is not installed say exactly
-that, with the way to install it, never a corrupt-file message.
-It cannot be promised unconditionally, because the codec is a separate component whose
-availability varies by machine and by Windows edition.
-The alternatives are bundling a decoder, which brings licensing and size questions, or
-deferring HEIC and naming the gap.
+Across every row: orientation and color handling are applied consistently in the viewer and
+in any annotated output, so an image never rotates or shifts color when Annotate is pressed.
+An unsupported or unreadable file says so plainly, names the format, and leaves the file
+alone.
 
-Details that wait for their step: the exact document schema (S1.8), the placement
-candidate set (S1.6), the shortcut table's stage column (S1.7), the storage rate note
-(Stage 2), the Rogers submission record (Stage 4).
+## 3.8 Persistence, history and retention
 
-## Part 4: the proposed architecture
+### An external file is not Recon's file
 
-The product plan's Stage 0 says "evaluate Tauri + React + Rust". This splits that into
-two questions, because the two surfaces fail for different reasons and only one of them
-is in doubt (F5).
+This governs everything below it, and it is the invariant in part 4.
+
+- **Viewing does not modify.** No re-encode, no metadata rewrite, no move, no rename, no
+  thumbnail written beside it.
+- **Viewing does not import.** Browsing a folder of 100 images creates zero managed
+  documents. Recon holds a path, a decoded frame in memory, and nothing else.
+- **Annotation is what creates a managed document**, and only for the file being annotated.
+  That document holds a preserved copy of the source image as decoded, plus the annotation
+  data, exactly like a capture's document.
+- **Navigating away from annotated work saves it first**, in the managed document, with no
+  Apply step. The external original still does not change.
+- **Export writes a new file.** Deleting a managed document never touches the external
+  original, and never recalls an export or a clipboard copy.
+
+Three things, and they stay distinct: an editable internal document, a flattened exported
+image, and an external file Recon is only allowed to read.
+
+### Editable internal documents
+
+Persist the original captured or source image and the editable annotation data separately
+from any flattened output, with enough versioned metadata to reopen the document correctly
+after a restart. For an annotated external file that includes its source path and the page
+or frame it came from.
+
+- New captures save automatically, and later edits save with no Apply action.
+- Pending changes are saved before a normal hide, before document navigation, before
+  opening another file, and before Quit.
+- After a restart, the latest document reopens and every successfully saved document is
+  recoverable.
+- Crash recovery reaches the last successful save. Do not claim zero loss for keystrokes
+  that were never persisted. Keep the autosave interval short and verify recovery.
+- A disk or persistence failure is visible. Keep the recoverable work in memory and offer
+  image copying as an immediate escape, plus file export once it exists. Never label it
+  saved, and never discard it silently.
+- Exports and clipboard copies are independent of the document. Deleting a document recalls
+  nothing.
+
+The file and database arrangement is part 5. Never couple the document format to a
+rendering library's private, unversioned serialization.
+
+### Capture strip and older history
+
+- The strip is recent capture history, not a new session-management product.
+- The first usable release gives previous and next through captures, and restores recent
+  work after a restart.
+- Stage 2 adds the thumbnail strip and a way to reach older captures inside the same
+  editor, with simple date grouping if it helps.
+- Changing a Rogers target never clears capture history.
+- Full-resolution image data is loaded when needed. Thumbnails and inactive captures must
+  not make memory grow with the size of the library.
+- The same discipline applies to a folder walk: one decoded image at a time, plus whatever
+  small look-ahead measures well, and never the whole folder.
+
+### Retention
+
+For v1, captures are kept until the user deletes them. No automatic expiry, no silent
+deletion. External files are not retained at all, because they were never taken.
+
+Thirty 4K captures a day is roughly 60 to 250 MB a day depending on content, so "keep
+everything" is a real disk decision and the rate is stated here so it is made knowingly.
+
+Stage 2 adds intentional deletion, visible storage usage, and a clear line between hiding a
+capture from the strip and deleting its document, if both actions exist. Prefer one
+unambiguous delete over inventing two concepts. Revisit age or size limits with real usage.
+Disk retention and in-memory limits are separate problems.
+
+## 3.9 Send to Rogers
+
+### The target
+
+- An existing project and tab are chosen before a capture sequence.
+- The active destination is shown persistently in the editor, for example `Dig › ID 1`.
+- The target is remembered, and its validity is re-checked before a send. A missing target
+  asks for a destination and never silently picks a fallback.
+- Creating a Rogers tab from Recon waits until choosing an existing one proves
+  insufficient.
+
+### Payload and result
+
+- One capture creates one open task.
+- The payload is the composed image plus the non-empty callout texts in stable numeric
+  order, using the same labels the image shows.
+- A capture with no callouts is still sendable, with a simple capture-time title. The exact
+  field mapping is verified against Rogers' real item model, not assumed.
+- The target, image and text are snapshotted at the moment of Send. Later edits and target
+  changes never mutate an in-flight submission.
+- On confirmed success: mark that snapshot sent, keep the local document, store the item
+  reference. Hide and return only if the user is still waiting on that submission, on the
+  same capture, with no edit and no other action started, and Recon still in front. Save
+  pending document and status changes first.
+- If the user moved to another capture, kept editing, or switched applications, update the
+  submission's status without closing their current work and without taking focus. Later
+  edits stay marked as changed since the sent snapshot.
+
+### Failure, retry and sending again
+
+- A submission identifier and its snapshot are persisted before delivery is attempted, and
+  a retry reuses that identifier, so a lost response cannot produce a duplicate task.
+- Send is disabled for a submission already in flight.
+- A timeout is neither success nor a guarantee that nothing arrived. The submission stays
+  available for reconciliation or retry under the same identifier.
+- On a failure or an uncertain result, the local capture, its text, its target and its
+  status stay accessible. v1 uses explicit retry; a background delivery queue is out.
+- After success the created item is referenced on screen. An ordinary Send on an unchanged
+  sent capture never creates a second task.
+- Editing a sent capture marks it changed since that submission. An explicit **Send as new
+  task** creates a new submission and a new task. Updating an existing Rogers task is out
+  of v1.
+
+### The integration boundary
+
+Rogers is inspected before any transport or endpoint is chosen. Its API, authentication,
+attachment behavior and deployment model are unverified as of this document.
+
+Use or add one narrow, validated inbound operation that creates the item and its attachment
+reliably and tolerates a safe retry. Keep it at the request and response boundary. Do not
+build a plugin platform or a general integration framework, never write into undocumented
+Rogers database structures, and never report success for an incomplete item or image.
+
+## 3.10 Scope boundaries
+
+The first daily-use release is Stage 1. Later stages extend it without changing the core
+loop.
+
+Out of scope for v1:
+
+- macOS.
+- Video or GIF capture, scrolling capture, OCR and text extraction.
+- One selection spanning several displays.
+- Cloud sync, hosted libraries, public sharing links.
+- Templates, preset collections, stamp libraries.
+- Export targets beyond the clipboard, files and Rogers.
+- A separate library application or window.
+- Content-aware placement as a prerequisite for callouts.
+- Automatic retention cleanup.
+- Creating Rogers projects or tabs, updating previously sent tasks, background delivery
+  queues.
+- A generalized integrations platform.
+
+**Viewing is in scope; managing files is not.** Recon opens, shows and annotates an image.
+It does not rename, move, delete, tag, rate or organize external files, does not run batch
+operations over a folder, does not build a browsable thumbnail grid of the file system, and
+does not edit an image beyond annotating it: no crop, no resize, no color adjustment in v1.
+Writing back into an external file, in any format, stays out.
+
+Full-window capture and further editor tools can be judged from observed use. They do not
+block the initial loop.
+
+**For the open-source release**, the README's opening description is explicit: a Windows
+image viewer, screen capture and annotation tool. Name availability and discoverability
+are checked before publication, and they do not block the personal-use prototype.
+
+---
+
+# Part 4: what must never break
+
+`CLAUDE.md` rule 11 is the one home for this list. It currently holds one invariant, stated
+by Rotem when viewing became a core capability:
+
+> **Viewing an external file never modifies it and never imports it.** No re-encode, no
+> metadata rewrite, no move or rename, no thumbnail written beside it, no copy into Recon's
+> own storage, and no export that defaults to the source path.
+
+Why it is an invariant and not a preference: Recon gets pointed at folders of originals,
+client material included, and every way of breaking this is invisible until the original is
+already gone.
+
+Where this document carries it: §3.8, the Save As rules in §3.6, step S0.4's byte-for-byte
+check, step S1.5's mode boundary, and step S1.11's new-file-only Save As.
+
+---
+
+# Part 5: the architecture
+
+## The starting stack
+
+**Tauri, React and Rust**, because that is the stack Rotem already knows from Copy Ninja.
+
+A familiar stack is a candidate, not proof of suitability. Stage 0 exists to test it, and
+part 8 says what each way it can fail earns: a named component replaced, never the whole
+stack abandoned on a hunch.
+
+## The split, and why
+
+The obvious instinct is to judge that one stack for the whole application. Two surfaces here
+fail for entirely different reasons, and only one of them is in doubt, so they are split
+before the experiment starts: native code owns the screen, the clipboard and the disk; the
+web view owns the editor.
 
 | Layer | Runs as | Owns |
 |---|---|---|
@@ -590,36 +563,38 @@ is in doubt (F5).
 | Capture | native | freezing the desktop, the captured region, physical desktop coordinates, all behind one interface |
 | Image source | web view for what it decodes, native for what it does not | opening a path, decoding, orientation and color handling, page and frame selection, also behind one interface |
 | Overlay | native, one borderless window per display | the dim, the selection rectangle, cancel, handing the region to the host |
-| Store | native | one folder per capture, the untouched original, the versioned document, atomic writes |
+| Store | native | one folder per document, the preserved source, the versioned annotation data, atomic writes |
 | Clipboard | native | several image formats in one operation, success reported before any hide |
-| Editor shell | web view | toolbar, capture strip, destination indicator, keyboard routing |
+| Editor shell | web view | toolbar, capture strip, destination indicator, keyboard routing, the viewing controls |
 | Scene and composer | web view | the one composer: display at the current zoom, export at original scale |
 | Text editing | web view, an input layer above the canvas | caret, keyboard input, bidirectional typing, sharing the composer's wrapping |
 
-Four boundaries hold this together, and each one exists to stop a specific failure:
+## The boundaries that hold it together
 
-The web view never touches the screen or the clipboard, so a web view limitation can
-never break capture (F5, F4).
+Each one exists to stop a specific failure.
 
-The host never renders an annotation, so there is one composer and the export is that
-composer at original scale (F1).
+**The web view never touches the screen or the clipboard.** So a web view limitation can
+never break capture or output.
 
-The document never stores a screen coordinate, so it cannot be invalidated by moving a
-monitor (below).
+**The host never renders an annotation.** So there is exactly one composer, and export is
+that composer at original scale. This is what keeps the editor and the file identical.
 
-The rest of the application reaches capture through one small interface, freeze and
-region in, image out, so the implementation behind it can be replaced, or joined by a
-second one, without the editor noticing (part 3 A).
+**The document never stores a screen coordinate.** So it cannot be invalidated by moving a
+monitor.
 
-An opened file arrives through the same shape: one image source interface, path in,
-decoded frame and metadata out, with two providers behind it and one of them chosen per
-format (part 3 D). Past that boundary the editor cannot tell a capture from a file, which
-is what lets one window serve both.
+**Capture is reached through one small interface**, freeze and region in, image out, so the
+implementation behind it can be replaced, or joined by a second one, without the editor
+noticing.
 
-### Coordinate spaces, and the transforms between them
+**An opened file arrives through the same shape**, one image source interface, path in,
+decoded frame and metadata out, with two providers behind it and one chosen per format.
+Past that boundary the editor cannot tell a capture from a file, which is what lets one
+window serve both.
 
-Four spaces, named, with the conversion written down at each boundary. One conversion
-at the edges is not a guarantee against drift; naming the spaces is what makes a wrong
+## Coordinate spaces, and the transforms between them
+
+Four spaces, named, with the conversion written down at each boundary. One conversion at
+the edges is not a guarantee against drift; naming the spaces is what makes a wrong
 conversion findable.
 
 | Space | Units | Used by |
@@ -629,62 +604,130 @@ conversion findable.
 | Canvas | image space plus the annotation margin, as an offset record | the composer, the clipboard, the exported file |
 | View | canvas space through zoom, pan and display scale | what the editor draws and what the pointer hits |
 
-The conversions: desktop to image happens once, at capture, and is then discarded.
-Image to canvas is the margin offset, stored as four edge values so a growing margin
-never rewrites a single annotation coordinate. Canvas to view is the display transform,
-never persisted. Nothing in the document refers to a display, a scale factor or a
-monitor arrangement, so yesterday's capture opens the same way after the monitors move.
+Desktop to image happens once, at capture, and is then discarded. Image to canvas is the
+margin offset, stored as four edge values so a growing margin never rewrites a single
+annotation coordinate. Canvas to view is the display transform and is never persisted.
+Nothing in a document refers to a display, a scale factor or a monitor arrangement, so
+yesterday's document opens the same way after the monitors move.
 
-## Part 5: Stage 0, the smallest experiment that settles the foundations
+## The document on disk, as a starting position
+
+One folder per document, holding the source image as a PNG that is never rewritten, plus a
+JSON document with a schema version. An index database, if there is one, holds pointers and
+never the images; SQLite is a candidate for that index in a later stage, not a requirement
+for Stage 0. Every write goes to a temporary file and is renamed into place, per
+`project-os/QA.md` §5. Autosave is debounced while typing and forced on blur, navigation,
+opening another file, hide and quit. The schema itself is settled at step S1.8.
+
+## The filename order for folder navigation
+
+Use the Win32 logical string comparison, `StrCmpLogicalW`, or an equivalent natural sort
+where that call is not available. It is numeric-aware and case-insensitive, so `img2`
+precedes `img10`.
+
+Never inherit whatever order the file system happens to return. Whether the result matches
+Explorer closely enough to feel predictable is checked in S1.4, not assumed here.
+
+---
+
+# Part 6: the decisions
+
+## 6a. Settled
+
+| Decision | Answer |
+|---|---|
+| Text direction | Detected from the first strong character, with a manual override (§3.5). |
+| Undo | Specified as observable behavior, not a stack count, with the acceptance sequence in §3.6. |
+| Numbering | Stable numbers and gaps in every output. Renumbering rejected. Recorded in `project-os/Decisions.md`. |
+| Stage 1 navigation | A position indicator, plus shortcuts to the first and last (S1.4, S1.9). |
+| Windows support | The API's technical minimum, the versions Recon supports and tests, and runtime packaging are three separate answers, not one. Recorded in `project-os/Decisions.md`. |
+| Elevated windows | Test first. No elevated mode on an unverified assumption (S0.7). |
+| Image viewing | A core capability, in one window with two entry behaviors. Recorded in `project-os/Decisions.md`. |
+| Initial capture path | One copy of the whole virtual screen: one synchronous call already spans every display and every negative coordinate, so the foundation risk is retired at the lowest cost. It sits behind the capture interface, which must leave a video source possible later while adding no video infrastructure now. A second path is earned only under part 8. |
+| Paste destinations | Claude and ChatGPT. Both read the clipboard as a web application does, so PNG is the format that decides acceptance and a bitmap-only clipboard fails rather than merely losing transparency. Record the surface and version with each result. |
+| Reference environment | Rotem's main machine at its current display scale. The environment and font details are recorded with the reference images and in the S0.7 report. |
+
+## 6b. Still open, and they gate S0.4 only
+
+**D · How decoding splits between the two providers.**
+Recommendation: let the web view decode everything it can, JPG, PNG, BMP, GIF, WebP, AVIF
+and SVG, and give the host only what it cannot, TIFF and HEIC, both behind the one image
+source interface.
+It is the cheapest path, it adds the fewest dependencies, and moving a format from one
+provider to the other later touches no editor code.
+The cost is two decode paths, so orientation and color handling have to be checked on both,
+which is what S0.4 does.
+The alternative is one native path for every format: uniform behavior and a single place
+for color management, paid for with a decoder dependency for formats the view already
+handles for free.
+
+**E · TIFF, including multiple pages.**
+Recommendation: decode through the Windows imaging stack, expose the pages, annotate the
+displayed one.
+If that proves expensive in S0.4, the honest fallbacks are page one only in the first
+release, or TIFF named as a gap and left out. Both beat a blanket claim.
+
+**F · HEIC and HEIF.**
+Recommendation: decode through the OS, and when the codec is not installed say exactly
+that, with the way to install it, never a corrupt-file message.
+It cannot be promised unconditionally, because the codec is a separate component whose
+availability varies by machine and by Windows edition.
+The alternatives are bundling a decoder, which brings licensing and size questions, or
+deferring HEIC and naming the gap.
+
+Details that wait for their own step: the document schema (S1.8), the placement candidate
+set (S1.6), the storage-rate note (Stage 2), the Rogers submission record (Stage 4).
+
+---
+
+# Part 7: Stage 0, the smallest experiment that settles the foundations
 
 Purpose: retire the risks that would change the architecture, on the smallest build that
 can produce evidence. Seven steps. Anything not on this list is not Stage 0, including
-packaging, the second capture path, full undo, and anything that manages files.
+packaging, a second capture path, full undo, and anything that manages files.
 
-Each step carries a checkbox, a suggested model with a short reason, what it delivers,
-and the evidence that closes it. The model is a suggestion for whoever picks the step
-up, not a setting. A step is done when its evidence exists, not when its code runs.
+Each step carries a checkbox, a suggested model with a short reason, what it delivers, and
+the evidence that closes it. The model is a suggestion for whoever picks the step up, not a
+setting. A step is done when its evidence exists, not when its code runs.
 
 ----
 **[ ] S0.1 · Host shell: tray, hotkey, quit**
 
 Model: Sonnet 5. Mechanical, documented APIs.
 
-Delivers: a background process with a tray entry, a configurable global hotkey, and a
-quit that leaves nothing running.
+Delivers: a background process with a tray entry, a configurable global hotkey, and a quit
+that leaves nothing running.
 
 Evidence: the hotkey fires while the process has never shown a window; a hotkey already
-taken by another application is reported as a conflict rather than silently lost (F15);
-quit leaves no process behind.
+taken by another application is reported as a conflict rather than silently lost; quit
+leaves no process behind.
 
 ----
 **[ ] S0.2 · Freeze, overlay, region selection**
 
 Model: Opus 5. DPI, native APIs, irreversible shape.
 
-Depends on decision A.
+Delivers: the capture interface with the chosen path as its one implementation, one overlay
+window per display, drag to select, cancel, and the region handed back in desktop
+coordinates and converted once into image space.
 
-Delivers: the capture interface from part 3 A with the chosen path as its one
-implementation, one overlay window per display, drag to select, cancel, and the region
-handed back in desktop coordinates and converted once into image space.
-
-Evidence: two displays at 100% and at 150% or 200%, with the secondary placed left of
-the primary so coordinates go negative; the selected rectangle and the resulting pixels
-agree exactly; the overlay and the editor never appear in the output; cancel restores
-the previous context and creates no capture; a second hotkey press during selection is
-ignored; an open menu is either captured or the limitation is written down.
+Evidence: two displays at 100% and at 150% or 200%, with the secondary placed left of the
+primary so coordinates go negative; the selected rectangle and the resulting pixels agree
+exactly; the overlay and the editor never appear in the output; cancel restores the previous
+context and creates no capture; a second hotkey press during selection is ignored; an open
+menu is either captured or the limitation is written down.
 
 ----
 **[ ] S0.3 · Editor window, scene, one callout**
 
 Model: Opus 5. The composition contract is the product's spine.
 
-Delivers: the editor window pre-created and hidden at startup, one image on the canvas,
-and one callout that can be created, typed into, committed, selected, moved and deleted.
-The anchor moves independently and the arrow follows.
+Delivers: the editor window pre-created and hidden at startup, one image on the canvas, and
+one callout that can be created, typed into, committed, selected, moved and deleted. The
+anchor moves independently and the arrow follows.
 
-Evidence: every one of those operations exercised by hand; an empty bubble is discarded
-when editing ends and never reaches the output.
+Evidence: every one of those operations exercised by hand; an empty bubble discarded when
+editing ends and absent from the output.
 
 Full undo and redo are Stage 1 (S1.7), not a Stage 0 gate.
 
@@ -693,97 +736,105 @@ Full undo and redo are Stage 1 (S1.7), not a Stage 0 gate.
 
 Model: Opus 5. Format behavior, and a decision gate for the product surface.
 
-Depends on part 3 items D, E and F.
+Depends on the open decisions D, E and F in part 6b.
 
-Delivers: an image source interface, open a path, get a decoded frame plus its metadata,
-with the web view as one provider and the host as the other; and the same canvas showing
-an opened file instead of a capture.
+Delivers: the image source interface, path in, decoded frame plus metadata out, with the web
+view as one provider and the host as the other; and the same canvas showing an opened file
+instead of a capture.
 
-Evidence, one line per format in the §5b list: did it decode, how long did the open take,
-and what came out. Transparency preserved where the format has it, EXIF orientation
-applied, an embedded color profile honored, a very large image opened without stalling,
-an animation playing, a multipage file exposing its pages.
-Every format that did not work is named with what it would take, and no format is
-reported as supported on the strength of another format working.
-The managed-document boundary is proved here too: after opening, viewing and navigating,
-every source file is byte for byte what it was, and no managed document was created.
+Evidence, one line per format in the §3.7 list: did it decode, how long did the open take,
+and what came out. Transparency preserved where the format has it, EXIF orientation applied,
+an embedded color profile honored, a very large image opened without stalling, an animation
+playing, a multipage file exposing its pages.
+Every format that did not work is named with what it would take, and no format is reported
+as supported on the strength of another format working.
+The external-file boundary is proved here too: after opening, viewing and navigating, every
+source file is byte for byte what it was, and no managed document was created.
 
-This step is the gate for the format claims in the product plan. It is allowed to come
-back with a shorter supported list than the target list.
+This step is the gate for the format claims in §3.7. It is allowed to come back with a
+shorter supported list than the target list.
 
 ----
 **[ ] S0.5 · Output fidelity and the clipboard**
 
 Model: Opus 5. Fidelity, and the one place work can be lost.
 
-Depends on part 3 items B and C, and on decision 1.
-
-Delivers: the composer used for both display and export, and a native clipboard
-operation publishing several image formats.
+Delivers: the composer used for both display and export, and a native clipboard operation
+publishing several image formats.
 
 Three separate checks, because one comparison cannot answer all three questions:
 
-Original pixels survive. Export a capture with no annotations, decode it, and compare
-its image area against the captured source at the margin offset. Encoding is lossless,
-so this one is exact equality, not a tolerance.
+Original pixels survive. Export a capture with no annotations, decode it, and compare its
+image area against the captured source at the margin offset. Encoding is lossless, so this
+one is exact equality, not a tolerance.
 
 Annotated output is correct. Compare six documents against reviewed reference images
-covering Hebrew, English, mixed direction, a long wrapped note, an anchor against each
-edge, and a document that added a margin. State the reference environment and the
-comparison tolerance, since font rendering is what the tolerance is for.
+covering Hebrew, English, mixed direction, a long wrapped note, an anchor against each edge,
+and a document that added a margin. State the reference environment and the comparison
+tolerance, since font rendering is what the tolerance is for.
 
 The live editor and the output agree while typing. Copy with the caret still active, mid
-note, in each of the three text cases, and compare what the EDITOR IS SHOWING against
-the copied image: the text itself, the wrapping, the alignment and the position.
-Not the composed output against the clipboard. Those two come out of the same renderer,
-so they can agree with each other while both differ from the layer you are typing into,
-which is the failure this check exists to catch.
-Exclude the editing decorations, the caret and the selection handles, from the
-comparison.
-The product forbids an Apply step, so this is the case that matters, and committed text
-is the easy half (F1).
+note, in each of the three text cases, and compare what the EDITOR IS SHOWING against the
+copied image: the text itself, the wrapping, the alignment and the position.
+Not the composed output against the clipboard. Those two come out of the same renderer, so
+they can agree with each other while both differ from the layer being typed into, which is
+the failure this check exists to catch.
+Exclude the editing decorations, the caret and the selection handles, from the comparison.
+The product forbids an Apply step, so this is the case that matters, and committed text is
+the easy half.
 
-Plus: a paste verified in Claude and in ChatGPT, the destinations in part 3 B, with the
-surface and version recorded beside each result.
+Plus: a paste verified in Claude and in ChatGPT, with the surface and version recorded
+beside each result.
 
 ----
 **[ ] S0.6 · Instrumentation and the thirty-run measurement**
 
 Model: Sonnet 5. Mechanical, known shape.
 
-Delivers: the six marks per run from F3, a CSV per run set, the two reported intervals,
-and a memory sample that separates the live document from retained history.
+Delivers: six marks per run and two reported intervals, a CSV per run set, and a memory
+sample that separates the live document from retained history.
 
-Evidence: thirty runs at 4K with the process already in the background, reported as raw
-runs plus the maximum and the percentile method, against the plan's proposed targets of
-250 ms to a usable selection and 500 ms to an editor ready for input; the user's drag
-time excluded from both intervals; process startup measured and reported separately.
+Marks: hotkey received · overlay displayed · overlay accepting input · selection completed ·
+editor displayed · editor accepting annotation input.
+
+Intervals: hotkey received to overlay accepting input, and selection completed to editor
+accepting annotation input. Everything else is diagnostic. Visible is not interactive, and
+the user's drag time is inside neither interval.
+
+Evidence: thirty runs at 4K with the process already in the background, reported as raw runs
+plus the maximum and the percentile method, against the proposed targets of 250 ms to a
+usable selection and 500 ms to an editor ready for input. With thirty runs the 95th
+percentile is the second-worst run, so the raw list carries more information than the label.
+Process startup is measured and reported separately. The memory sample covers a folder walk
+as well as a capture run.
 
 ----
 **[ ] S0.7 · The limits, and the go or no-go report**
 
 Model: Opus 5. Judgment on evidence.
 
-Depends on decisions 5, 6 and C.
+Delivers: what the platform actually did on this machine, and one short report.
 
-Delivers: what the platform actually did here, and one short report.
+Evidence: the hotkey tested against a real application running as administrator on the normal
+desktop, with the result recorded either way and no product decision attached to a guess;
+best-effort return-focus tested against that same window and against an application that has
+since closed; the API's own minimum Windows version stated separately from the versions Recon
+supports and tests; HDR behavior determined, with "not supported in v1, detected rather than
+silently wrong" an acceptable answer; the reference environment recorded.
 
-Evidence: the hotkey tested against a real elevated application on the normal desktop,
-with the result recorded either way and no product decision attached to a guess (F2);
-best-effort return-focus tested against that same window and against an application that
-has since closed (F10); the API's own minimum Windows version stated separately from the
-versions Recon supports and tests (F14); HDR behavior determined, with "not supported in
-v1, detected rather than silently wrong" an acceptable answer (F16); the reference
-environment recorded (decision C).
+The consent prompt's own secure desktop is out of scope by design: nothing on the user
+desktop reaches it, and no product decision follows from it.
 
 The report separates measured facts, documented behavior and assumptions, and recommends
-keeping or replacing a named component rather than the stack.
+keeping or replacing a named component rather than the whole stack.
 
-## Part 6: what Stage 0 is allowed to conclude
+---
 
-Each failure has a next move, and none of them is a verdict on the whole stack. A
-failure is diagnosed before anything is replaced, and a failure that is not resolved is
-reported as a limitation rather than absorbed.
+# Part 8: what Stage 0 is allowed to conclude
+
+Each failure has a next move, and none of them is a verdict on the whole stack. A failure is
+diagnosed before anything is replaced, and a failure that is not resolved is reported as a
+limitation rather than absorbed.
 
 | If this fails | Then |
 |---|---|
@@ -791,116 +842,194 @@ reported as a limitation rather than absorbed.
 | Activation is slower than the target | Find where the time goes first: process wake, window show, the freeze, the first paint, or input readiness. Replace the component the measurement accuses, not the one that is easiest to blame. If it accuses the freeze itself, that is the row above. |
 | The clipboard cannot satisfy the two destinations | Diagnose it: which format, which application, which failure. Fix it, or report an explicit limitation with the applications named. It does not pass the gate on the grounds that the clipboard is native by design. |
 | The export drifts from the display and shared wrapping cannot close it | Moving the composer to native code is a candidate, not a remedy: it must be revalidated for editing and output together, including the active-caret case, before it counts. |
-| A target format will not decode, or needs a component that is not on the machine | Name the format, the cause and the impact, and ship the shorter list. The product plan says a gap is stated with its impact, never covered by a blanket claim. This does not fail the stack. |
+| A target format will not decode, or needs a component that is not on the machine | Name the format, the cause and the impact, and ship the shorter list. A gap is stated with its impact, never covered by a blanket claim. This does not fail the stack. |
 | Editing is unusable at 4K | Tile the canvas, or reconsider the editor surface, with the measurement in hand. |
 
 No Stage 0 result justifies building the capture library or the Rogers integration to
-compensate for an unproven capture path.
+compensate for an unproven capture or decoding path.
 
-## Part 7: Stage 1, the daily-use loop
+---
 
-Dependency order, not dates. Each item stays usable on its own, and the stage ends with
-real work rather than a feature count.
+# Part 9: Stage 1, the daily-use release
+
+Dependency order, not dates. Each item stays usable on its own, and the stage ends with real
+work rather than a feature count.
 
 - [ ] S1.1 Capture lifecycle: repeated captures, hide and show, the remembered return
-      target, no overwriting of a previous capture, and the empty-state line (F15).
+      target, no overwriting of a previous capture, and the empty-state line naming the
+      hotkey.
 - [ ] S1.2 File opening and activation: the file association, Open With, drag and drop and
-      Ctrl+O, both when Recon is already running and when it starts because a file was
+      `Ctrl+O`, both when Recon is already running and when it starts because a file was
       activated, one window rather than a second instance, plus the type registration and
       the link into the Windows default-apps settings. Model: Opus 5, it is the entry point.
 - [ ] S1.3 The viewing surface: fit to window on open, actual size, zoom, pan, fullscreen,
       and the filename and pixel dimensions on screen.
 - [ ] S1.4 Folder navigation: previous and next across the supported types in the opened
-      file folder, the defined numeric-aware order, the position indicator, and the named
-      active context so it can never be confused with the capture list (F20).
-- [ ] S1.5 The transition into annotation: viewing mode arms no tool and no click can
-      create a callout, an explicit Annotate action switches modes and creates the managed
-      document with its preserved source, and leaving annotation keeps the work (F19).
+      file's folder, the defined numeric-aware order, the position indicator, and the named
+      active context so it can never be confused with the capture list.
+- [ ] S1.5 The transition into annotation: viewing mode arms no tool and no click can create
+      a callout, an explicit Annotate action switches modes and creates the managed document
+      with its preserved source, and leaving annotation keeps the work.
       Model: Opus 5, it is the boundary that protects the originals.
-- [ ] S1.6 Callout completion: the deterministic candidate positions, the neutral margin
-      when a bubble cannot fit, and stable numbering with gaps, identical in the editor
-      and in every output (decision 3). Model: Opus 5.
-- [ ] S1.7 The keyboard contract, routed by context, with the stage column in the table so
-      nothing promises a key that does not exist (F9), the viewing and navigation keys inert
-      while a note is being edited, and undo and redo in full (decision 2).
-      Its acceptance sequence: edit an existing bubble, leave text editing, move the
-      bubble, undo restores its position, undo again restores its previous text.
-- [ ] S1.8 The document store: the schema from F8, plus the source path and the page or
+- [ ] S1.6 Callout completion: the deterministic candidate positions, the neutral margin when
+      a bubble cannot fit, and stable numbering with gaps, identical in the editor and in
+      every output. Model: Opus 5.
+- [ ] S1.7 The keyboard contract, routed by context, with the stage column honored, the
+      viewing and navigation keys inert while a note is being edited, and undo and redo in
+      full against the acceptance sequence in §3.6.
+- [ ] S1.8 The document store: the schema from part 5, plus the source path and the page or
       frame for an annotated file, debounced autosave, forced saves on blur, navigation,
       opening another file, hide and quit, reopen after restart, and a visible failure that
       never claims to have saved. Model: Opus 5, it touches stored work.
 - [ ] S1.9 Capture navigation: previous and next through captures, the position indicator,
-      and shortcuts to the first and last (decision 4).
-- [ ] S1.10 Copy and Return, including every failure path: a failed clipboard, a failed
-      save, a refused activation, a closed target application, and a user who moved on
-      mid-operation (F10).
-- [ ] S1.11 PNG Save As: a new file every time, a suggested name derived from the source
-      and marked as annotated, and no path by which an external original is the default
-      target (F17).
+      and shortcuts to the first and last.
+- [ ] S1.10 Copy and Return, including every failure path: a failed clipboard, a failed save,
+      a refused activation, a closed target application, and a user who moved on
+      mid-operation.
+- [ ] S1.11 PNG Save As: a new file every time, a suggested name derived from the source and
+      marked as annotated, and no path by which an external original is the default target.
 - [ ] S1.12 The trial: thirty captures of real client feedback and a week of using Recon as
-      the everyday viewer, with the friction recorded in `project-os/History.md` and
-      anything deferred sent to `project-os/Backlog.md`.
+      the everyday viewer, with the friction recorded in `project-os/History.md` and anything
+      deferred sent to `project-os/Backlog.md`.
 
-Stage 1 is the first release that replaces the current Snagit workflow. It ships without
-file export, without the thumbnail strip, and without Rogers.
+Stage 1 is the release that replaces both current tools. It ships without the thumbnail
+strip, without export options beyond PNG, and without Rogers.
 
-Stage 1 prepares nothing for Rogers. It persists editable capture documents, and that is
-all the foundation Stage 4 is entitled to assume.
+Stage 1 prepares nothing for Rogers. It persists editable documents, and that is all the
+foundation Stage 4 is entitled to assume.
 
-## Part 8: the later stages
+**Acceptance for the stage as a whole**, beyond each item's own:
 
-Kept as a dependency outline only, per the product plan's sections 9 and 10.
+- Capture and copy with zero annotations; annotate with one bubble; use several; correct an
+  earlier capture.
+- Thirty captures in sequence with no lost work and no Done step anywhere.
+- Open a file from Explorer by double-click and by Open With, with Recon closed and with
+  Recon already running; the second case uses the existing window.
+- Drag and drop a file onto the window, and open one with `Ctrl+O`.
+- Walk a folder of mixed supported types, in the defined order, with the position indicator
+  correct at both ends, and confirm folder and capture navigation never move each other.
+- Move from viewing into annotation and back, and confirm no click in viewing mode ever
+  created a callout.
+- Confirm every source file is byte for byte unchanged after viewing, navigating and
+  annotating, and that Save As wrote a new file.
+- Representative files: transparency, EXIF orientation, an embedded color profile, very large
+  dimensions, an animation, and a multipage file where supported.
+- Small crops, dense images, each edge, long text, mixed Hebrew and English, and a bubble
+  moved manually before its text changes.
+- Undo and redo, delete, copy while text is being edited, copy with an object selected, and
+  a repeated capture while Recon is open.
+- Restart normally and recover editable work. Simulate an interrupted run and verify recovery
+  to the last successful save. Exercise clipboard and save failures with no false success and
+  no discarded work.
+- Compare equivalent capture, annotation and viewing tasks against the current tools. Record
+  concrete friction, not a feature count.
 
-Stage 2, the capture library: the thumbnail strip, older captures inside the same editor,
-intentional deletion, visible storage use with the expected daily rate stated (F12), and
-the export options beyond the PNG default. Basic PNG Save As is no longer here, it moved
-to S1.11, because an annotated external image has to be saveable on day one.
-Depends on S1.8.
+---
 
-Stage 3, secondary tools: arrow, rectangle, text, blur, highlight, ordered by what daily
-use actually demanded. Depends on the scene and composer being stable.
+# Part 10: the later stages
 
-Stage 4, Rogers delivery: inspect Rogers first, then design the submission record against
+A dependency outline only. Each one is planned properly when it arrives.
+
+**Stage 2, the capture library.** The thumbnail strip, older captures inside the same editor,
+intentional deletion, visible storage use with the daily rate stated, and the export options
+beyond the PNG default. Depends on S1.8.
+Acceptance: retrieve and edit yesterday's capture after a restart; exported files match the
+visible composition at original resolution; existing exports are never silently changed; old
+history is not all loaded as full-resolution images.
+
+**Stage 3, the secondary tools.** Arrow, rectangle, text, blur, highlight, ordered by what
+daily use actually demanded. Depends on the scene and composer being stable.
+Acceptance: each tool takes part in selection, editing, undo, persistence and identical
+clipboard and file rendering, and its arrival disturbs nothing in the callout flow.
+
+**Stage 4, Rogers delivery.** Inspect Rogers first, then design the submission record against
 what is actually there. The work is destination validation, item and attachment behavior,
-what counts as success, duplicate prevention, retry with a reused identifier, and error
-handling. Calling any of that transport understates it. Explicit retry only, with no
-background delivery queue in v1.
+what counts as success, duplicate prevention, retry under a reused identifier, and error
+handling. Calling any of that transport understates it. Explicit retry only, no background
+queue in v1.
+Acceptance: successful delivery, an invalid target, Rogers unavailable, a rapid double send, a
+response lost after the item was created, a retry after restarting Recon, the active target
+changed during a request, and editing and re-sending a sent capture. Continuing to edit,
+moving to another capture, or switching applications during delivery must not let a late
+success close work or take focus.
 
-## Part 9: the evidence status of every claim here
+---
 
-**Measured:** nothing. This project has no code yet, so no timing and no memory figure in
-this document was produced by running anything.
+# Part 11: the evidence status of every claim here
 
-**Documented platform behavior:** the per-display capture call's own minimum Windows
-version; that injected input is subject to privilege restrictions; that a request to
-bring a window to the foreground can be refused; which image formats a Chromium-based
-view decodes on its own, and which ones the Windows imaging stack decodes without an
-extra component. Sources in part 10.
+**Measured:** nothing. This project has no code yet, so no timing and no memory figure in this
+document was produced by running anything.
 
-**Behavior to verify, currently unknown:** whether a registered global hotkey is
-delivered while an application running as administrator holds the foreground (F2, S0.7);
-whether best-effort activation succeeds against such a window and against a closed one
-(F10, S0.7); which clipboard formats the two chosen destinations actually accept (F4,
-S0.5); what the freeze and the first paint really cost on this machine (F3, S0.6);
-what each target format actually does on this machine, decode or not, how fast, and
-whether orientation and color survive the trip into annotation (F18, S0.4); whether the
-HEIC codec is even present here (part 3 F, S0.4).
+**Documented platform behavior:** the per-display capture call's own minimum Windows version;
+that injected input is subject to privilege restrictions; that a request to bring a window to
+the foreground can be refused; which image formats a Chromium-based view decodes on its own,
+and which ones the Windows imaging stack decodes without an extra component. Sources in part
+13.
+
+**Behavior to verify, currently unknown:** whether a registered global hotkey is delivered
+while an application running as administrator holds the foreground (S0.7); whether best-effort
+activation succeeds against such a window and against a closed one (S0.7); which clipboard
+formats Claude and ChatGPT actually accept (S0.5); what the freeze and the first paint really
+cost on this machine (S0.6); what each target format actually does here, decode or not, how
+fast, and whether orientation and color survive the trip into annotation (S0.4); whether the
+HEIC codec is even present on this machine (S0.4).
 
 **Assumed until Stage 0 says otherwise:** that pre-creating the overlay and the editor at
 startup is enough to approach the proposed latency targets; that shared wrapping plus the
-three S0.5 checks are enough to keep the editor and the export in agreement; that two
-decode providers behind one interface cost less than one native path for everything; that
-a familiar stack is the right one here.
+three S0.5 checks are enough to keep the editor and the export in agreement; that two decode
+providers behind one interface cost less than one native path for everything; that the
+familiar stack, Tauri with React and Rust from Copy Ninja, is the right one here.
 
-**Not inspected:** Copy Ninja and Rogers. Both are yours to point me at, in a task that
-names them.
+**Not inspected:** Copy Ninja and Rogers. Both are Rotem's to point at, in a task that names
+them.
 
-## Part 10: sources
+---
 
+# Part 12: the review trail
+
+Twenty-one findings were raised against the plan and folded into the parts above. This table
+is the record; the fixes themselves live where the table points. Severity is how the finding
+was rated when it was raised.
+
+| # | Finding | Sev | Where it lives now | Status |
+|---|---|---|---|---|
+| F1 | Nothing guaranteed the exported image matched the editor | 🔴 | Part 5 boundaries, S0.5 three checks | Resolved in plan, verification pending |
+| F2 | The elevated-window claim was an assumption presented as documentation | 🟠 | S0.7, part 11 | Claim withdrawn, behavior to verify |
+| F3 | Two latency targets, and the timestamps could not produce one of them | 🔴 | S0.6 six marks, two intervals | Resolved in plan, verification pending |
+| F4 | Clipboard formats unspecified, so a passing paste test proved little | 🟠 | Part 6a destinations, S0.5 | Resolved in plan, acceptance at S0.5 |
+| F5 | The selection overlay should not be a web view | 🟠 | Part 5, the whole split | Resolved in plan |
+| F6 | Text direction was named but not defined | 🟠 | §3.5, S0.5 | Decided |
+| F7 | Undo was specified by context, which the user cannot see | 🟠 | §3.6 and its acceptance sequence, S1.7 | Decided |
+| F8 | The document format was deferred while three requirements depended on it | 🟠 | Part 5 document on disk, S1.8 | Resolved in plan, schema at S1.8 |
+| F9 | `Ctrl+S` sat in the contract while export was a later stage | 🟠 | §3.6 stage column, S1.11 | Resolved, and Save As is real in Stage 1 |
+| F10 | Return-focus needed a named mechanism and a failure path | 🟠 | §3.1, S0.7, S1.10 | Resolved in plan, verification pending |
+| F11 | Numbering gaps reaching the client, and the renumbering idea | 🟡 | §3.5, `project-os/Decisions.md` | Decided: gaps stay, renumbering rejected |
+| F12 | "Keep forever" had an unstated cost | 🟡 | §3.8 retention, Stage 2 | Resolved in plan |
+| F13 | Capture 1 was twenty-nine keypresses away | 🟡 | S1.9 | Decided |
+| F14 | An API minimum, a support baseline and an installer were treated as one question | 🟡 | Part 6a, S0.7, `project-os/Decisions.md` | Decided |
+| F15 | First run and the empty editor were missing | 🟡 | S0.1, S1.1 | Resolved in plan |
+| F16 | HDR was left open | 🟡 | S0.7 | Resolved in plan |
+| F17 | Viewing must never modify or import the source file | 🔴 | Part 4, §3.8, S0.4, S1.5, S1.11 | Stated as an invariant, verification pending |
+| F18 | Two target formats have no browser decoder, so common images cannot be promised | 🟠 | §3.7, part 6b D to F, S0.4 | Open: the three format decisions |
+| F19 | One window, two modes, and the pointer did not know which | 🟠 | §3.3, S1.5 | Resolved in plan, verification pending |
+| F20 | Two navigation lists in one window | 🟡 | §3.4, S1.4, S1.9 | Resolved in plan |
+| F21 | A folder walk could grow memory without a bound | 🟡 | §3.8, S0.6 | Resolved in plan, measured at S0.6 |
+
+Two rules earned during those passes, and they hold for the build too: a check must name the
+two things it compares and the failure that would turn it red (`project-os/QA.md` §12), and a
+comparison between two outputs of the same code proves only that the code is deterministic.
+
+---
+
+# Part 13: sources
+
+- [Snagit hotkeys guide](https://www.techsmith.com/learn/tutorials/snagit/snagit-hotkeys/) · the global capture and Copy All shortcuts that already exist, so comparisons stay accurate.
+- [Tauri webview versions](https://tauri.app/reference/webview-versions/) · the Windows web view foundation, not a latency guarantee.
+- [Tauri clipboard manager](https://v2.tauri.app/reference/javascript/clipboard-manager/) · image clipboard operations; destination compatibility is still to be tested.
 - [RegisterHotKey](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-registerhotkey) · what hotkey registration does and does not promise.
-- [SendInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput) · the documented privilege restriction, on injection.
+- [SendInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput) · the documented privilege restriction, which is on injection.
 - [SetForegroundWindow](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow) · when activation is allowed and when it is refused.
 - [CreateForMonitor](https://learn.microsoft.com/en-us/windows/win32/api/windows.graphics.capture.interop/nf-windows-graphics-capture-interop-igraphicscaptureiteminterop-createformonitor) · the per-display capture call and its Windows 10 1903 minimum.
 - [High DPI development on Windows](https://learn.microsoft.com/en-us/windows/win32/hidpi/high-dpi-desktop-application-development-on-windows) · DPI contexts and coordinate handling.
-- [Native WIC codecs](https://learn.microsoft.com/en-us/windows/win32/wic/native-wic-codecs) · what the Windows imaging stack decodes with nothing added, and where page access for a multipage file comes from.
+- [Native WIC codecs](https://learn.microsoft.com/en-us/windows/win32/wic/native-wic-codecs) · what the Windows imaging stack decodes with nothing added, and where page access comes from.
 - [Image file type and format guide](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/Image_types) · what a Chromium-based view decodes on its own, which is where the TIFF and HEIC gaps come from.

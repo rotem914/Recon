@@ -255,7 +255,14 @@ into session memory, whatever your harness says about saving feedback there.
 
 **A build plan is not ad-hoc.** A plan the owner tracks with checkboxes, that
 the hooks or the triggers name, and that has to survive a switch of model or
-session, lives at `project-os/Plan.md`. It is a living file like Backlog, read
+session, lives at `project-os/Plan.md`.
+
+**There is exactly ONE plan file, and it is that one.** Never split the plan across
+two documents, and never create a second one beside it: not a product plan, not a
+review, not a findings document, not an appendix. Content that wants to be a second
+plan document goes INTO `project-os/Plan.md`, in a part of its own. The owner asked
+for one plan; two files means they have to reconcile them, which is the work they
+handed over. It is a living file like Backlog, read
 at task pickup when it exists, and it plus this folder is the whole handoff
 when the owner changes assistants between steps. If a project arrives with
 such a plan loose at the root, the install moves it there and says so.
