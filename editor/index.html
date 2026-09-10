@@ -1,4 +1,553 @@
 <!doctype html>
-<meta charset="utf-8">
-<title>Recon editor</title>
-<p>The editor arrives at S0.4. Nothing loads this yet: the host runs with no window.</p>
+<meta charset="utf-8" />
+<title>Recon</title>
+<style>
+  /* S0.4: the editor window, the scene, and one callout.
+     No toolbar, no document strip, no persistence, no export. Those are later steps, and
+     this file has to stay small enough to be the thing the composition contract is proved
+     on rather than the thing it is buried in. */
+  :root { color-scheme: dark; --ink: #f0f0f0; --paper: #101214; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--paper); color: var(--ink);
+               font: 13px/1.45 ui-sans-serif, "Segoe UI", system-ui, sans-serif;
+               overflow: hidden; }
+
+  #stage { position: absolute; inset: 0; overflow: hidden; cursor: crosshair; }
+  #canvas { position: absolute; left: 0; top: 0; display: block; image-rendering: pixelated; }
+
+  /* Everything below is laid out in IMAGE pixels and scaled by one transform on this
+     container. Part 5: layout is computed before the transform exists, so zoom cannot
+     re-wrap a single line of text. */
+  #scene { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+  #arrows { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+
+  .callout { position: absolute; display: flex; gap: 6px; align-items: flex-start;
+             padding: 8px 10px; border-radius: 8px; background: #1b1f24; color: #f2f2f2;
+             border: 1px solid #3a4149; box-shadow: 0 2px 10px rgba(0,0,0,.45);
+             font-size: 15px; line-height: 1.35; }
+  .callout.selected { border-color: #7aa7ff; }
+  .callout .n { flex: 0 0 auto; min-width: 18px; height: 18px; border-radius: 9px;
+                background: #7aa7ff; color: #0d1014; font-size: 12px; font-weight: 700;
+                display: grid; place-items: center; }
+  /* Outline and background only: a caret or a selection ring must never change layout,
+     because the export has to agree with what is on screen (part 5's third remedy). */
+  .callout .t { flex: 1 1 auto; min-width: 1ch; outline: none; white-space: pre-wrap;
+                word-break: break-word; }
+  .callout .t:focus { background: rgba(122,167,255,.14); outline: 1px solid #7aa7ff;
+                      outline-offset: 2px; }
+  .anchor { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px;
+            border-radius: 50%; background: #7aa7ff; border: 2px solid #0d1014;
+            cursor: grab; }
+
+  #hud { position: absolute; left: 12px; bottom: 10px; padding: 6px 10px; border-radius: 6px;
+         background: rgba(10,12,14,.82); color: #cfd4da; font-size: 12px;
+         font-family: ui-monospace, Consolas, monospace; pointer-events: none;
+         white-space: pre; }
+  #probe { position: absolute; inset: 0; display: none; }
+  body.checking #stage { cursor: progress; }
+  #report { position: absolute; inset: 0; display: none; padding: 18px 22px; overflow: auto;
+            background: #0c0e10; font-family: ui-monospace, Consolas, monospace;
+            font-size: 12px; white-space: pre-wrap; }
+  body.reporting #report { display: block; }
+</style>
+
+<div id="stage">
+  <canvas id="canvas"></canvas>
+  <div id="scene">
+    <svg id="arrows"></svg>
+  </div>
+</div>
+<div id="hud"></div>
+<div id="report"></div>
+
+<script>
+(() => {
+  const invoke = window.__TAURI__.core.invoke;
+
+  // Everything this page says goes to the terminal as well. A web view that throws inside a
+  // hidden window is otherwise completely silent, which cost one whole run.
+  const toHost = (level, line) => { invoke('editor_log', { level, line }).catch(() => {}); };
+  for (const level of ['log', 'warn', 'error']) {
+    const original = console[level].bind(console);
+    console[level] = (...args) => {
+      original(...args);
+      toHost(level, args.map((a) => (a && a.stack) ? a.stack : String(a)).join(' '));
+    };
+  }
+  window.addEventListener('error', (e) => toHost('error', `${e.message} at ${e.filename}:${e.lineno}`));
+  window.addEventListener('unhandledrejection', (e) => toHost('error', `unhandled rejection: ${e.reason && e.reason.stack ? e.reason.stack : e.reason}`));
+  const stage = document.getElementById('stage');
+  const canvas = document.getElementById('canvas');
+  const scene = document.getElementById('scene');
+  const arrows = document.getElementById('arrows');
+  const hud = document.getElementById('hud');
+  const context = canvas.getContext('2d', { alpha: false });
+
+  // ---------------------------------------------------------------- the scene
+  //
+  // Coordinates. There are exactly two spaces in this file and they are never mixed:
+  //
+  //   image  pixels of the source image, origin at its top-left. Everything stored lives
+  //          here: anchors, bubbles, text boxes.
+  //   view   what is on screen. Reached from image space by ONE transform on #scene, and
+  //          from a pointer event by the inverse. Nothing is stored in this space.
+  //
+  // zoom is DEVICE pixels per image pixel, so zoom === 1 is actual size on this display
+  // whatever its scaling. The canvas backing store is in device pixels and its CSS size is
+  // that divided by the device pixel ratio, which is what makes a 1:1 view genuinely 1:1.
+
+  const model = {
+    image: { width: 0, height: 0, source: '' },
+    zoom: 1,
+    fitZoom: 1,
+    // Top-left of the visible region, in image pixels.
+    pan: { x: 0, y: 0 },
+    callouts: [],
+    nextNumber: 1,
+    selected: null,
+    editing: null,
+  };
+
+  // The ratio of physical pixels to CSS pixels for THIS window, measured rather than
+  // believed. This web view reports devicePixelRatio 1 on a 225% display, so trusting it
+  // would make "actual size" wrong by a factor of the display scale, quietly.
+  let ratio = 1;
+  const dpr = () => ratio;
+
+  const measureRatio = async () => {
+    const metrics = await invoke('editor_window_metrics');
+    const css = viewport();
+    const measured = css.w > 0 ? metrics.physical_width / css.w : 1;
+    ratio = Math.max(0.5, Math.min(4, measured));
+    console.log(
+      `window ${metrics.physical_width}x${metrics.physical_height} physical, ` +
+      `${css.w}x${css.h} css, ratio ${ratio.toFixed(3)}, ` +
+      `scale factor ${metrics.scale_factor}, window dpi ${metrics.window_dpi} (${Math.round(metrics.window_dpi/96*100)}%), devicePixelRatio ${window.devicePixelRatio}`
+    );
+    return ratio;
+  };
+  const viewport = () => ({ w: stage.clientWidth, h: stage.clientHeight });
+
+  const clampPan = () => {
+    const vp = viewport();
+    const visibleW = (vp.w * dpr()) / model.zoom;
+    const visibleH = (vp.h * dpr()) / model.zoom;
+    const maxX = Math.max(0, model.image.width - visibleW);
+    const maxY = Math.max(0, model.image.height - visibleH);
+    model.pan.x = Math.min(Math.max(0, model.pan.x), maxX);
+    model.pan.y = Math.min(Math.max(0, model.pan.y), maxY);
+  };
+
+  const toImage = (event) => {
+    const box = stage.getBoundingClientRect();
+    const cssX = event.clientX - box.left;
+    const cssY = event.clientY - box.top;
+    return {
+      x: model.pan.x + (cssX * dpr()) / model.zoom,
+      y: model.pan.y + (cssY * dpr()) / model.zoom,
+    };
+  };
+
+  // ---------------------------------------------------------------- the pixels
+  //
+  // The host is asked for the region that is visible, at the size it will be shown. At
+  // zoom 1 that is a 1:1 copy and the host does not resample at all; at fit it is a
+  // downscale of only what is on screen. An enlarged preview of a smaller view is never
+  // what a closer view is made of, which is the policy in part 5.
+
+  let regionRequest = 0;
+  let lastRegion = null;
+
+  const paintRegion = async () => {
+    const vp = viewport();
+    if (!model.image.width || vp.w < 2 || vp.h < 2) return;
+    clampPan();
+
+    const outW = Math.max(1, Math.round(vp.w * dpr()));
+    const outH = Math.max(1, Math.round(vp.h * dpr()));
+    const srcW = Math.max(1, Math.round(outW / model.zoom));
+    const srcH = Math.max(1, Math.round(outH / model.zoom));
+    const x = Math.round(model.pan.x);
+    const y = Math.round(model.pan.y);
+
+    const ticket = ++regionRequest;
+    const url = `http://region.localhost/?x=${x}&y=${y}&w=${srcW}&h=${srcH}&ow=${outW}&oh=${outH}`;
+    const askedAt = performance.now();
+    const response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`the region was refused: ${response.status}`);
+    const whole = new Uint8Array(await response.arrayBuffer());
+    const header = new DataView(whole.buffer, 0, 8);
+    const width = header.getUint32(0, true);
+    const height = header.getUint32(4, true);
+    const bytes = whole.subarray(8);
+    // A late answer for a view the user has already left is dropped rather than painted,
+    // which is the stale-response half of part 5's display policy.
+    if (ticket !== regionRequest) return;
+    if (bytes.length !== width * height * 4) {
+      throw new Error(`the region is ${bytes.length} bytes for ${width}x${height}`);
+    }
+
+    canvas.width = width;
+    canvas.height = height;
+    canvas.style.width = `${width / dpr()}px`;
+    canvas.style.height = `${height / dpr()}px`;
+    context.putImageData(new ImageData(new Uint8ClampedArray(bytes), width, height), 0, 0);
+    lastRegion = { x, y, w: srcW, h: srcH, width, height, ms: Math.round(performance.now() - askedAt) };
+    console.log(`painted ${width}x${height} at zoom ${model.zoom.toFixed(3)} in ${lastRegion.ms} ms`);
+    layoutScene();
+    drawHud();
+  };
+
+  // ---------------------------------------------------------------- the callout layer
+
+  const strongDirection = (text) => {
+    // The first strong character decides, which is §3.5's rule written out rather than
+    // handed to a CSS keyword that resolves per paragraph and ignores an override (F36).
+    for (const ch of text) {
+      if (/[֐-ࣿיִ-﷿ﹰ-﻿]/.test(ch)) return 'rtl';
+      if (/[A-Za-zÀ-ʯͰ-֏]/.test(ch)) return 'ltr';
+    }
+    return null;
+  };
+
+  const resolveDirection = (callout) => {
+    if (callout.dirMode === 'ltr' || callout.dirMode === 'rtl') return callout.dirMode;
+    return strongDirection(callout.text) || 'ltr';
+  };
+
+  const createCallout = (anchor) => {
+    const width = 260;
+    const callout = {
+      id: `c${model.nextNumber}`,
+      number: model.nextNumber++,
+      anchor: { x: Math.round(anchor.x), y: Math.round(anchor.y) },
+      // A deterministic first position, offset from the anchor. The candidate set is S1.2.
+      box: { x: Math.round(anchor.x) + 28, y: Math.round(anchor.y) + 24, width },
+      text: '',
+      dirMode: 'auto',
+      resolvedDir: 'ltr',
+    };
+    model.callouts.push(callout);
+    return callout;
+  };
+
+  const removeCallout = (callout) => {
+    model.callouts = model.callouts.filter((c) => c !== callout);
+    if (model.selected === callout) model.selected = null;
+    if (model.editing === callout) model.editing = null;
+    // The number is NOT reused and the others are not renumbered: gaps stay, in the editor
+    // and in every output, which is the decision in §3.5.
+  };
+
+  const layoutScene = () => {
+    scene.style.transform =
+      `translate(${(-model.pan.x * model.zoom) / dpr()}px, ${(-model.pan.y * model.zoom) / dpr()}px)` +
+      ` scale(${model.zoom / dpr()})`;
+
+    for (const callout of model.callouts) {
+      let el = scene.querySelector(`[data-id="${callout.id}"]`);
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'callout';
+        el.dataset.id = callout.id;
+        el.innerHTML = '<div class="n"></div><div class="t" contenteditable="true" spellcheck="false"></div>';
+        scene.appendChild(el);
+
+        const anchorEl = document.createElement('div');
+        anchorEl.className = 'anchor';
+        anchorEl.dataset.anchorFor = callout.id;
+        scene.appendChild(anchorEl);
+      }
+      callout.resolvedDir = resolveDirection(callout);
+      el.style.left = `${callout.box.x}px`;
+      el.style.top = `${callout.box.y}px`;
+      el.style.width = `${callout.box.width}px`;
+      el.style.direction = callout.resolvedDir;
+      el.style.textAlign = callout.resolvedDir === 'rtl' ? 'right' : 'left';
+      el.classList.toggle('selected', model.selected === callout);
+      el.querySelector('.n').textContent = String(callout.number);
+      const textEl = el.querySelector('.t');
+      if (textEl.textContent !== callout.text && model.editing !== callout) {
+        textEl.textContent = callout.text;
+      }
+
+      const anchorEl = scene.querySelector(`[data-anchor-for="${callout.id}"]`);
+      anchorEl.style.left = `${callout.anchor.x}px`;
+      anchorEl.style.top = `${callout.anchor.y}px`;
+    }
+
+    for (const el of [...scene.querySelectorAll('.callout')]) {
+      if (!model.callouts.some((c) => c.id === el.dataset.id)) el.remove();
+    }
+    for (const el of [...scene.querySelectorAll('.anchor')]) {
+      if (!model.callouts.some((c) => c.id === el.dataset.anchorFor)) el.remove();
+    }
+
+    drawArrows();
+  };
+
+  const drawArrows = () => {
+    arrows.setAttribute('width', String(model.image.width || 1));
+    arrows.setAttribute('height', String(model.image.height || 1));
+    let markup = '';
+    for (const callout of model.callouts) {
+      const el = scene.querySelector(`[data-id="${callout.id}"]`);
+      const height = el ? el.offsetHeight : 40;
+      const box = {
+        x: callout.box.x,
+        y: callout.box.y,
+        w: callout.box.width,
+        h: height,
+      };
+      const centre = { x: box.x + box.w / 2, y: box.y + box.h / 2 };
+      const end = edgePoint(box, callout.anchor, centre);
+      markup +=
+        `<line x1="${callout.anchor.x}" y1="${callout.anchor.y}" x2="${end.x}" y2="${end.y}"` +
+        ` stroke="#7aa7ff" stroke-width="2" stroke-linecap="round" />`;
+    }
+    arrows.innerHTML = markup;
+  };
+
+  /// Where the line from the anchor meets the bubble's edge, so the arrow touches the box
+  /// instead of ending under it.
+  const edgePoint = (box, from, centre) => {
+    const dx = centre.x - from.x;
+    const dy = centre.y - from.y;
+    if (dx === 0 && dy === 0) return centre;
+    const halfW = box.w / 2;
+    const halfH = box.h / 2;
+    const scale = Math.min(
+      dx === 0 ? Infinity : halfW / Math.abs(dx),
+      dy === 0 ? Infinity : halfH / Math.abs(dy)
+    );
+    return { x: centre.x - dx * scale, y: centre.y - dy * scale };
+  };
+
+  const drawHud = () => {
+    const zoomText = Math.abs(model.zoom - model.fitZoom) < 0.0005
+      ? `fit (${(model.zoom * 100).toFixed(0)}%)`
+      : `${(model.zoom * 100).toFixed(0)}%`;
+    hud.textContent =
+      `${model.image.width}x${model.image.height}  ${model.image.source}\n` +
+      `zoom ${zoomText}   pan ${Math.round(model.pan.x)},${Math.round(model.pan.y)}   ` +
+      `callouts ${model.callouts.length}   dpr ${dpr()}\n` +
+      `0 fit  1 actual size  +/- zoom  arrows pan  click to add  Esc commit  Del remove`;
+  };
+
+  // ---------------------------------------------------------------- editing
+
+  const startEditing = (callout) => {
+    model.editing = callout;
+    model.selected = callout;
+    layoutScene();
+    const el = scene.querySelector(`[data-id="${callout.id}"] .t`);
+    el.focus();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  };
+
+  const commitEditing = () => {
+    const callout = model.editing;
+    if (!callout) return;
+    const el = scene.querySelector(`[data-id="${callout.id}"] .t`);
+    callout.text = el ? el.textContent.replace(/ /g, ' ') : callout.text;
+    model.editing = null;
+    if (el) el.blur();
+    // An empty bubble is discarded when editing ends, so it never reaches the output.
+    if (callout.text.trim() === '') {
+      removeCallout(callout);
+    }
+    layoutScene();
+    drawHud();
+  };
+
+  // ---------------------------------------------------------------- input
+
+  let drag = null;
+
+  stage.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    const target = event.target;
+
+    if (target.classList.contains('t')) {
+      const callout = model.callouts.find((c) => c.id === target.closest('.callout').dataset.id);
+      startEditing(callout);
+      return;
+    }
+
+    if (target.classList.contains('anchor')) {
+      const callout = model.callouts.find((c) => c.id === target.dataset.anchorFor);
+      const point = toImage(event);
+      drag = { kind: 'anchor', callout, dx: callout.anchor.x - point.x, dy: callout.anchor.y - point.y };
+      target.setPointerCapture(event.pointerId);
+      event.preventDefault();
+      return;
+    }
+
+    const box = target.closest('.callout');
+    if (box) {
+      const callout = model.callouts.find((c) => c.id === box.dataset.id);
+      model.selected = callout;
+      const point = toImage(event);
+      drag = { kind: 'box', callout, dx: callout.box.x - point.x, dy: callout.box.y - point.y };
+      stage.setPointerCapture(event.pointerId);
+      layoutScene();
+      event.preventDefault();
+      return;
+    }
+
+    // Empty canvas. Committing first means a click somewhere else ends the note being
+    // typed, which is what "no Apply step" has to feel like.
+    if (model.editing) {
+      commitEditing();
+      return;
+    }
+    if (model.selected) {
+      model.selected = null;
+      layoutScene();
+      return;
+    }
+    const callout = createCallout(toImage(event));
+    layoutScene();
+    startEditing(callout);
+  });
+
+  stage.addEventListener('pointermove', (event) => {
+    if (!drag) return;
+    const point = toImage(event);
+    if (drag.kind === 'anchor') {
+      drag.callout.anchor.x = Math.round(point.x + drag.dx);
+      drag.callout.anchor.y = Math.round(point.y + drag.dy);
+    } else {
+      drag.callout.box.x = Math.round(point.x + drag.dx);
+      drag.callout.box.y = Math.round(point.y + drag.dy);
+    }
+    layoutScene();
+  });
+
+  const endDrag = () => { drag = null; };
+  stage.addEventListener('pointerup', endDrag);
+  stage.addEventListener('pointercancel', endDrag);
+
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      if (model.editing) { commitEditing(); event.preventDefault(); return; }
+      if (model.selected) { model.selected = null; layoutScene(); event.preventDefault(); }
+      return;
+    }
+    if (model.editing) return; // typing owns every other key
+
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+      if (model.selected) { removeCallout(model.selected); layoutScene(); drawHud(); event.preventDefault(); }
+      return;
+    }
+    if (event.key === 'Enter' && model.selected) { startEditing(model.selected); event.preventDefault(); return; }
+
+    const step = 120;
+    if (event.key === '0') { setZoom(model.fitZoom); return; }
+    if (event.key === '1') { setZoom(1); return; }
+    if (event.key === '+' || event.key === '=') { setZoom(model.zoom * 1.5); return; }
+    if (event.key === '-') { setZoom(model.zoom / 1.5); return; }
+    if (event.key === 'ArrowLeft') { model.pan.x -= step; paintRegion(); return; }
+    if (event.key === 'ArrowRight') { model.pan.x += step; paintRegion(); return; }
+    if (event.key === 'ArrowUp') { model.pan.y -= step; paintRegion(); return; }
+    if (event.key === 'ArrowDown') { model.pan.y += step; paintRegion(); return; }
+  });
+
+  const setZoom = (next) => {
+    const vp = viewport();
+    const before = {
+      x: model.pan.x + (vp.w * dpr()) / model.zoom / 2,
+      y: model.pan.y + (vp.h * dpr()) / model.zoom / 2,
+    };
+    model.zoom = Math.min(8, Math.max(model.fitZoom / 4, next));
+    // Zooming keeps the centre of the view where it was, which is the only behaviour that
+    // does not feel like the image jumped.
+    model.pan.x = before.x - (vp.w * dpr()) / model.zoom / 2;
+    model.pan.y = before.y - (vp.h * dpr()) / model.zoom / 2;
+    // Returned so a caller can wait for the pixels. A check that sleeps instead of waiting
+    // measures whatever was on the canvas before, which is how the first version of the
+    // detail check passed a fit view while reading a 1:1 one.
+    return paintRegion();
+  };
+
+  const computeFit = () => {
+    const vp = viewport();
+    if (!model.image.width) return 1;
+    return Math.min(
+      (vp.w * dpr()) / model.image.width,
+      (vp.h * dpr()) / model.image.height,
+      1
+    );
+  };
+
+  window.addEventListener('resize', async () => {
+    await measureRatio();
+    model.fitZoom = computeFit();
+    paintRegion();
+  });
+
+  // ---------------------------------------------------------------- startup and the checks
+
+  const loadImage = async (info) => {
+    model.image = info;
+    model.callouts = [];
+    model.nextNumber = 1;
+    model.selected = null;
+    model.editing = null;
+    model.fitZoom = computeFit();
+    model.zoom = model.fitZoom;
+    model.pan = { x: 0, y: 0 };
+    await paintRegion();
+  };
+
+  window.reconEditor = {
+    model,
+    loadImage,
+    setZoom,
+    paintRegion,
+    layoutScene,
+    measureRatio,
+    ratioOf: () => ratio,
+    createCallout,
+    removeCallout,
+    startEditing,
+    commitEditing,
+    resolveDirection,
+    canvas,
+    context,
+  };
+
+  const boot = async () => {
+    console.log('page booted, asking the host for an image');
+    await measureRatio();
+    try {
+      const info = await invoke('editor_image_info');
+      await loadImage(info);
+    } catch (err) {
+      // Nothing captured yet: the probe makes the window useful on its own, and the check
+      // needs it anyway.
+      const info = await invoke('editor_load_probe', { width: 3840, height: 2160 });
+      await loadImage(info);
+    }
+    drawHud();
+    if (await invoke('editor_wants_checks')) {
+      console.log('running the S0.4 checks');
+      const { runChecks } = await import('./editor-checks.js');
+      await runChecks(window.reconEditor, invoke);
+    }
+  };
+
+  boot().catch((err) => {
+    const text = err && err.stack ? err.stack : String(err);
+    hud.textContent = `startup failed: ${text}`;
+    console.error('startup failed', text);
+    // Never hang: a run that cannot start has to end with a verdict, not a timeout.
+    invoke('editor_checks_done', { report: `the editor failed to start: ${text}`, failures: 1 }).catch(() => {});
+  });
+})();
+</script>

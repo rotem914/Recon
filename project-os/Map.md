@@ -47,13 +47,15 @@ Recon/
 │       ├── overlay.rs              # the Win32 selection overlay, one window per display
 │       ├── selftest.rs             # --selftest: S0.2's evidence, without a human
 │       ├── bench.rs                 # --bench: S0.3's boundary measurement
+│       ├── editor.rs                # the editor window, and the region the page may see
 │       └── capture/
 │           ├── mod.rs              # the capture interface and the frame it produces
 │           ├── coords.rs           # the ONE desktop-to-image conversion, with its tests
 │           ├── display.rs          # DPI awareness and the live display layout
 │           └── screen.rs           # the chosen path: one copy of the whole virtual screen
 ├── editor/                         # the web view surface, a placeholder until S0.4
-│   ├── index.html
+│   ├── index.html                  # the editor: the scene, the callout, the text layer
+│   ├── editor-checks.js            # --editor-check: S0.4's evidence, not product code
 │   └── bench.html                  # the web view half of S0.3, not product code
 └── project-os/                     # the process docs and their enforcement
     ├── Plan.md                     # the whole plan, read at task pickup
@@ -107,4 +109,4 @@ anything.
 | The plan | `project-os/Plan.md` | One file, and there is never a second: the product, the decisions, the architecture and the stages. Free-standing documents go in `notes/`, created when one is needed, never at the root. |
 | The host | `host/*` | Tray, hotkey, freeze, overlay and the region today; decode, the store and the clipboard later. It never renders an annotation. |
 | The one conversion | `host/src/capture/coords.rs` | The only place allowed to subtract a frame origin. Part 5 names the four coordinate spaces; this file is the edge between two of them. |
-| The editor | `editor/*` | The web view surface. A placeholder until S0.4. |
+| The editor | `editor/*` | The scene, the callout and the text layer. Laid out in image pixels; one CSS transform does the zoom. Embedded into the binary at build time, so an edit here needs a rebuild. |

@@ -16,6 +16,7 @@
 mod bench;
 mod capture;
 mod config;
+mod editor;
 mod overlay;
 mod selftest;
 
@@ -172,9 +173,84 @@ fn write_capture(width: u32, height: u32, pixels: Vec<u8>) {
     }
 }
 
+/// Opens the editor with its own checks, which is S0.4's evidence.
+///
+/// The window is created hidden exactly as the product would, so the first-frame check is
+/// testing the real thing rather than a window made visible for the occasion.
+fn editor_check() -> i32 {
+    let app = tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            editor::editor_image_info,
+            editor::editor_load_probe,
+            editor::editor_load_screen,
+            editor::editor_show,
+            editor::editor_look_at_window,
+            editor::editor_show_and_look,
+            editor::editor_checks_done,
+            editor::editor_wants_checks,
+            editor::editor_window_metrics,
+            editor::editor_log,
+        ])
+        .register_asynchronous_uri_scheme_protocol("region", |_ctx, request, responder| {
+            let query = request.uri().query().unwrap_or_default().to_string();
+            std::thread::spawn(move || match editor::region_bytes(&query) {
+                Ok((bytes, width, height)) => responder.respond(
+                    tauri::http::Response::builder()
+                        .header("Content-Type", "application/octet-stream")
+                        .header("Access-Control-Allow-Origin", "*")
+                        .header(
+                            "Access-Control-Expose-Headers",
+                            "X-Region-Width, X-Region-Height",
+                        )
+                        .header("X-Region-Width", width.to_string())
+                        .header("X-Region-Height", height.to_string())
+                        .body(bytes)
+                        .expect("a response with a body"),
+                ),
+                Err(err) => responder.respond(
+                    tauri::http::Response::builder()
+                        .status(400)
+                        .header("Access-Control-Allow-Origin", "*")
+                        .body(err.into_bytes())
+                        .expect("an error response"),
+                ),
+            });
+        })
+        .setup(|app| {
+            editor::request_checks();
+            tauri::WebviewWindowBuilder::new(
+                app,
+                "editor",
+                tauri::WebviewUrl::App("index.html".into()),
+            )
+            .title("Recon")
+            .inner_size(1280.0, 800.0)
+            .visible(false)
+            .build()?;
+            Ok(())
+        })
+        .build(tauri::generate_context!());
+
+    match app {
+        Ok(app) => {
+            app.run(|_app, _event| {});
+            0
+        }
+        Err(err) => {
+            println!("the editor could not be built: {err}");
+            1
+        }
+    }
+}
+
 fn main() {
     // Before anything else, and before any window or device context exists.
     let awareness = capture::display::make_per_monitor_aware();
+
+    if std::env::args().any(|a| a == "--editor-check") {
+        println!("dpi at startup  : {awareness}");
+        std::process::exit(editor_check());
+    }
 
     if std::env::args().any(|a| a == "--bench") {
         println!("dpi at startup  : {awareness}");

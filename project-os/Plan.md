@@ -1062,7 +1062,7 @@ layer is 31.6 MB raw at 359 ms, or 162 KB at 3.5 ms once the web view encodes it
 which takes 78 ms there. Encoded wins by two orders of magnitude, and part 5 now says so.
 
 ----
-**[ ] S0.4 · Editor window, scene, one callout**
+**[x] S0.4 · Editor window, scene, one callout**
 
 Model: Opus 5. The composition contract is the product's spine.
 
@@ -1090,6 +1090,34 @@ zoom: open a large image containing fine text, and read that text at fit, at 100
 enlarged view, and again after panning. An enlarged fit-to-window preview fails this.
 
 Full undo and redo are Stage 1 (S1.7), not a Stage 0 gate.
+
+**Closed 2026-09-11.** Twenty-six checks, all passing, run with `--editor-check` and written
+to a report beside the executable. Two of them are the ones worth having:
+
+**Zoom cannot re-wrap a line, and now that is measured rather than argued.** The same
+wrapped bubble, mixed Hebrew and English, lays out at exactly 140 px at 17%, 33%, 100% and
+200%. That is part 5's claim holding by construction: the text is laid out in image pixels
+and one CSS transform scales it, so there is no zoom at which the layout is recomputed.
+
+**The detail matches the zoom, so F35 is closed by pixels.** The probe image's left half is
+a one-pixel checkerboard. Reading one strip of the canvas: 199 alternations out of 200 at
+actual size, 0 at fit-to-window, 199 again on the way back, and 199 after a pan. An
+enlarged fit-preview would have read 0 at every step.
+
+The rest: a callout created by a click, typed into, committed, selected, moved, its anchor
+moved on its own with the arrow following, and deleted; an empty bubble discarded when
+editing ends, whitespace included; numbering that keeps its gaps, where deleting 2 leaves
+the next one 4; three direction modes resolving as §3.5 says and reaching the element.
+
+**The hidden window shows a current first frame, without the flag.** The page painted while
+the window was still hidden, the host showed it and then looked at that area of the SCREEN:
+100% of the sampled pixels were the colour the page painted, 0% black, 40 ms after a show
+that took 12 to 22 ms. Asking the page what it drew would have proved nothing, because a
+suspended surface has a perfectly correct document behind it. The occlusion flag the review
+struck from this gate was not used, so this is the shipping configuration.
+
+**Two things this step found, and neither is in its own evidence list.** They are F43 and
+F44 in part 12, and the second one is product-facing.
 
 ----
 **[ ] S0.5 · Open and decode an existing image**
@@ -1434,6 +1462,18 @@ About 9 ms per MB through the message channel and the custom protocol, which mea
 same; about 4.4 ms per MB in and 5.7 ms out through a local socket. The web view encodes a
 4K layer to PNG in 78 ms, producing 162 KB.
 
+**From S0.4, on the same machine:** showing the pre-created hidden window takes 12 to 22
+ms, and its first painted frame is already current. A 1:1 region costs 1 ms, because nothing
+is resampled. A fit-to-window region of the 3840x2160 probe costs **1.1 to 1.15 s**, which
+is the resampler and is F43: the fit view is the first thing anyone sees when they open an
+image, so a second of it is the viewer's core promise broken.
+
+**And the window is not DPI-scaled at all**, which is F44. The monitor's effective DPI is
+216, 225%, but the editor window reports 96, its scale factor is 1, its physical and CSS
+sizes are both 1280x800, and a band just outside that rectangle is not part of the window.
+So the image path is exactly right, one image pixel to one physical pixel at actual size,
+and the interface around it renders at a third of the size the display asks for.
+
 **One number that is a problem for later:** the host's own PNG encoder, at its default
 settings, took **633 ms** to encode a 1920x1080 image, while the web view encoded a larger
 one in 78 ms. That sits on the Save As path in S1.11, not on the capture path, and it needs a
@@ -1493,7 +1533,7 @@ them.
 
 # Part 12: the review trail
 
-Forty-two findings were raised against the plan and folded into the parts above. This table
+Forty-four findings were raised against the plan and folded into the parts above. This table
 is the record; the fixes themselves live where the table points. Severity is how the finding
 was rated when it was raised.
 
@@ -1541,6 +1581,8 @@ was rated when it was raised.
 | F40 | The boundary figure the design was argued against was two to four times pessimistic, and it came from a discussion thread | 🟡 | Part 11's measured table, S0.3 | Resolved: measured here, and the plan quotes the measurement |
 | F41 | The host's PNG encoder takes 633 ms for a 1920x1080 image at default settings, and it sits on the Save As path | 🟠 | Part 11, S1.11 | Open: needs a faster setting or another encoder before S1.11 ships |
 | F42 | The plan said the annotation layer crosses back, without saying it crosses encoded, which is two orders of magnitude cheaper | 🟡 | Part 5 boundary rule, S0.3 | Resolved: encoded, and the numbers are in part 11 |
+| F43 | The fit-to-window view costs 1.1 s, because it resamples the whole image, and it is the first thing anyone sees when opening one | 🟠 | Part 11, S0.4, and S1.3's viewing surface | Open: the fit view needs a cheap downscale, not a good one |
+| F44 | The editor window is not DPI-scaled: the monitor is at 225% and the window reports 96 dpi, so the interface renders at a third of the size the display asks for | 🟠 | Part 11, S0.4's closing note | Open: the image path is correct, the interface is not, and the cause is not yet established |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the
 two things it compares and the failure that would turn it red (`project-os/QA.md` §12), and a
