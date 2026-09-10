@@ -14,7 +14,8 @@ Where this file and the product plan differ, an explicit approved revision here 
 and every one of them is listed in the revision blocks below. Everything else in the
 product plan stands as written.
 
-Status: revision 4. Approved for the Stage 0 experiment, with nothing outstanding.
+Status: revision 5. Stage 0 approved. Three format decisions outstanding, part 3 items D,
+E and F, which gate S0.4 only.
 Written: 2026-09-10.
 Product baseline: `project-os/Product_plan.md`, dated 2026-09-10.
 
@@ -23,6 +24,26 @@ Nothing here is built yet. No code was run and no timing was measured in writing
 Ten parts: the review of the product plan, the six decisions and their answers, the
 answers for Stage 0, the architecture, Stage 0, what Stage 0 may conclude, Stage 1, the
 later stages, the evidence status of every claim here, and the sources behind it.
+
+### What changed in revision 5
+
+Rotem clarified the product scope: Recon is his primary everyday image viewer as well as
+his capture and annotation tool, and it opens common image formats from disk. This
+supersedes the earlier deferral of opening existing images. Every other settled decision
+stands.
+
+The product plan carries the behavior, and its own revision note lists section by section
+what changed there.
+
+Here: five findings arrived, F17 to F21. Part 3 gained three open format decisions, D, E
+and F. Stage 0 gained S0.4, open and decode an existing image, which renumbered the steps
+after it. Stage 1 grew from seven items to twelve, with file opening, the viewing surface,
+folder navigation, the annotation transition and PNG Save As. Part 4 gained the image
+source interface beside the capture interface. Part 6 gained the row for a format that
+will not decode.
+
+One invariant went into CLAUDE.md rule 11, stated by Rotem: viewing an external file never
+modifies it and never imports it.
 
 ### What changed in revision 4
 
@@ -38,7 +59,7 @@ lose transparency.
 The capture-path fallback conditions in part 3 and part 6 now say the same thing, and a
 performance failure traced to the capture implementation is one of them.
 
-The active-typing check in S0.4 now compares the live editor against the copied image.
+The active-typing check in S0.5 now compares the live editor against the copied image.
 Comparing the clipboard against the composer proved nothing: both come out of the same
 renderer.
 
@@ -87,10 +108,12 @@ For a finding raised from here on, the verdict vocabulary is **fix** (do it now)
 the two mechanisms that decide whether that behavior is achievable: how the exported
 image is produced, and how the Stage 0 numbers are measured.
 
-Sixteen findings as raised: two blocking, eight important, six small.
-All sixteen are resolved at the planning level, so what remains on each one is
-implementation and testing at the step its status line names.
-Nothing in them changed the product definition or the stage order.
+Twenty-one findings as raised: three blocking, ten important, eight small.
+Twenty are resolved at the planning level, so what remains on each one is implementation
+and testing at the step its status line names.
+One is open: F18 carries the three format decisions in part 3.
+F17 to F21 arrived with the viewing clarification. None of the sixteen before them changed
+the product definition or the stage order; the clarification did.
 
 ### What is strong
 
@@ -134,11 +157,11 @@ A shared wrapping function narrows that risk. It does not prove the two agree.
 The failure is invisible in the editor: it appears only in the file the client gets.
 
 Suggestion: one scene model and one composer, used for display and for export, plus
-the three checks in S0.4, one of which compares the live editor against the copied image
+the three checks in S0.5, one of which compares the live editor against the copied image
 while the caret is still active. The product forbids an Apply step, so that case is the
 contract, not an edge.
 
-Status: resolved in plan. Implementation verification pending, part 4 and S0.4.
+Status: resolved in plan. Implementation verification pending, part 4 and S0.5.
 
 ----
 **F2 · 🟠 The elevated-window behavior is unknown, and the plan treats fast access as certain**
@@ -162,7 +185,7 @@ by design: nothing on the user desktop reaches it, and no product decision follo
 Suggestion: keep the test in Stage 0, record what it finds, and decide nothing about an
 elevated launch mode until a problem is demonstrated.
 
-Status: resolved in plan, and the claim withdrawn. Behavior verification pending, S0.6.
+Status: resolved in plan, and the claim withdrawn. Behavior verification pending, S0.7.
 
 ----
 **F3 · 🔴 Stage 0 asks for two latency numbers and the timestamps cannot produce one of them**
@@ -188,7 +211,7 @@ Report the raw runs and the percentile method, not only a summary: with thirty r
 95th percentile is the second-worst run, so the maximum and the list carry more
 information than the label does.
 
-Status: resolved in plan. Implementation verification pending, S0.5.
+Status: resolved in plan. Implementation verification pending, S0.6.
 
 ----
 **F4 · 🟠 Clipboard formats are unspecified, so a passing paste test proves little**
@@ -205,7 +228,7 @@ than through the web view API, and name the destinations by actual use.
 Two real destinations are the acceptance boundary. A longer list is not a stronger test,
 it is a longer test.
 
-Status: resolved in plan. Destinations named in part 3 B. Acceptance at S0.4.
+Status: resolved in plan. Destinations named in part 3 B. Acceptance at S0.5.
 
 ----
 **F5 · 🟠 The selection overlay should not be a web view**
@@ -243,7 +266,7 @@ Alignment follows base direction.
 The bubble's anchor-side edge stays fixed while the opposite edge grows, so a note
 never walks away from the thing it points at.
 
-Status: decided, decision 1. Implementation verification pending, S0.4.
+Status: decided, decision 1. Implementation verification pending, S0.5.
 
 ----
 **F7 · 🟠 Undo is specified by context, and the user cannot see the context**
@@ -258,9 +281,9 @@ While a note is being edited, undo works on the typing and never reaches into ob
 operations. Once editing ends, that text change takes its place in document history as
 one grouped step.
 
-Its acceptance sequence is in S1.3, and it is the test that settles this.
+Its acceptance sequence is in S1.7, and it is the test that settles this.
 
-Status: decided, decision 2. Its acceptance sequence is in S1.3.
+Status: decided, decision 2. Its acceptance sequence is in S1.7.
 
 ----
 **F8 · 🟠 The document format is deferred, but three stated requirements already depend on it**
@@ -277,7 +300,7 @@ An index database, if any, holds pointers and never the images.
 Writes go to a temporary file and are renamed into place, per `project-os/QA.md` §5.
 Autosave is debounced while typing and forced on blur, navigation, hide and quit.
 
-Status: resolved in plan. The schema itself is settled at S1.4.
+Status: resolved in plan. The schema itself is settled at S1.8.
 
 ----
 **F9 · 🟠 Ctrl+S sits in the v1 contract while file export is Stage 2**
@@ -291,7 +314,8 @@ The Rogers row is marked conditional; the export row is not.
 Suggestion: add a stage column to the table, or mark the two deferred rows the way
 the Rogers row is marked.
 
-Status: resolved in plan. Applied at S1.3.
+Status: resolved in plan. The table has a stage column, and Save As is no longer a
+promise: it is real in Stage 1 at S1.11.
 
 ----
 **F10 · 🟠 Returning focus to the previous application needs a named mechanism and a failure path**
@@ -307,7 +331,7 @@ anything, and never report a return that did not happen.
 Test it in Stage 0 against an elevated window and against an application that has
 since closed.
 
-Status: resolved in plan. Behavior verification pending, S0.6 and S1.6.
+Status: resolved in plan. Behavior verification pending, S0.7 and S1.10.
 
 ----
 **F11 · 🟡 Numbering: gaps stay, renumbering is rejected**
@@ -327,7 +351,7 @@ clipboard, the file and the Rogers text.
 An explicit Renumber action stays a backlog idea and enters nothing now.
 Recorded in `project-os/Decisions.md`.
 
-Status: decided, decision 3. Recorded in `project-os/Decisions.md`, applied at S1.2.
+Status: decided, decision 3. Recorded in `project-os/Decisions.md`, applied at S1.6.
 
 ----
 **F12 · 🟡 "Keep forever" has an unstated cost**
@@ -353,7 +377,7 @@ Stage 1 ships previous and next only.
 Suggestion: add a position indicator and shortcuts to the first and last capture in
 Stage 1. The thumbnail strip still waits for Stage 2.
 
-Status: decided, decision 4. Applied at S1.5.
+Status: decided, decision 4. Applied at S1.9.
 
 ----
 **F14 · 🟡 Three different questions are being answered as one**
@@ -373,7 +397,7 @@ tested versions as a product decision, and keep runtime packaging as a distribut
 decision that does not block the experiment.
 Recorded in `project-os/Decisions.md`.
 
-Status: decided, decision 5. Recorded in `project-os/Decisions.md`, applied at S0.6.
+Status: decided, decision 5. Recorded in `project-os/Decisions.md`, applied at S0.7.
 
 ----
 **F15 · 🟡 First run and the empty editor are missing**
@@ -399,7 +423,85 @@ invites Stage 0 to spend a day on it.
 Suggestion: make "not supported in v1, and documented" an acceptable Stage 0 exit,
 with detection so the output is never silently washed out.
 
-Status: resolved in plan. Applied at S0.6.
+Status: resolved in plan. Applied at S0.7.
+
+----
+**F17 · 🔴 Viewing must never modify or import the source file**
+
+Where: the viewing clarification, product plan §6.0 and §8, principle 8.
+
+Recon is about to be pointed at folders of originals, client material included, and every
+way of getting this wrong is silent: a metadata rewrite on open, a re-encode on save, a
+thumbnail dropped beside the file, or a Save As that defaults to the source path.
+None of it is visible until the original is already gone.
+
+Suggestion: it is an invariant, not a preference, and it is written into CLAUDE.md rule 11.
+Save As writes a new file every time (S1.11), viewing creates no managed document, and
+S0.4 proves it by comparing every source file byte for byte after a viewing and
+navigation pass.
+
+Status: stated as an invariant by Rotem. Verification pending, S0.4 and S1.5.
+
+----
+**F18 · 🟠 Two target formats have no browser decoder, so common images cannot be promised yet**
+
+Where: the clarification item 4, product plan §5b.
+
+A Chromium-based view decodes JPG, PNG, BMP, GIF, WebP, AVIF and SVG on its own, which
+covers most of the target list at no cost.
+TIFF it does not decode at all. HEIC and HEIF depend on codecs installed on the machine
+rather than shipped with the application, and their availability varies.
+So two rows of the list need another path, and one of them can fail on a machine that is
+missing a component. Advertising support for common images before that is settled is the
+overclaim the product plan forbids.
+
+Suggestion: the three decisions in part 3, items D, E and F, and a per-format verdict out
+of S0.4 that is allowed to come back shorter than the target list.
+
+Status: open. The three format decisions are in part 3.
+
+----
+**F19 · 🟠 One window, two modes, and the pointer does not know which**
+
+Where: the clarification item 2, product plan §3.3.
+
+The click that starts a note in annotation mode must do nothing in viewing mode. Get that
+boundary wrong and the first stray click lands a callout on a client photograph, in a
+window the user believes is read only.
+
+Suggestion: viewing mode arms no tool, a click pans or does nothing, the mode is named on
+screen, and the only way across is the explicit Annotate action, which also creates the
+managed document.
+
+Status: resolved in plan. Verification pending, S1.5.
+
+----
+**F20 · 🟡 Two navigation lists in one window**
+
+Where: the clarification item 3, product plan §3.4.
+
+The folder and the capture history are different lists, and previous and next has to mean
+one of them. Ambiguity here arrives as the question where did my screenshot go.
+
+Suggestion: name the active context with its position, and never let a navigation step
+cross from one list to the other.
+
+Status: resolved in plan. Applied at S1.4 and S1.9.
+
+----
+**F21 · 🟡 A folder walk can grow memory without a bound**
+
+Where: the clarification item 3, product plan §6.2.
+
+A folder of 240 large images, decoded eagerly or cached generously, is hundreds of
+megabytes of pixels for images nobody is looking at any more. The capture side already
+has this rule; the folder side is new and has the same failure.
+
+Suggestion: one decoded image at a time plus whatever small look-ahead measures well, the
+folder listing read once per navigation context, and the S0.6 memory sample covering a
+folder walk as well as a capture run.
+
+Status: resolved in plan. Measured at S0.6.
 
 ## Part 2: the six decisions, answered
 
@@ -407,16 +509,17 @@ Rotem's answers, as given. The rest of this plan follows them.
 
 | Decision | Answer | Where it lands |
 |---|---|---|
-| 1 · Text direction | Detect from the first strong character, with a manual override. | S0.4, F6 |
-| 2 · Undo | Specify observable behavior, not a stack count. Typing undoes typing; once editing ends, the text change joins document history as one grouped step. | S1.3, F7 |
-| 3 · Numbering | Stable numbers and gaps in every output. Renumbering rejected. | S1.2, F11, `project-os/Decisions.md` |
-| 4 · Stage 1 navigation | Position indicator, plus shortcuts to the first and last capture. | S1.5, F13 |
-| 5 · Windows support | Separate the API minimum from the supported and tested versions. Runtime packaging is its own distribution decision. | S0.6, F14, `project-os/Decisions.md` |
-| 6 · Elevated windows | Test first. No elevated mode on an unverified assumption. | S0.6, F2 |
+| 1 · Text direction | Detect from the first strong character, with a manual override. | S0.5, F6 |
+| 2 · Undo | Specify observable behavior, not a stack count. Typing undoes typing; once editing ends, the text change joins document history as one grouped step. | S1.7, F7 |
+| 3 · Numbering | Stable numbers and gaps in every output. Renumbering rejected. | S1.6, F11, `project-os/Decisions.md` |
+| 4 · Stage 1 navigation | Position indicator, plus shortcuts to the first and last capture. | S1.9, F13 |
+| 5 · Windows support | Separate the API minimum from the supported and tested versions. Runtime packaging is its own distribution decision. | S0.7, F14, `project-os/Decisions.md` |
+| 6 · Elevated windows | Test first. No elevated mode on an unverified assumption. | S0.7, F2 |
 
 ## Part 3: the answers for Stage 0
 
-All three are settled. Stage 0 can start.
+Items A, B and C are settled. Items D, E and F arrived with the viewing clarification and
+are open. They gate S0.4 only, so S0.1 to S0.3 can start.
 
 **A · The initial capture path. Settled.**
 Stage 0 builds one path: a single copy of the whole virtual screen, chosen because one
@@ -431,7 +534,7 @@ A second path is earned only under the conditions in part 6, and diagnosis comes
 
 **B · The two paste destinations. Settled.**
 Claude and ChatGPT.
-They are the acceptance boundary for output at S0.4.
+They are the acceptance boundary for output at S0.5.
 Both read the clipboard as a web application does, so PNG is the format that decides
 acceptance, and a clipboard that publishes only a device-independent bitmap fails here
 rather than merely losing transparency.
@@ -442,11 +545,37 @@ differently on each.
 **C · The reference environment. Settled.**
 Your own main machine at its current display scale.
 Record the environment and the font details alongside the reference images and in the
-S0.6 report, so a later comparison failure means the renderer changed rather than the
+S0.7 report, so a later comparison failure means the renderer changed rather than the
 machine or the font did.
 
-Details that wait for their step: the exact document schema (S1.4), the placement
-candidate set (S1.2), the shortcut table's stage column (S1.3), the storage rate note
+**D · How decoding is split between the two providers. Outstanding.**
+Recommendation: let the web view decode everything it can, JPG, PNG, BMP, GIF, WebP, AVIF
+and SVG, and give the host only what it cannot, TIFF and HEIC, both behind one image
+source interface.
+It is the cheapest path, it adds the fewest dependencies, and moving a format from one
+provider to the other later touches no editor code.
+The cost is two decode paths, so orientation and color handling have to be checked on
+both, which is what S0.4 does.
+The alternative is one native path for every format: uniform behavior and a single place
+for color management, paid for with a decoder dependency for formats the view already
+handles for free.
+
+**E · TIFF, including multiple pages. Outstanding.**
+Recommendation: decode through the Windows imaging stack, expose the pages, and annotate
+the displayed one.
+If that proves expensive in S0.4, the honest fallbacks are page one only in the first
+release, or TIFF named as a gap and left out. Both beat a blanket claim.
+
+**F · HEIC and HEIF. Outstanding.**
+Recommendation: decode through the OS, and when the codec is not installed say exactly
+that, with the way to install it, never a corrupt-file message.
+It cannot be promised unconditionally, because the codec is a separate component whose
+availability varies by machine and by Windows edition.
+The alternatives are bundling a decoder, which brings licensing and size questions, or
+deferring HEIC and naming the gap.
+
+Details that wait for their step: the exact document schema (S1.8), the placement
+candidate set (S1.6), the shortcut table's stage column (S1.7), the storage rate note
 (Stage 2), the Rogers submission record (Stage 4).
 
 ## Part 4: the proposed architecture
@@ -459,6 +588,7 @@ is in doubt (F5).
 |---|---|---|
 | Host | native process | tray, preferences, global hotkey, window lifecycle, the return-focus target |
 | Capture | native | freezing the desktop, the captured region, physical desktop coordinates, all behind one interface |
+| Image source | web view for what it decodes, native for what it does not | opening a path, decoding, orientation and color handling, page and frame selection, also behind one interface |
 | Overlay | native, one borderless window per display | the dim, the selection rectangle, cancel, handing the region to the host |
 | Store | native | one folder per capture, the untouched original, the versioned document, atomic writes |
 | Clipboard | native | several image formats in one operation, success reported before any hide |
@@ -481,6 +611,11 @@ The rest of the application reaches capture through one small interface, freeze 
 region in, image out, so the implementation behind it can be replaced, or joined by a
 second one, without the editor noticing (part 3 A).
 
+An opened file arrives through the same shape: one image source interface, path in,
+decoded frame and metadata out, with two providers behind it and one of them chosen per
+format (part 3 D). Past that boundary the editor cannot tell a capture from a file, which
+is what lets one window serve both.
+
 ### Coordinate spaces, and the transforms between them
 
 Four spaces, named, with the conversion written down at each boundary. One conversion
@@ -490,7 +625,7 @@ conversion findable.
 | Space | Units | Used by |
 |---|---|---|
 | Desktop | physical pixels across all displays, negative positions included | the freeze, the overlay, the selected rectangle |
-| Image | pixels local to the captured image, origin at its top-left, original scale | the stored document: anchors, bubbles, arrows, text boxes |
+| Image | pixels local to the source image, captured or opened, origin at its top-left, original scale, orientation already applied | the stored document: anchors, bubbles, arrows, text boxes |
 | Canvas | image space plus the annotation margin, as an offset record | the composer, the clipboard, the exported file |
 | View | canvas space through zoom, pan and display scale | what the editor draws and what the pointer hits |
 
@@ -503,8 +638,8 @@ monitor arrangement, so yesterday's capture opens the same way after the monitor
 ## Part 5: Stage 0, the smallest experiment that settles the foundations
 
 Purpose: retire the risks that would change the architecture, on the smallest build that
-can produce evidence. Six steps. Anything not on this list is not Stage 0, including
-packaging, the second capture path, and full undo.
+can produce evidence. Seven steps. Anything not on this list is not Stage 0, including
+packaging, the second capture path, full undo, and anything that manages files.
 
 Each step carries a checkbox, a suggested model with a short reason, what it delivers,
 and the evidence that closes it. The model is a suggestion for whoever picks the step
@@ -551,10 +686,33 @@ The anchor moves independently and the arrow follows.
 Evidence: every one of those operations exercised by hand; an empty bubble is discarded
 when editing ends and never reaches the output.
 
-Full undo and redo are Stage 1 (S1.3), not a Stage 0 gate.
+Full undo and redo are Stage 1 (S1.7), not a Stage 0 gate.
 
 ----
-**[ ] S0.4 · Output fidelity and the clipboard**
+**[ ] S0.4 · Open and decode an existing image**
+
+Model: Opus 5. Format behavior, and a decision gate for the product surface.
+
+Depends on part 3 items D, E and F.
+
+Delivers: an image source interface, open a path, get a decoded frame plus its metadata,
+with the web view as one provider and the host as the other; and the same canvas showing
+an opened file instead of a capture.
+
+Evidence, one line per format in the §5b list: did it decode, how long did the open take,
+and what came out. Transparency preserved where the format has it, EXIF orientation
+applied, an embedded color profile honored, a very large image opened without stalling,
+an animation playing, a multipage file exposing its pages.
+Every format that did not work is named with what it would take, and no format is
+reported as supported on the strength of another format working.
+The managed-document boundary is proved here too: after opening, viewing and navigating,
+every source file is byte for byte what it was, and no managed document was created.
+
+This step is the gate for the format claims in the product plan. It is allowed to come
+back with a shorter supported list than the target list.
+
+----
+**[ ] S0.5 · Output fidelity and the clipboard**
 
 Model: Opus 5. Fidelity, and the one place work can be lost.
 
@@ -589,7 +747,7 @@ Plus: a paste verified in Claude and in ChatGPT, the destinations in part 3 B, w
 surface and version recorded beside each result.
 
 ----
-**[ ] S0.5 · Instrumentation and the thirty-run measurement**
+**[ ] S0.6 · Instrumentation and the thirty-run measurement**
 
 Model: Sonnet 5. Mechanical, known shape.
 
@@ -602,7 +760,7 @@ runs plus the maximum and the percentile method, against the plan's proposed tar
 time excluded from both intervals; process startup measured and reported separately.
 
 ----
-**[ ] S0.6 · The limits, and the go or no-go report**
+**[ ] S0.7 · The limits, and the go or no-go report**
 
 Model: Opus 5. Judgment on evidence.
 
@@ -633,6 +791,7 @@ reported as a limitation rather than absorbed.
 | Activation is slower than the target | Find where the time goes first: process wake, window show, the freeze, the first paint, or input readiness. Replace the component the measurement accuses, not the one that is easiest to blame. If it accuses the freeze itself, that is the row above. |
 | The clipboard cannot satisfy the two destinations | Diagnose it: which format, which application, which failure. Fix it, or report an explicit limitation with the applications named. It does not pass the gate on the grounds that the clipboard is native by design. |
 | The export drifts from the display and shared wrapping cannot close it | Moving the composer to native code is a candidate, not a remedy: it must be revalidated for editing and output together, including the active-caret case, before it counts. |
+| A target format will not decode, or needs a component that is not on the machine | Name the format, the cause and the impact, and ship the shorter list. The product plan says a gap is stated with its impact, never covered by a blanket claim. This does not fail the stack. |
 | Editing is unusable at 4K | Tile the canvas, or reconsider the editor surface, with the measurement in hand. |
 
 No Stage 0 result justifies building the capture library or the Rogers integration to
@@ -645,24 +804,42 @@ real work rather than a feature count.
 
 - [ ] S1.1 Capture lifecycle: repeated captures, hide and show, the remembered return
       target, no overwriting of a previous capture, and the empty-state line (F15).
-- [ ] S1.2 Callout completion: the deterministic candidate positions, the neutral margin
+- [ ] S1.2 File opening and activation: the file association, Open With, drag and drop and
+      Ctrl+O, both when Recon is already running and when it starts because a file was
+      activated, one window rather than a second instance, plus the type registration and
+      the link into the Windows default-apps settings. Model: Opus 5, it is the entry point.
+- [ ] S1.3 The viewing surface: fit to window on open, actual size, zoom, pan, fullscreen,
+      and the filename and pixel dimensions on screen.
+- [ ] S1.4 Folder navigation: previous and next across the supported types in the opened
+      file folder, the defined numeric-aware order, the position indicator, and the named
+      active context so it can never be confused with the capture list (F20).
+- [ ] S1.5 The transition into annotation: viewing mode arms no tool and no click can
+      create a callout, an explicit Annotate action switches modes and creates the managed
+      document with its preserved source, and leaving annotation keeps the work (F19).
+      Model: Opus 5, it is the boundary that protects the originals.
+- [ ] S1.6 Callout completion: the deterministic candidate positions, the neutral margin
       when a bubble cannot fit, and stable numbering with gaps, identical in the editor
       and in every output (decision 3). Model: Opus 5.
-- [ ] S1.3 The keyboard contract, routed by context, with the stage column added to the
-      table so nothing promises a key that does not exist (F9), and undo and redo in
-      full (decision 2).
+- [ ] S1.7 The keyboard contract, routed by context, with the stage column in the table so
+      nothing promises a key that does not exist (F9), the viewing and navigation keys inert
+      while a note is being edited, and undo and redo in full (decision 2).
       Its acceptance sequence: edit an existing bubble, leave text editing, move the
       bubble, undo restores its position, undo again restores its previous text.
-- [ ] S1.4 The document store: the schema from F8, debounced autosave, forced saves on
-      blur, navigation, hide and quit, reopen after restart, and a visible failure that
+- [ ] S1.8 The document store: the schema from F8, plus the source path and the page or
+      frame for an annotated file, debounced autosave, forced saves on blur, navigation,
+      opening another file, hide and quit, reopen after restart, and a visible failure that
       never claims to have saved. Model: Opus 5, it touches stored work.
-- [ ] S1.5 Navigation: previous and next, the position indicator, and shortcuts to the
-      first and last capture (decision 4).
-- [ ] S1.6 Copy and Return, including every failure path: a failed clipboard, a failed
+- [ ] S1.9 Capture navigation: previous and next through captures, the position indicator,
+      and shortcuts to the first and last (decision 4).
+- [ ] S1.10 Copy and Return, including every failure path: a failed clipboard, a failed
       save, a refused activation, a closed target application, and a user who moved on
       mid-operation (F10).
-- [ ] S1.7 The trial: thirty captures of real client feedback, with the friction recorded
-      in `project-os/History.md` and anything deferred sent to `project-os/Backlog.md`.
+- [ ] S1.11 PNG Save As: a new file every time, a suggested name derived from the source
+      and marked as annotated, and no path by which an external original is the default
+      target (F17).
+- [ ] S1.12 The trial: thirty captures of real client feedback and a week of using Recon as
+      the everyday viewer, with the friction recorded in `project-os/History.md` and
+      anything deferred sent to `project-os/Backlog.md`.
 
 Stage 1 is the first release that replaces the current Snagit workflow. It ships without
 file export, without the thumbnail strip, and without Rogers.
@@ -674,9 +851,11 @@ all the foundation Stage 4 is entitled to assume.
 
 Kept as a dependency outline only, per the product plan's sections 9 and 10.
 
-Stage 2, history and file output: the strip, older captures inside the same editor, PNG
-export, intentional deletion, visible storage use with the expected daily rate stated
-(F12). Depends on S1.4.
+Stage 2, the capture library: the thumbnail strip, older captures inside the same editor,
+intentional deletion, visible storage use with the expected daily rate stated (F12), and
+the export options beyond the PNG default. Basic PNG Save As is no longer here, it moved
+to S1.11, because an annotated external image has to be saveable on day one.
+Depends on S1.8.
 
 Stage 3, secondary tools: arrow, rectangle, text, blur, highlight, ordered by what daily
 use actually demanded. Depends on the scene and composer being stable.
@@ -694,18 +873,24 @@ this document was produced by running anything.
 
 **Documented platform behavior:** the per-display capture call's own minimum Windows
 version; that injected input is subject to privilege restrictions; that a request to
-bring a window to the foreground can be refused. Sources in part 10.
+bring a window to the foreground can be refused; which image formats a Chromium-based
+view decodes on its own, and which ones the Windows imaging stack decodes without an
+extra component. Sources in part 10.
 
 **Behavior to verify, currently unknown:** whether a registered global hotkey is
-delivered while an application running as administrator holds the foreground (F2, S0.6);
+delivered while an application running as administrator holds the foreground (F2, S0.7);
 whether best-effort activation succeeds against such a window and against a closed one
-(F10, S0.6); which clipboard formats the two chosen destinations actually accept (F4,
-S0.4); what the freeze and the first paint really cost on this machine (F3, S0.5).
+(F10, S0.7); which clipboard formats the two chosen destinations actually accept (F4,
+S0.5); what the freeze and the first paint really cost on this machine (F3, S0.6);
+what each target format actually does on this machine, decode or not, how fast, and
+whether orientation and color survive the trip into annotation (F18, S0.4); whether the
+HEIC codec is even present here (part 3 F, S0.4).
 
 **Assumed until Stage 0 says otherwise:** that pre-creating the overlay and the editor at
 startup is enough to approach the proposed latency targets; that shared wrapping plus the
-three S0.4 checks are enough to keep the editor and the export in agreement; that a
-familiar stack is the right one here.
+three S0.5 checks are enough to keep the editor and the export in agreement; that two
+decode providers behind one interface cost less than one native path for everything; that
+a familiar stack is the right one here.
 
 **Not inspected:** Copy Ninja and Rogers. Both are yours to point me at, in a task that
 names them.
@@ -717,3 +902,5 @@ names them.
 - [SetForegroundWindow](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow) · when activation is allowed and when it is refused.
 - [CreateForMonitor](https://learn.microsoft.com/en-us/windows/win32/api/windows.graphics.capture.interop/nf-windows-graphics-capture-interop-igraphicscaptureiteminterop-createformonitor) · the per-display capture call and its Windows 10 1903 minimum.
 - [High DPI development on Windows](https://learn.microsoft.com/en-us/windows/win32/hidpi/high-dpi-desktop-application-development-on-windows) · DPI contexts and coordinate handling.
+- [Native WIC codecs](https://learn.microsoft.com/en-us/windows/win32/wic/native-wic-codecs) · what the Windows imaging stack decodes with nothing added, and where page access for a multipage file comes from.
+- [Image file type and format guide](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/Image_types) · what a Chromium-based view decodes on its own, which is where the TIFF and HEIC gaps come from.

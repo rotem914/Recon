@@ -1,46 +1,79 @@
 # Recon — Product Plan and Claude Handoff
 
-**Screen capture and annotation for Windows.**
+**Image viewing, screen capture and annotation for Windows.**
 
 Owner: Rotem. Personal tool, intended for an open-source release.  
 Status: revised product definition; no implementation or performance validation yet.  
-Updated: 2026-09-10.
+Updated: 2026-09-10, revision 2. Image viewing is now a core capability.
 
 This document replaces the original macro plan. It incorporates the product review and supplies explicit starting defaults where the original left behavior open. These defaults guide implementation; they are not claims that the interactions have already been tested. Stack selection remains conditional on Stage 0.
 
 ---
 
+## 0. Revision note, 2026-09-10
+
+Rotem's clarification: Recon is his primary everyday image viewer as well as his capture and annotation tool. It opens common image formats directly from the computer.
+
+This supersedes the earlier deferral of "importing existing images". Every other settled product decision stands.
+
+What that changed in this document:
+
+- §1 has three core capabilities instead of two, and names the viewer it replaces.
+- §2 gains principle 8: viewing never changes the file.
+- §3.1 gains the file-opening entry points, file-type registration and the default-app path.
+- §3.3 becomes two entry behaviors in one window: a capture opens ready to annotate, a file opens in viewing mode behind an explicit Annotate action.
+- §3.4 is new: everyday viewing behavior and folder navigation.
+- §4.5 is new: how annotation begins from an animation, a multipage image and a vector file.
+- §5 gains the viewing keys and moves Save As into the first daily-use release.
+- §5b is new: format support, stated per format instead of as "common images".
+- §6.0 is new: an external file is never modified and never imported by being viewed.
+- §8 drops "importing existing images" from the maybe-later list and names what viewing still excludes.
+- §9 gives Stage 0 a decoding experiment, Stage 1 the viewing loop plus PNG Save As, and expands the acceptance checks.
+
+Format tradeoffs that still need a decision are in `project-os/Plan.md` part 3, items D, E and F.
+
+---
+
 ## 1. Product definition
 
-Recon is a general-purpose tool for taking a screenshot, adding clear annotations, and getting the result to its destination quickly.
+Recon is a general-purpose tool for viewing an image, taking a screenshot, adding clear annotations, and getting the result to its destination quickly.
 
-**One line:** select a region, annotate it, and get it where it needs to go — without losing the thread of the work you were doing.
+**One line:** open or capture an image, annotate it, and get it where it needs to go — without losing the thread of the work you were doing.
 
-The first version should replace Rotem's everyday region-capture and annotation workflow in Snagit. Full Snagit feature parity is not a v1 requirement.
+Three core capabilities, and none of them is an add-on to the others:
 
-The central interaction is an integrated callout: an anchor point, connecting arrow, and editable text bubble form one object. The central workload is a sequence of 20–30 captures, with occasional returns to earlier images for corrections.
+- **Viewing** an image that already exists on the computer.
+- **Capturing** a region of the screen.
+- **Annotating** either of them.
 
-Client feedback is the first concrete workload to validate. Recon must also work well for a screenshot without annotations and for a single annotated image copied into another application. Rogers is one output workflow, not the definition of the product.
+The first version should replace Rotem's everyday region-capture and annotation workflow in Snagit, and his everyday image viewer. Full Snagit feature parity is not a v1 requirement, and neither is a full image-management application.
+
+The central interaction is an integrated callout: an anchor point, connecting arrow, and editable text bubble form one object. The central capture workload is a sequence of 20–30 captures, with occasional returns to earlier images for corrections. The central viewing workload is opening a file from Explorer and looking at it, or walking a folder of images, many times a day, with no annotation at all.
+
+Client feedback is the first concrete annotation workload to validate. Recon must also work well for a screenshot without annotations, for a single annotated image copied into another application, and for an image that is only looked at. Rogers is one output workflow, not the definition of the product.
 
 ### Positioning accuracy
 
 Describe the advantage through Recon's defaults and measured experience. Snagit already supports global capture shortcuts and a Copy All command; see the [official shortcut guide](https://www.techsmith.com/learn/tutorials/snagit/snagit-hotkeys/). Do not base the product on claims that these capabilities are absent or that an old capture library necessarily causes slow operation.
 
+The same honesty applies to viewing. Windows Photos exists and opens most of these formats. The claim Recon can make is the one it can measure: opening quickly, showing the image at a predictable size, and being one keystroke from annotating it.
+
 ---
 
 ## 2. Design principles
 
-1. **Fast access is a core feature.** Measure time until the user can select a region and time until they can type an annotation. Recon should feel readily available from the background.
+1. **Fast access is a core feature.** Measure time until the user can select a region and time until they can type an annotation. Recon should feel readily available from the background. Opening a file gets the same treatment: measure time from activation to a visible image.
 2. **No routine decisions during capture.** Choose preferences and destinations outside the capture loop. Do not interrupt normal capture with format prompts or save dialogs.
 3. **Keyboard-first operation.** Repeated actions need discoverable shortcuts. Preserve normal text-editing behavior while typing.
 4. **The image is always ready.** Copying and exporting use current visible edits. There is no Done or Apply step for annotations.
-5. **Repeated use is the baseline.** Evaluate 30 captures, navigation, and corrections, not only the first successful screenshot.
+5. **Repeated use is the baseline.** Evaluate 30 captures, navigation, and corrections, not only the first successful screenshot. Evaluate a folder of images the same way.
 6. **Automation remains correctable.** Automatic callout placement is a starting position. The user can always move it.
-7. **Work survives normal navigation and closure.** Hiding the editor, taking another capture, or exiting normally must not silently discard completed work.
+7. **Work survives normal navigation and closure.** Hiding the editor, taking another capture, opening another file, or exiting normally must not silently discard completed work.
+8. **Viewing never changes the file.** Looking at an image does not modify it, move it, re-encode it, or copy it into Recon's own storage. This one is not a preference; it is the promise that makes Recon safe to point at a folder of originals.
 
 ---
 
-## 3. Capture and editor lifecycle
+## 3. Capture, viewing and editor lifecycle
 
 ### 3.1 Application behavior
 
@@ -51,6 +84,17 @@ Describe the advantage through Recon's defaults and measured experience. Snagit 
 - Preferences are accessed outside the normal capture flow. Startup with Windows is a preference, not a prerequisite for use.
 - If a capture shortcut is unavailable, explain the conflict and allow another shortcut. Do not silently take over another application's shortcut.
 - Remember the last external application as the return target, including when another capture starts from inside Recon. If that application has closed, hide Recon without activating an unrelated application. Background completions must not steal focus.
+
+**Opening a file is a normal way in, not a special case.** All four of these reach the same window:
+
+- Double-click in Explorer, through a file association.
+- Open With, for a type Recon is not the default for.
+- Drag and drop a file, or a selection of files, onto the window.
+- `Ctrl+O` from inside Recon.
+
+Both starting states must work: Recon already running in the background, and Recon starting because a file was activated. A second activation while it is running opens that file in the existing window rather than starting another instance, and brings that window forward. Opening a file never discards unsaved annotation work; §6.0 says what happens to it.
+
+**Registration and defaults.** Recon registers the file types in §5b that it can actually display, and its preferences link straight to Windows' own default-apps settings so Rotem can make it the default viewer. Recon never silently takes a file association it was not given, and never re-takes one the user changed.
 
 ### 3.2 Capture flow
 
@@ -65,7 +109,15 @@ Global shortcut → freeze the desktop image → dimmed selection overlay → dr
 
 Stage 0 must verify the hide/snapshot/focus behavior with real applications, including an open menu or changing content. Document any limitation instead of implying universal capture support.
 
-### 3.3 Editor
+### 3.3 One window, two entry behaviors
+
+The same main window serves both, and which one it is must be obvious at a glance.
+
+**A new capture opens ready for annotation.** Behavior as it has always been: the callout tool is live and a click starts a note.
+
+**An existing file opens in viewing mode.** Ordinary clicking and dragging pan, select nothing, and create nothing. No stray callout can appear on someone's photograph because the pointer moved. An explicit **Annotate** action switches that window into annotation, arms the tools, and creates the managed document described in §6.0. Leaving annotation returns to viewing without discarding the work.
+
+Everything else about the editor holds for both:
 
 - One main editor contains the canvas and, as the history UI develops, a capture strip at the bottom.
 - The image fits the available workspace without changing its underlying pixel dimensions.
@@ -75,6 +127,19 @@ Stage 0 must verify the hide/snapshot/focus behavior with real applications, inc
 - Copying leaves the editor open. Copy and Return copies the image, then hides the editor and returns focus to the preceding application.
 - Hide only after the clipboard operation succeeds and pending document changes are saved. On failure, retain the work and show an actionable message.
 - If the user starts another action or changes the document while Copy and Return is completing, report the copy result without hiding their current work.
+
+### 3.4 Everyday viewing
+
+This is the part that has to be good enough to use all day, with no annotation involved.
+
+- **Fit to window** on open, **actual size** on demand, zoom in and out, and pan. Zoom never re-encodes anything and never changes what an export would contain.
+- **Fullscreen**, with one key in and the same key or `Esc` out.
+- **The filename and the pixel dimensions are visible**, without hunting for them.
+- **Previous and next walk the folder** the opened file came from, across the supported types in that folder, with a position indicator (for example 12 of 240).
+- **The order is defined, not incidental**: a numeric-aware, case-insensitive filename order, so `img2` sorts before `img10` and the sequence matches what Explorer shows closely enough to be predictable. State the exact comparison in the technical plan rather than inheriting whatever the file system returns.
+- **The folder listing is read once per navigation context** and is not rescanned on every keystroke. A file that has since disappeared is skipped with a quiet note, not an error dialog.
+
+**Folder navigation and capture history are two different lists.** Walking a folder never moves through captures, and walking captures never moves through the folder. The window says which context is active and what position it is at. If both exist at once, the active one is the one the last navigation used, and it is named on screen.
 
 ---
 
@@ -117,54 +182,102 @@ Validate this behavior on a small crop, a dense interface, anchors near each edg
 
 The planned secondary set is arrow, rectangle, text, blur, and highlight. Prioritize these after using the core loop for real work. Selection, movement, deletion, and Undo/Redo are core editing behavior and must not wait for this stage.
 
+### 4.5 Annotating something that is not a single still frame
+
+Annotation always operates on one still raster image. What that image is depends on what was open, and the answer is fixed rather than clever:
+
+- **An animation.** Annotation starts from the frame on screen and produces a separate still image. The animated original is untouched, and Recon does not attempt to annotate every frame or to write an animation back out.
+- **A multipage image.** Annotation operates on the page currently displayed, and the page number travels with the managed document so a later reader knows which one it was.
+- **A vector file.** Annotation produces a raster composition at the size then displayed, and the original vector file is preserved exactly as it was. Recon does not write vector annotations back into it.
+
+In all three cases the transition is explicit and stated on screen, because the user is moving from "the file" to "a picture of the file".
+
 ---
 
 ## 5. Keyboard and output contract
 
 These are initial editor shortcut defaults. Verify them with Hebrew and English input layouts. Capture uses a separately configurable global shortcut; image-copy shortcuts below are local to Recon.
 
-| Action or context | Default behavior |
-|---|---|
-| `Ctrl+C` while editing text | Normal text-copy behavior; it does not unexpectedly copy an image |
-| `Ctrl+C` outside text editing | Copy the full composed image, even when an annotation is selected |
-| `Ctrl+Shift+C` anywhere in the editor | Copy the full composed image, including current text edits |
-| `Ctrl+Enter` anywhere in the editor | Copy the full composed image and return to the previous application after success |
-| `Enter` while editing a note | Insert a newline |
-| `Esc` during capture | Cancel capture |
-| `Esc` during text editing | Leave text editing and retain the text |
-| `Esc` with an annotation selected | Clear the selection |
-| `Esc` in the otherwise idle editor | Save pending changes and hide the editor |
-| Delete outside text editing | Delete the selected annotation |
-| Undo/Redo | Reverse or restore text edits in text context, and annotation operations in canvas context |
-| `Ctrl+S` | Export the current composed image to a file; internal saving remains automatic |
-| `Ctrl+Shift+Enter` | Send to Rogers, when that feature is available and configured |
+The **Stage** column says when the row is real. A row promising a key that does nothing yet is a contract Recon has broken on its first day.
 
-Do not intercept ordinary typing or editing keys to trigger tools while a text field has focus. Copying one annotation object is not required for v1.
+| Action or context | Default behavior | Stage |
+|---|---|---|
+| `Ctrl+C` while editing text | Normal text-copy behavior; it does not unexpectedly copy an image | 1 |
+| `Ctrl+C` outside text editing | Copy the full composed image, even when an annotation is selected | 1 |
+| `Ctrl+Shift+C` anywhere in the editor | Copy the full composed image, including current text edits | 1 |
+| `Ctrl+Enter` anywhere in the editor | Copy the full composed image and return to the previous application after success | 1 |
+| `Enter` while editing a note | Insert a newline | 1 |
+| `Esc` during capture | Cancel capture | 1 |
+| `Esc` during text editing | Leave text editing and retain the text | 1 |
+| `Esc` with an annotation selected | Clear the selection | 1 |
+| `Esc` in fullscreen | Leave fullscreen | 1 |
+| `Esc` in the otherwise idle editor | Save pending changes and hide the editor | 1 |
+| Delete outside text editing | Delete the selected annotation | 1 |
+| Undo/Redo | Typing undoes typing while a note is being edited; once editing ends that text change takes its place in document history as one grouped step | 1 |
+| `Ctrl+O` | Open an image file | 1 |
+| Previous / next image, outside text editing | Walk the current navigation context, folder or captures, in the order §3.4 defines | 1 |
+| Fit to window · actual size · zoom in · zoom out | Viewing controls, no effect on export resolution | 1 |
+| Fullscreen | Enter fullscreen | 1 |
+| `Ctrl+S` | Save As a PNG file, to a new file; internal saving stays automatic | 1 |
+| `Ctrl+Shift+Enter` | Send to Rogers, when that feature is available and configured | 4 |
+
+Do not intercept ordinary typing or editing keys to trigger tools while a text field has focus. **This now covers folder navigation too:** the previous and next keys, and the viewing keys, are inert while a note is being edited, and typing a letter into a note never navigates away from the image it belongs to. Copying one annotation object is not required for v1.
 
 ### Image output
 
-- Clipboard and file output contain the original screenshot pixels plus the visible annotations and any annotation margin.
+- Clipboard and file output contain the original screenshot or source pixels plus the visible annotations and any annotation margin.
 - Copy and export snapshot the composition when invoked. Their completion must not discard or overwrite edits made afterward.
 - Selection outlines, editing handles, caret, and tool UI are not output.
 - Display zoom does not change export resolution. Use PNG as the initial file-export default.
 - Provide a brief, nonblocking success indication only after the clipboard or export operation succeeds.
 - Ctrl+S opens Save As with the last export folder and a unique suggested filename. A file dialog is appropriate for an explicit file export, not for taking a capture.
+- **Save As writes a new file, always.** The suggested name is derived from the source and marked as annotated, and an existing file is never overwritten without the user choosing that file by name in the dialog. An external original is never the default target.
 - File output is a rendered snapshot. It does not replace the editable internal document. Subsequent edits do not silently rewrite a previous export.
 - Saving into a folder already watched by Drop Ninja lets that existing workflow handle the file. Recon needs no custom Drop Ninja integration; this depends on the user's configured watched folder.
+
+## 5b. Format support, stated per format
+
+"Common images" is not a specification. Each row below says what support means, and the technical plan verifies the decoding approach and its dependencies before any of it is advertised. A format that cannot make the first daily-use release is named as a gap with its impact, never quietly dropped.
+
+| Format | What support means |
+|---|---|
+| **PNG** | Decode, transparency preserved, embedded color profile honored. Annotate directly. |
+| **JPG / JPEG** | Decode, EXIF orientation applied on display and carried into annotation, embedded color profile honored. Annotate directly. |
+| **BMP** | Decode. Annotate directly. |
+| **WebP** | Decode, transparency preserved. An animated WebP follows the animation rules in §4.5. |
+| **GIF** | Decode and play the animation, with transparency. Annotation follows §4.5: a still from the displayed frame. |
+| **TIFF** | Decode, with multiple pages exposed as page navigation and the page count visible. Annotation operates on the displayed page (§4.5). |
+| **HEIC / HEIF** | Decode, orientation applied. Annotate directly. Depends on codecs installed on the machine, so a missing codec is reported as a missing codec, with the way to install it, and never as a corrupt file. |
+| **AVIF** | Decode, transparency preserved. An animated AVIF follows §4.5. |
+| **SVG** | Render for viewing at the displayed size. Annotation produces a raster composition and preserves the original vector file (§4.5). |
+
+Across every row: orientation and color handling are applied consistently in the viewer and in any annotated output, so an image never rotates or shifts color when the user presses Annotate. An unsupported or unreadable file says so plainly, names the format, and leaves the file alone.
 
 ---
 
 ## 6. History, persistence, and retention
 
+### 6.0 An external file is not Recon's file
+
+This section governs everything below it.
+
+- **Viewing does not modify.** No re-encode, no metadata rewrite, no move, no rename, no thumbnail written beside it.
+- **Viewing does not import.** Browsing a folder of 100 images creates zero managed documents. Recon holds a path, a decoded frame in memory, and nothing else.
+- **Annotation is what creates a managed document**, and only for the file being annotated. That document holds a preserved copy of the source image as it was decoded, plus the annotation data, exactly like a capture's document.
+- **Navigating away from annotated work saves it first**, in the managed document, with no Apply step. The external original still does not change.
+- **Export writes a new file** (§5). Deleting a managed document does not touch the external original, and does not recall an export or a clipboard copy.
+
+The distinction that already existed, between an editable internal document and a flattened exported image, is unchanged. This section adds a third thing that is neither: an external file Recon is only allowed to read.
+
 ### 6.1 Editable internal documents
 
-Persist the original captured image and editable annotation data separately from flattened output. Include sufficient versioned document metadata to reopen the capture correctly after restarting.
+Persist the original captured or source image and editable annotation data separately from flattened output. Include sufficient versioned document metadata to reopen the capture correctly after restarting, including, for an annotated external file, its source path and the page or frame it came from.
 
 - Save new captures automatically and save subsequent edits without an Apply action.
-- Save pending changes before normal hide, document navigation, or Quit.
+- Save pending changes before normal hide, document navigation, opening another file, or Quit.
 - Reopen the latest capture and recover all successfully saved documents after restart.
 - Crash recovery is to the last successful save; do not claim zero loss for unpersisted keystrokes. Keep the autosave interval short and verify recovery behavior.
-- A disk or persistence failure must be visible. Keep recoverable work in memory and provide image copying as an immediate recovery path, plus file export once Stage 2 is available; do not label it saved or silently discard it.
+- A disk or persistence failure must be visible. Keep recoverable work in memory and provide image copying as an immediate recovery path, plus file export once it exists; do not label it saved or silently discard it.
 - Image exports and clipboard copies are independent of the internal document. Deleting a local document does not recall copies, exported files, or a Rogers item.
 
 The exact file/database arrangement belongs to technical planning. Avoid coupling the editable document format to one rendering library's private, unversioned serialization.
@@ -176,10 +289,11 @@ The exact file/database arrangement belongs to technical planning. Avoid couplin
 - Stage 2 adds the full thumbnail strip and a way to reach older captures within the editor, with simple date grouping if useful.
 - Changing a Rogers target does not clear the capture history.
 - Load full-resolution image data when needed. Keep thumbnails and inactive captures from causing memory usage to grow with the entire library.
+- The same discipline applies to a folder walk: one decoded image at a time, plus whatever small look-ahead is measured to help, and never the folder.
 
 ### 6.3 Retention default
 
-For v1, retain captures until the user explicitly deletes them. No automatic expiry or silent deletion.
+For v1, retain captures until the user explicitly deletes them. No automatic expiry or silent deletion. External files are not retained at all, because they were never taken.
 
 Stage 2 provides intentional deletion, visible storage usage, and a clear distinction between hiding a capture from the recent strip and deleting its stored document if both actions exist. Prefer one unambiguous delete action over adding unnecessary concepts.
 
@@ -240,7 +354,9 @@ Out of scope for v1:
 - Creating Rogers projects/tabs, updating previously sent tasks, or background delivery queues.
 - A generalized integrations platform.
 
-Importing existing images, full-window capture, and further editor tools can be evaluated from observed use; they do not block the initial region-capture loop.
+**Viewing is in scope; managing files is not.** Recon opens, shows and annotates an image. It does not rename, move, delete, tag, rate or organize external files, does not run batch operations over a folder, does not build a browsable thumbnail grid of the file system, and does not edit an image beyond annotating it: no crop, no resize, no color adjustment in v1. Writing back into an external file, in any format, stays out (§6.0).
+
+Full-window capture and further editor tools can be evaluated from observed use; they do not block the initial loop.
 
 ---
 
@@ -248,9 +364,9 @@ Importing existing images, full-window capture, and further editor tools can be 
 
 Stage 0 is a feasibility experiment. Each subsequent stage must remain usable on its own. Use the result for real work and record friction before proceeding to the next stage. Do not implement the entire roadmap in one pass.
 
-### Stage 0 — prove the capture and editor foundations
+### Stage 0 — prove the capture, viewing and editor foundations
 
-**Build only:** background hotkey → clean region capture → minimal canvas → editable, manually movable callout → image clipboard.
+**Build only:** background hotkey → clean region capture → minimal canvas → editable, manually movable callout → image clipboard, plus a small file-opening and decoding experiment on that same canvas.
 
 Start by evaluating Tauri + React + Rust, given the owner's experience with that stack in Copy Ninja. A familiar stack is a candidate, not proof of suitability. SQLite is a storage candidate for later stages, not a requirement for the experiment.
 
@@ -258,29 +374,36 @@ Start by evaluating Tauri + React + Rust, given the owner's experience with that
 
 - Capture on two displays with different scale factors, including 100% and 150%/200% and a display positioned left of the primary one. Selected bounds and resulting pixels agree.
 - Verify that the editor and capture overlay do not appear in the result; cancellation and focus restoration work.
-- Check a small image and a 4K image, original-resolution output, and Hebrew/English mixed text. Paste into at least two actual destination applications used by Rotem.
+- Check a small image and a 4K image, original-resolution output, and Hebrew/English mixed text. Paste into the two actual destination applications.
+- **Open representative files on the same surface** and report, per format, whether it decoded, how long it took, and what it looked like: transparency, EXIF orientation, an embedded color profile, very large dimensions, an animation, and a multipage file. Name every format that did not work and what it would take.
 - Measure process startup separately from capture activation while Recon is already running in the background. For background activation, initial working targets on the test machine are p95 ≤250 ms from the hotkey to usable selection and p95 ≤500 ms from completed selection to an editor ready for annotation input. These are proposed targets to evaluate, not validated promises; they do not apply to process startup.
 - Run 30 captures with navigation/replacement of the experimental image and report latency and memory behavior. Separate live document memory from retained history; identify uncontrolled growth or accumulating delay.
 - State the tested Windows version, hardware, display setup, and limitations. Explicitly determine HDR behavior before claiming support for it.
 
-**Exit:** a short evidence-based recommendation to retain the stack or change the specific failing component. Do not build the library or Rogers integration to compensate for an unproven capture path.
+**Exit:** a short evidence-based recommendation to retain the stack or change the specific failing component, and a per-format verdict on decoding. Do not build the library or Rogers integration to compensate for an unproven capture or decoding path.
 
-### Stage 1 — complete daily-use loop
+### Stage 1 — complete daily-use loop, viewing included
 
-**Build:** reliable capture lifecycle, full basic callout editing, deterministic placement with manual correction, context-aware keyboard actions, Copy and Return, basic previous/next navigation, and editable autosave/reopen.
+**Build:** reliable capture lifecycle, file opening and activation, the everyday viewing surface, folder navigation, the transition into annotation, full basic callout editing, deterministic placement with manual correction, context-aware keyboard actions, Copy and Return, PNG Save As, basic previous/next through captures, and editable autosave/reopen.
 
 **Acceptance:**
 
 - Capture and copy with zero annotations; annotate with one bubble; use multiple bubbles; correct an earlier capture.
 - Complete a 30-capture sequence without losing previous work or requiring a Done step.
+- **Open a file from Explorer by double-click and by Open With**, with Recon closed and with Recon already running; the second case uses the existing window and does not start a second instance.
+- **Drag and drop a file onto the window**, and open one with `Ctrl+O`.
+- **Walk a folder** of mixed supported types, in the defined order, with the position indicator correct at both ends; confirm folder navigation and capture navigation never move each other.
+- **Move from viewing into annotation and back**, and confirm that no click in viewing mode ever created a callout.
+- **Confirm every source file is byte-for-byte unchanged** after viewing, navigating and annotating, and that Save As wrote a new file.
+- Include representative files: transparency, EXIF orientation, an embedded color profile, very large dimensions, an animation, and a multipage file where supported.
 - Test small crops, dense images, each edge, long text, mixed Hebrew/English, and a bubble moved manually before its text changes.
 - Verify undo/redo, delete, copy while text is being edited, copy with an object selected, and repeated capture while Recon is open.
 - Restart normally and recover editable work. Simulate an interrupted run and verify recovery to the last successful save. Exercise clipboard and save failures without false success or discarded work.
-- Compare equivalent capture/annotation/return tasks with the owner's existing workflow. Record concrete friction and results; do not substitute feature counts for usability evidence.
+- Compare equivalent capture/annotation/return tasks, and equivalent viewing tasks, with the owner's existing tools. Record concrete friction and results; do not substitute feature counts for usability evidence.
 
-### Stage 2 — full history and file output
+### Stage 2 — full capture library and file output
 
-**Build:** thumbnail strip, access to older captures in the same editor, PNG file export, intentional deletion, and storage visibility.
+**Build:** thumbnail strip, access to older captures in the same editor, intentional deletion, storage visibility, and the export options beyond the Stage 1 PNG default.
 
 **Acceptance:** retrieve and edit yesterday's capture after restart; exported files match the visible composition at original resolution; existing exports are not silently changed; old history is not all loaded as full-resolution images into memory.
 
@@ -300,13 +423,13 @@ Start by evaluating Tauri + React + Rust, given the owner's experience with that
 
 ## 10. Technical planning handoff for Claude
 
-Use this document as the product baseline. The next deliverable is a technical plan for Stage 0 and the proposed path into Stage 1; implementation is a subsequent task unless Rotem explicitly asks for it in the accompanying request.
+Use this document as the product baseline. The build plan is `project-os/Plan.md`; where the two differ, an approved revision there wins, and each one is listed in its revision blocks.
 
 1. Read repository instructions and inspect the current workspace first. Do not assume code or infrastructure already exists.
-2. Identify the smallest native capture path and editor rendering approach that can satisfy Stage 0. Inspect relevant existing Copy Ninja code only if it is available; reuse proven pieces selectively, without coupling Recon to that application's runtime.
-3. Explain the boundaries between Windows capture/window management, the editor, editable documents, and image output. Specify the minimum supported Windows version based on the chosen native APIs. Keep package and database choices proportional to the first stage.
-4. Describe how a single document model drives editing, autosave, and rendering. Call out coordinate conversion, text direction, callout sizing, and original-resolution export as explicit risks to test.
-5. Produce a bounded Stage 0 work plan, validation method, and go/no-go evidence for the stack. Distinguish measured facts, documentation support, and assumptions.
+2. Identify the smallest native capture path, image decoding path and editor rendering approach that can satisfy Stage 0. Inspect relevant existing Copy Ninja code only if it is available; reuse proven pieces selectively, without coupling Recon to that application's runtime.
+3. Explain the boundaries between Windows capture/window management, file activation and decoding, the editor, editable documents, and image output. Specify the minimum supported Windows version based on the chosen native APIs. Keep package and database choices proportional to the first stage.
+4. Describe how a single document model drives editing, autosave, and rendering. Call out coordinate conversion, text direction, callout sizing, original-resolution export, orientation and color handling as explicit risks to test.
+5. Produce a bounded Stage 0 work plan, validation method, and go/no-go evidence for the stack and for each format. Distinguish measured facts, documentation support, and assumptions.
 6. Identify material conflicts or unsupported requirements. Resolve ordinary implementation details using this plan; seek owner direction only for a real product tradeoff that changes the agreed behavior or scope.
 7. Keep later stages as a short dependency outline. Inspect Rogers when its stage approaches; do not invent its current API or build integration infrastructure during the capture experiment.
 
@@ -320,7 +443,7 @@ No runtime code was reviewed or benchmarked in preparing this plan. The source r
 
 Recon is a standalone product. Copy Ninja and its Drop Ninja module remain a separate application. A shared visual language can connect the tools without merging their names, processes, libraries, or release cycles.
 
-For open-source release, make the README's opening description explicit: a Windows screen capture and annotation tool. Name availability and discoverability can be checked before publication; they do not block the personal-use prototype.
+For open-source release, make the README's opening description explicit: a Windows image viewer, screen capture and annotation tool. Name availability and discoverability can be checked before publication; they do not block the personal-use prototype.
 
 ---
 
@@ -331,3 +454,5 @@ For open-source release, make the README's opening description explicit: a Windo
 - [Tauri Clipboard Manager API](https://v2.tauri.app/reference/javascript/clipboard-manager/) — image clipboard operations; destination compatibility still needs testing.
 - [Windows CreateForMonitor](https://learn.microsoft.com/en-us/windows/win32/api/windows.graphics.capture.interop/nf-windows-graphics-capture-interop-igraphicscaptureiteminterop-createformonitor) — one available native desktop capture building block, not a mandated implementation.
 - [High DPI Desktop Application Development on Windows](https://learn.microsoft.com/en-us/windows/win32/hidpi/high-dpi-desktop-application-development-on-windows) — DPI contexts, coordinate handling, and mixed-display testing.
+- [Native WIC codecs](https://learn.microsoft.com/en-us/windows/win32/wic/native-wic-codecs) — which formats the Windows imaging stack decodes without an extra component, and where page access comes from.
+- [Image file type and format guide](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/Image_types) — which formats a Chromium-based view decodes on its own.

@@ -60,6 +60,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 
 - 2026-09-10 · Callout numbers never change, gaps included.
 - 2026-09-10 · The capture API minimum is not the product support baseline.
+- 2026-09-10 · Image viewing is a core capability, not a later addition.
 
 ---
 
@@ -120,3 +121,45 @@ and runtime packaging is a distribution decision that cannot block the experimen
 Cost: three answers to track instead of one.
 Future work must not quote an API requirement as a support promise.
 Revisit when the capture path is chosen for good.
+
+---
+
+## 2026-09-10 · Image viewing is a core capability, not a later addition
+
+### Context
+
+The product plan deferred opening existing images, listing it among the things to
+evaluate from observed use. Rotem then clarified that Recon is his primary everyday image
+viewer as well as his capture and annotation tool, and has to open common formats
+straight from disk.
+
+### Options
+
+1. Keep viewing out of v1 and revisit once the capture loop is in daily use.
+2. Ship a separate viewer application beside Recon.
+3. One window with two entry behaviors: a capture opens ready to annotate, a file opens
+   in viewing mode behind an explicit Annotate action.
+
+### Decision
+
+Option 3, chosen by Rotem.
+
+### Consequences
+
+Format support becomes a product surface. Each format is stated per row, and one that
+cannot make the first release is named as a gap with its impact instead of being covered
+by a claim about common images. Two of the target formats have no browser decoder, so
+decoding needs two providers behind one interface and three decisions are open in
+`project-os/Plan.md` part 3, items D to F.
+
+External files gain the invariant in CLAUDE.md rule 11: viewing never modifies and never
+imports, so a folder of originals is safe to point Recon at.
+
+Stage 0 gains a decoding experiment, and Stage 1 grows from seven items to twelve,
+including PNG Save As, because an annotated external image has to be saveable on day one.
+
+Cost: the first daily-use release is larger than it was, and the viewer has to be good
+enough to replace an existing one rather than merely present.
+
+Revisit only if the decoding evidence in S0.4 shows the viewer is impractical on this
+stack.

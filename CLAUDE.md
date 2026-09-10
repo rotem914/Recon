@@ -213,15 +213,13 @@ for the process" is how process dies.
 These are the things that must always hold. A change that breaks one is blocking,
 no matter how good the rest of it is. Check them before you finish.
 
-> **This section starts empty on purpose. Fill it as you learn what this project
-> cannot afford to break. The examples below only show the shape — they leave
-> when your first real invariant lands.**
->
-> - *Example — delete:* writes to the data store are atomic, so a crash mid-write
->   never leaves a corrupted file.
-> - *Example — delete:* data is validated on read and fails loudly on invalid
->   input, never silently coerced.
-> - *Example — delete:* unpublished content never renders, anywhere, at any URL.
+- **Viewing an external file never modifies it and never imports it.** No re-encode, no
+  metadata rewrite, no move or rename, no thumbnail written beside it, no copy into
+  Recon's own storage, and no export that defaults to the source path. Stated by Rotem
+  on 2026-09-10, when image viewing became a core capability: Recon gets pointed at
+  folders of originals, client material included, and every way of breaking this is
+  invisible until the original is already gone.
+  Where it is carried: `project-os/Plan.md` F17, S0.4, S1.5 and S1.11.
 
 When the owner states one of these, add it here in one line with its reason. When
 a task touches one, say so at pickup.
