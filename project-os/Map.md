@@ -36,7 +36,10 @@ Recon/
 ├── CLAUDE.md                       # entry file, read first every session
 ├── Installation.md                 # the record of how ProjectOS was installed here
 ├── .gitignore                      # keeps backups/ out of git
+├── notes/                          # free-standing documents, per rule 13
+│   └── 2026-09-10-plan-review.md   # the review of the product plan
 └── project-os/                     # the process docs and their enforcement
+    ├── Plan.md                     # the build plan, read at task pickup
     ├── Workflow.md                 # the path every task walks
     ├── QA.md                       # what must be true before anything is done
     ├── Conversations.md            # how every reply is written
@@ -48,7 +51,7 @@ Recon/
     ├── Backlog.md                  # the owner's open items
     ├── BugAtlas.md                 # recurring bug classes
     ├── Mistakes.md                 # the assistant's corrected slips
-    ├── Hooks.md                     # what is enforced mechanically
+    ├── Hooks.md                    # what is enforced mechanically
     ├── hooks-settings.json         # the hooks the installer merges in
     ├── install-hooks.mjs           # installs those hooks
     ├── rotate.ps1                  # archives the growing docs at Go commit
@@ -83,4 +86,5 @@ anything.
 | Process and rules | `CLAUDE.md`, `project-os/*.md` | One rule has one home. Never write the same rule in two files. |
 | Enforcement | `project-os/guards/*`, `project-os/hooks-settings.json`, `project-os/install-hooks.mjs` | Hooks are read at session start. Re-run the installer after editing the settings file. |
 | Outside servers | `project-os/mcp/*` | One folder per server, read before that server's first call. |
+| Plan and free-standing docs | `project-os/Plan.md`, `notes/*` | Plan.md is the tracked build order. Other documents go in notes, never at the root. |
 | Application code | none yet | Arrives when this project gains a stack. |
