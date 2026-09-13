@@ -59,7 +59,7 @@ Recon/
 │       ├── overlay.rs              # the Win32 selection overlay, one window per display
 │       ├── selftest.rs             # --selftest and --capture-demo: S0.2's evidence, feature-gated
 │       ├── bench.rs                 # --bench: S0.3's boundary measurement, feature-gated
-│       ├── editor.rs                # the editor window, the image and its pyramid, the one region worker, copy
+│       ├── editor.rs                # the editor window, the image and its pyramid, the one region worker, copy, the managed documents in memory
 │       ├── compose.rs               # the composer: source exact at the margin offset, the layer over it
 │       ├── clipboard.rs             # the clipboard: PNG, CF_DIBV5 and CF_DIB in one transaction
 │       ├── capture/
@@ -115,7 +115,7 @@ Where state lives and who is allowed to write it.
 | The process docs | `CLAUDE.md`, `project-os/*.md` | Markdown | the assistant, under the rules each file states |
 | The hooks setting | `.claude/settings.local.json` | JSON | `project-os/install-hooks.mjs` only. Machine-local, not committed. |
 | The hotkey setting | `%APPDATA%\Recon\recon.json` | JSON | nobody yet. Recon only reads it, and says in its log where the value came from. |
-| Managed documents | none yet | | arrive with the store at S1.8 |
+| Managed documents | in memory, `host/src/editor.rs`, until the store at S1.8 | the preserved image, PNG-encoded, under the document's number; the notes in the page by the same number | the host, at a capture's replacement or at Annotate on a file; capped at fifty |
 
 ## Ownership
 

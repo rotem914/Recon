@@ -669,7 +669,7 @@ export async function runChecks(editor, invoke) {
     check('the previous document\'s notes are kept', !!stashed && stashed.callouts.length === 1 && stashed.callouts[0].text === 'a note on the first capture');
 
     let history = [];
-    for (let i = 0; i < 40 && !history.some((r) => r[0] === first.document_id); i += 1) {
+    for (let i = 0; i < 40 && !history.some((r) => r[0] === first.document_id && r[3] > 0); i += 1) {
       await sleep(50);
       history = await invoke('editor_history');
     }
@@ -765,6 +765,118 @@ export async function runChecks(editor, invoke) {
     await editor.loadImage(info);
     check('last is img10', info.file === 'img10.png' && info.position === 4 && info.total === 4);
     check('the HUD names the context', document.getElementById('hud').textContent.includes('4 of 4 in folder'));
+  }
+
+  // ---------------------------------------------------------------- 20. S1.5: viewing and annotation part ways
+  say('');
+  say('S1.5: viewing arms no tool, Annotate creates or resumes one managed document, a reopened file shows the route to its edit');
+  {
+    const dir = await invoke('editor_make_folder');
+    const at = (name) => `${dir}\\${name}`;
+    const hud = document.getElementById('hud');
+    const stage = editor.stage;
+    const same = (a, b) => a.toLowerCase() === b.toLowerCase();
+    const forFile = (list, name) => list.filter((m) => m.source === 'file' && same(m.path, at(name)));
+    const pointer = (type, x, y) => stage.dispatchEvent(new PointerEvent(type, {
+      pointerId: 7, button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: x, clientY: y, bubbles: true, cancelable: true,
+    }));
+
+    // The drag is tried on a picture big enough to pan at the top zoom on any display:
+    // the 640x400 reference scene, put in the folder under one of its names.
+    await invoke('editor_replace_in_folder', { name: 'img10.png' });
+    let info = await invoke('editor_open_path', { path: at('img10.png') });
+    await editor.loadImage(info);
+    check('a file opens in viewing mode', model.mode === 'view' && info.managed === false && document.body.classList.contains('viewing'),
+      `mode ${model.mode}, managed ${info.managed}`);
+    check('the HUD says so', hud.textContent.includes('mode view'), hud.textContent.split('\n')[1]);
+
+    // A click and a drag on the picture, in viewing mode. Zoomed in first, so there is
+    // somewhere to pan to.
+    await editor.setZoom(8);
+    const box = stage.getBoundingClientRect();
+    let cx = box.left + model.offset.x + 60;
+    let cy = box.top + model.offset.y + 60;
+    // The key zoom keeps the viewport's centre, which on an image smaller than the window
+    // lands the pan at its far end, so the drag goes right and down and the pan comes back.
+    const before = { ...model.pan };
+    pointer('pointerdown', cx, cy);
+    pointer('pointermove', cx + 30, cy + 20);
+    pointer('pointerup', cx + 30, cy + 20);
+    await editor.paintRegion();
+    check('a click creates nothing and selects nothing', model.callouts.length === 0 && model.editing === null && model.selected === null);
+    check('a drag pans', before.x > 0 && before.y > 0 && model.pan.x < before.x && model.pan.y < before.y,
+      `pan ${Math.round(before.x)},${Math.round(before.y)} to ${Math.round(model.pan.x)},${Math.round(model.pan.y)} at zoom ${model.zoom}, ratio ${editor.ratioOf().toFixed(2)}`);
+
+    // The document flow on the small one, which the reference scene later replaces on
+    // disk at another size.
+    info = await invoke('editor_open_path', { path: at('img2.png') });
+    await editor.loadImage(info);
+    await editor.setZoom(8);
+    cx = box.left + model.offset.x + 60;
+    cy = box.top + model.offset.y + 60;
+    const viewId = info.document_id;
+    await editor.setMode('annotate');
+    check('Annotate switches the mode', model.mode === 'annotate' && model.image.managed === true && !document.body.classList.contains('viewing'));
+    let managed = await invoke('editor_managed');
+    let mine = forFile(managed, 'img2.png');
+    check('one managed document is created for the file, frame 0, at its size',
+      mine.length === 1 && mine[0].id === viewId && mine[0].frame === 0 && mine[0].width === info.width && mine[0].height === info.height,
+      JSON.stringify(mine));
+    for (let i = 0; i < 60 && forFile(await invoke('editor_managed'), 'img2.png').every((m) => m.bytes === 0); i += 1) await sleep(50);
+    managed = await invoke('editor_managed');
+    check('its decoded image is preserved, encoded', forFile(managed, 'img2.png')[0].bytes > 0, `${forFile(managed, 'img2.png')[0].bytes} bytes`);
+
+    pointer('pointerdown', cx, cy);
+    pointer('pointerup', cx, cy);
+    check('in annotation the same click creates a note', model.callouts.length === 1 && model.editing === model.callouts[0]);
+    document.querySelector(`[data-id="${model.callouts[0].id}"] .t`).textContent = 'kept across the modes';
+    editor.commitEditing();
+
+    await editor.setMode('view');
+    check('leaving annotation keeps the work', model.mode === 'view' && model.callouts.length === 1 && model.callouts[0].text === 'kept across the modes');
+    pointer('pointerdown', cx, cy);
+    pointer('pointerup', cx, cy);
+    check('and a click in viewing mode still creates nothing', model.callouts.length === 1 && model.editing === null && model.selected === null);
+    await editor.setMode('annotate');
+    managed = await invoke('editor_managed');
+    check('Annotate again reuses the document, never a second one',
+      model.image.document_id === viewId && forFile(managed, 'img2.png').length === 1 && model.callouts.length === 1);
+
+    const other = await invoke('editor_open_path', { path: at('IMG1.png') });
+    await editor.loadImage(other);
+    check('another file opens in viewing, empty, still in the folder', model.mode === 'view' && model.callouts.length === 0 && other.managed === false && other.context === 'folder');
+
+    // The file changes on disk meanwhile: a different picture of a different size.
+    await invoke('editor_replace_in_folder', { name: 'img2.png' });
+    const back = await invoke('editor_open_path', { path: at('img2.png') });
+    await editor.loadImage(back);
+    check('returning shows the file as it is now on disk, not the edit',
+      back.managed === false && back.document_id !== viewId && model.callouts.length === 0 && (back.width !== info.width || back.height !== info.height),
+      `${back.width}x${back.height}, was ${info.width}x${info.height}`);
+    check('with the route to its saved edit', back.edited_ago_s !== null && back.edited_ago_s < 300 && hud.textContent.includes('annotated before'),
+      hud.textContent.split('\n')[1]);
+    check('the position in the folder is untouched by any of it', back.position === info.position && back.total === info.total,
+      `${back.position} of ${back.total}`);
+
+    await editor.setMode('annotate');
+    managed = await invoke('editor_managed');
+    check('Annotate resumes that one document, its note where it was',
+      model.image.document_id === viewId && model.callouts.length === 1 && model.callouts[0].text === 'kept across the modes' && forFile(managed, 'img2.png').length === 1,
+      `document ${model.image.document_id}, ${forFile(managed, 'img2.png').length} for the file`);
+    check('on its own preserved pixels, and it says the file has moved on',
+      model.image.width === info.width && model.image.height === info.height && model.image.source_changed === true && hud.textContent.includes('changed since'),
+      `${model.image.width}x${model.image.height}, source_changed ${model.image.source_changed}`);
+    check('entering annotation kept the folder context', model.image.position === info.position && model.image.context === 'folder');
+
+    const shot = await invoke('editor_capture_probe', { width: 320, height: 200 });
+    await editor.loadImage(shot);
+    check('a capture opens ready for annotation', model.mode === 'annotate' && shot.managed === true);
+    await editor.setMode('view');
+    await editor.setMode('annotate');
+    managed = await invoke('editor_managed');
+    check('the mode on a capture changes no document', model.image.document_id === shot.document_id && managed.filter((m) => m.id === shot.document_id).length === 0);
+    model.callouts = [];
+    editor.layoutScene();
   }
 
   say('');

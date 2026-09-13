@@ -51,6 +51,10 @@
   body.plain .callout.selected { border-color: #3a4149; }
   body.plain .callout .t:focus { background: transparent; outline: none; }
   body.plain .callout .t { caret-color: transparent; }
+  /* Viewing mode (§3.3): the notes are shown but nothing on the scene takes the pointer,
+     so a click or a drag reaches the stage and pans, and can never land on a note or
+     create one. */
+  body.viewing #scene { pointer-events: none; }
 
   #hud { position: absolute; left: 12px; bottom: 10px; padding: 6px 10px; border-radius: 6px;
          background: rgba(10,12,14,.82); color: #cfd4da; font-size: 12px;
@@ -137,6 +141,10 @@
     selected: null,
     editing: null,
     fullscreen: false,
+    // 'view' or 'annotate' (§3.3). A capture opens in annotation; a file opens in viewing,
+    // where no click creates anything, and Annotate switches. Leaving annotation keeps
+    // the work: the notes stay in the model and the host keeps the document.
+    mode: 'view',
   };
 
   // The ratio of physical pixels to CSS pixels for THIS window, measured rather than
@@ -448,11 +456,51 @@
         (model.image.count > 1 ? `  ${model.image.index + 1} of ${model.image.count}  [ ] to step` : '') +
         (model.image.total > 0 ? `  ${model.image.position} of ${model.image.total} in ${model.image.context}` : '')
       : model.image.source;
+    const ago = (s) => (s < 60 ? 'just now' : s < 3600 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`);
+    const modeLine = model.mode === 'annotate'
+      ? `mode annotate   A to view${model.image.source_changed ? '   the file on disk has changed since; this document keeps its own pixels' : ''}`
+      : `mode view   A to annotate${model.image.edited_ago_s != null ? `   annotated before, ${ago(model.image.edited_ago_s)}; A resumes it` : ''}`;
     hud.textContent =
       `${model.image.width}x${model.image.height}  ${where}\n` +
+      `${modeLine}\n` +
       `zoom ${zoomText}   pan ${Math.round(model.pan.x)},${Math.round(model.pan.y)}   ` +
       `callouts ${model.callouts.length}   text ${sizeShown}px   dpr ${dpr()}\n` +
-      `0 fit  1 actual size  +/- zoom  wheel pan  Ctrl+wheel zoom  F11 fullscreen  PgUp/PgDn folder  Ctrl +/- text size  arrows pan  click to add  Esc commit  Del remove  Ctrl+O open`;
+      `0 fit  1 actual size  +/- zoom  wheel pan  Ctrl+wheel zoom  F11 fullscreen  PgUp/PgDn folder  Ctrl +/- text size  arrows pan  ${model.mode === 'annotate' ? 'click to add' : 'drag to pan'}  Esc commit  Del remove  Ctrl+O open`;
+  };
+
+  // ---------------------------------------------------------------- the mode
+  //
+  // §3.3: viewing arms no tool, annotation arms the callout. The mode is the page's; the
+  // document behind it is the host's, and Annotate asks the host for it: created for the
+  // file on screen, or resumed if one exists for that file and frame, never a second one.
+  const applyMode = () => {
+    document.body.classList.toggle('viewing', model.mode !== 'annotate');
+    drawHud();
+  };
+
+  const setMode = async (mode) => {
+    if (mode === model.mode) return model.mode;
+    if (mode === 'annotate') {
+      const info = await invoke('editor_annotate');
+      // A resumed document is another number, so its notes come back through loadImage;
+      // the view stays where it was when the image is the same size, so nothing jumps.
+      const view = { zoom: model.zoom, pan: { ...model.pan } };
+      const sameSize = info.width === model.image.width && info.height === model.image.height;
+      await loadImage(info);
+      if (sameSize) {
+        model.zoom = view.zoom;
+        model.pan = view.pan;
+        await paintRegion();
+      }
+      model.mode = 'annotate';
+    } else {
+      if (model.editing) commitEditing();
+      model.selected = null;
+      layoutScene();
+      model.mode = 'view';
+    }
+    applyMode();
+    return model.mode;
   };
 
   // ---------------------------------------------------------------- editing
@@ -503,6 +551,17 @@
     if (event.button !== 0) return;
     const target = event.target;
 
+    // Viewing mode: the drag pans, whatever it started on, and nothing is created or
+    // selected (§3.3). The scene takes no pointer in this mode, so the target is the
+    // stage or the canvas either way.
+    if (model.mode !== 'annotate') {
+      if (!model.image.width) return;
+      drag = { kind: 'pan', x: event.clientX, y: event.clientY, pan: { ...model.pan } };
+      try { stage.setPointerCapture(event.pointerId); } catch (e) { /* a synthetic pointer */ }
+      event.preventDefault();
+      return;
+    }
+
     if (target.classList.contains('t')) {
       const callout = model.callouts.find((c) => c.id === target.closest('.callout').dataset.id);
       startEditing(callout);
@@ -548,6 +607,12 @@
 
   stage.addEventListener('pointermove', (event) => {
     if (!drag) return;
+    if (drag.kind === 'pan') {
+      model.pan.x = drag.pan.x - ((event.clientX - drag.x) * dpr()) / model.zoom;
+      model.pan.y = drag.pan.y - ((event.clientY - drag.y) * dpr()) / model.zoom;
+      paintRegion();
+      return;
+    }
     const point = toImage(event);
     if (drag.kind === 'anchor') {
       drag.callout.anchor.x = Math.round(point.x + drag.dx);
@@ -655,6 +720,14 @@
       return;
     }
     if (event.key === 'Enter' && model.selected) { startEditing(model.selected); event.preventDefault(); return; }
+
+    // Annotate, and back to viewing (§3.3). A provisional key until the control is
+    // decided; by physical key like the others.
+    if (event.code === 'KeyA' && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      setMode(model.mode === 'annotate' ? 'view' : 'annotate').catch((err) => console.error('mode', err));
+      event.preventDefault();
+      return;
+    }
 
     // Previous and next through the folder the file came from, first and last at the ends
     // (§3.4, §3.6). The host answers with the image now on screen; at an end that is the
@@ -770,6 +843,10 @@
     if (known) model.textSize = known.textSize;
     model.selected = null;
     model.editing = null;
+    // A capture opens ready for annotation; a file opens in viewing, and a document
+    // resumed for it opens where it left off (§3.3).
+    model.mode = info.managed ? 'annotate' : 'view';
+    applyMode();
     model.fitZoom = computeFit();
     model.zoom = model.fitZoom;
     model.pan = { x: 0, y: 0 };
@@ -906,6 +983,8 @@
     copyComposed,
     setZoomAround,
     setFullscreen,
+    setMode,
+    stage,
     documents,
     emptyStateText,
     setMargin,

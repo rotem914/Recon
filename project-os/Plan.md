@@ -380,6 +380,7 @@ is a contract broken on day one.
 | Previous and next image, outside text editing | Walk the active navigation context, folder or Recon history, in the §3.4 order | 1, built at S1.4: PageDown and PageUp, Home and End for the first and last; the ends stop |
 | Fit to window · actual size · zoom in · zoom out | Viewing controls, no effect on export resolution | 1, built: keys, the wheel to pan, Ctrl with the wheel to zoom around the pointer |
 | Fullscreen | Enter fullscreen | 1, built: F11, and the same key or Escape out |
+| Annotate, and back to viewing | Switch the window between viewing, where no click creates anything, and annotation, where the callout tool is live (§3.3). The work stays either way | 1, built at S1.5 on the `A` key, provisional until the control is decided: a key, a button, or both |
 | `Ctrl+S` | Save As a PNG file, to a new file. Internal saving stays automatic | 1 |
 | `Ctrl+Shift+Enter` | Send to Rogers, once that exists and is configured | 4 |
 
@@ -1794,12 +1795,26 @@ work rather than a feature count.
       file that has vanished since the listing is skipped with a log line and the count
       follows. History is a second list and S1.9's; the context name is what keeps the two
       apart on screen.
-- [ ] S1.5 The transition into annotation: viewing mode arms no tool and no click can create
+- [x] S1.5 The transition into annotation: viewing mode arms no tool and no click can create
       a callout, an explicit Annotate action switches modes, and leaving annotation keeps the
       work. Annotate creates a managed document with its preserved decoded image, or resumes
       the one that already exists for that source, never a second one. Opening a file that
       has a document shows the file with the route to its saved edit (§3.3).
       Model: Fable 5.1, it is the boundary that protects the originals.
+      **Built 2026-09-14.** A file opens in viewing: the scene takes no pointer, a click
+      selects nothing, a drag pans, and the checks press the same click in both modes to
+      see one create nothing and the other create a note. A capture opens in annotation.
+      The `A` key switches, provisionally, with the mode named in the HUD. Annotate on a
+      file asks the host for the document: created once for that path and frame, its
+      decoded image preserved at once and PNG-encoded on a thread, in the same in-memory
+      list the previous captures sit in until S1.8; or resumed when one exists, never a
+      second. Leaving annotation keeps the notes and the document. Reopening the file
+      shows the file as it is on disk, with the route in the HUD ("annotated before, 2
+      min ago; A resumes it"), and A resumes the one document on its own preserved
+      pixels: the check overwrites the file with a different picture of a different size
+      in between, sees the new file on reopen and the preserved image on resume, with the
+      line that the file has moved on. The folder position is the same before, during and
+      after. Frame stepping inside an annotated animation is F79; the cap is F80.
 - [ ] S1.6 Callout completion: the deterministic candidate positions, the neutral margin when
       a bubble cannot fit, and stable numbering with gaps, identical in the editor and in
       every output. Model: Fable 5.1.
@@ -2136,6 +2151,8 @@ was rated when it was raised.
 | F76 | The content security policy refuses the S0.3 bench's local socket route, so `--bench` needs the policy off to run its third column | 🟡 | S0.3, S1.1 | Open: a closed step's tool; run it with the policy set to null if it is ever needed again |
 | F77 | Registration runs only by the user's hand: the code is tested as data, and whether Explorer's double-click and "Open with" reach Recon on this machine is unverified until Rotem runs it | 🟠 | S1.2, §3.1 | Closed 2026-09-14: Rotem ran the registration, double-clicked an image in Explorer and it opened in Recon, then dropped another on the window and it replaced the first |
 | F78 | Several files dropped at once open the first only; the folder they came from is S1.4's navigation context | 🟡 | S1.2, S1.4 | Open: S1.4 |
+| F79 | A managed document is keyed by path and frame, but stepping frames inside it keeps the document's number while its preserved image is the one frame, so a note placed on frame 3 of a resumed frame-0 document sits on pixels the document does not hold | 🟠 | §3.8, S1.5, S1.8 | Open: S1.8 decides what a document of an animation preserves, one frame or the frame it is asked for |
+| F80 | The in-memory list of documents is capped at fifty, and an annotated file's document dropped at the cap loses its notes with no store to fall back on | 🟠 | S1.1 decision, S1.5, S1.8 | Open: the store at S1.8 removes the cap; until then fifty documents in a session is the limit, and the log names the drop |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the
 two things it compares and the failure that would turn it red (`project-os/QA.md` §12), and a

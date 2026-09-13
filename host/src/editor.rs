@@ -151,81 +151,307 @@ pub fn current_document_id() -> u64 {
     CURRENT_ID.load(Ordering::SeqCst)
 }
 
-/// A previous capture, kept when the next one arrives. "Taking a new capture saves the
-/// current document and adds another; it never overwrites the previous one" (§3.3). The
-/// store that keeps it on disk is S1.8; until then it is kept here, PNG-encoded so thirty
-/// captures cost about a hundred megabytes rather than a gigabyte, and capped, so a day of
-/// use cannot grow without bound (§3.8). The page keeps the notes of each document by the
-/// same number. An opened file is not retained: an external file is never taken (§3.8).
-#[cfg_attr(not(feature = "stage0-checks"), allow(dead_code))]
-pub struct Retained {
-    pub id: u64,
-    pub width: u32,
-    pub height: u32,
-    pub png: Vec<u8>,
+/// Where a managed document's image came from (§3.8). A capture's is the screen. An
+/// annotated file's is the path and the frame or page that was on screen when Annotate
+/// was pressed, with the file's size and stamp as they were then, so a resume can say the
+/// source has moved on without reading it again.
+#[derive(Clone, Debug)]
+pub enum Source {
+    Capture,
+    File {
+        path: std::path::PathBuf,
+        frame: u32,
+        modified: Option<std::time::SystemTime>,
+        len: u64,
+    },
 }
 
-static HISTORY: Mutex<Vec<Retained>> = Mutex::new(Vec::new());
+/// The preserved image: the decoded pixels until the encode thread is done, then the PNG,
+/// so a document costs a few megabytes rather than tens. The entry exists from the first
+/// moment either way, so a second Annotate can never find nothing and create a second one.
+enum Preserved {
+    Decoded(Arc<Image>),
+    Encoded(Vec<u8>),
+}
 
-/// How many previous captures are kept in memory until S1.8 moves them to disk.
+/// A managed document, kept in memory until the store exists (S1.8). "Taking a new
+/// capture saves the current document and adds another; it never overwrites the previous
+/// one" (§3.3), and "annotation is what creates a managed document, and only for the file
+/// being annotated" (§3.8). Captured pixels arrive here when the next capture replaces
+/// them; an annotated file's arrive at Annotate, preserved as decoded, and the external
+/// file is never read again for that document. The list is capped so a day of use cannot
+/// grow without bound. The page keeps the notes of each document by the same number.
+pub struct Managed {
+    pub id: u64,
+    pub source: Source,
+    pub width: u32,
+    pub height: u32,
+    preserved: Preserved,
+    /// When annotation last touched it: created, or resumed. S1.8's autosave moves it.
+    pub annotated: std::time::SystemTime,
+}
+
+static DOCUMENTS: Mutex<Vec<Managed>> = Mutex::new(Vec::new());
+
+/// How many documents are kept in memory until S1.8 moves them to disk.
 const RETAINED_LIMIT: usize = 50;
 
-/// Encodes the image on its own thread and files it under its document number, so the
-/// capture path pays nothing for it.
-fn retain(image: Arc<Image>, id: u64) {
+/// Files the document under its number at once, decoded, then encodes it on its own thread
+/// and swaps the PNG in, so the capture path and the Annotate key pay nothing for it.
+fn preserve(image: Arc<Image>, id: u64, source: Source) {
+    let (width, height) = (image.frame.width(), image.frame.height());
+    if let Ok(mut documents) = DOCUMENTS.lock() {
+        if documents.iter().any(|d| d.id == id) {
+            return;
+        }
+        documents.push(Managed {
+            id,
+            source,
+            width,
+            height,
+            preserved: Preserved::Decoded(image.clone()),
+            annotated: std::time::SystemTime::now(),
+        });
+        while documents.len() > RETAINED_LIMIT {
+            let old = documents.remove(0).id;
+            println!("document {old} dropped at the cap of {RETAINED_LIMIT}");
+        }
+    }
     std::thread::spawn(move || {
         let started = Instant::now();
         let mut png = Vec::new();
         let encoded = image::codecs::png::PngEncoder::new(&mut png).write_image(
             &image.frame.rgba,
-            image.frame.width(),
-            image.frame.height(),
+            width,
+            height,
             image::ExtendedColorType::Rgba8,
         );
         if let Err(err) = encoded {
-            println!("document {id} NOT retained: the PNG did not encode: {err}");
+            println!("document {id} kept decoded: the PNG did not encode: {err}");
             return;
         }
-        let Ok(mut history) = HISTORY.lock() else {
+        let Ok(mut documents) = DOCUMENTS.lock() else {
             return;
         };
-        history.push(Retained {
-            id,
-            width: image.frame.width(),
-            height: image.frame.height(),
-            png,
-        });
-        let mut dropped = None;
-        while history.len() > RETAINED_LIMIT {
-            dropped = Some(history.remove(0).id);
+        if let Some(document) = documents.iter_mut().find(|d| d.id == id) {
+            document.preserved = Preserved::Encoded(png);
         }
-        let held: usize = history.iter().map(|r| r.png.len()).sum();
+        let held: usize = documents.iter().map(Managed::bytes).sum();
         println!(
-            "document {id} retained: {}x{} in {} ms, {} kept, {:.1} MB{}",
-            image.frame.width(),
-            image.frame.height(),
+            "document {id} preserved: {width}x{height} in {} ms, {} kept, {:.1} MB",
             started.elapsed().as_millis(),
-            history.len(),
+            documents.len(),
             held as f64 / (1024.0 * 1024.0),
-            match dropped {
-                Some(old) => format!(", the oldest ({old}) dropped at the cap of {RETAINED_LIMIT}"),
-                None => String::new(),
-            }
         );
     });
 }
 
-/// The retained captures, for the checks and, at S1.9, for navigation.
+impl Managed {
+    /// The PNG's size, or zero while the encode is still running.
+    fn bytes(&self) -> usize {
+        match &self.preserved {
+            Preserved::Encoded(png) => png.len(),
+            Preserved::Decoded(_) => 0,
+        }
+    }
+
+    /// The preserved pixels as a frame, from the PNG or the decoded copy, whichever is
+    /// held right now. This is the document's own image; the file on disk is not read.
+    fn frame(&self, name: &'static str) -> Result<Frame, String> {
+        let rgba = match &self.preserved {
+            Preserved::Decoded(image) => image.frame.rgba.clone(),
+            Preserved::Encoded(png) => {
+                image::load_from_memory_with_format(png, image::ImageFormat::Png)
+                    .map_err(|err| {
+                        format!(
+                            "document {}: its preserved PNG did not decode: {err}",
+                            self.id
+                        )
+                    })?
+                    .into_rgba8()
+                    .into_raw()
+            }
+        };
+        Ok(Frame {
+            geometry: FrameGeometry {
+                origin_x: 0,
+                origin_y: 0,
+                width: self.width,
+                height: self.height,
+            },
+            rgba,
+            source: name,
+        })
+    }
+
+    fn is_for(&self, path: &std::path::Path, frame: u32) -> bool {
+        match &self.source {
+            Source::File {
+                path: own,
+                frame: own_frame,
+                ..
+            } => *own_frame == frame && same_path(own, path),
+            Source::Capture => false,
+        }
+    }
+}
+
+/// The same file under Windows' case-insensitive names, as the folder context compares.
+fn same_path(a: &std::path::Path, b: &std::path::Path) -> bool {
+    a.to_string_lossy()
+        .eq_ignore_ascii_case(&b.to_string_lossy())
+}
+
+/// The file's stamp and size, for the "source has moved on" line; None when it is gone.
+fn file_stamp(path: &std::path::Path) -> (Option<std::time::SystemTime>, u64) {
+    match std::fs::metadata(path) {
+        Ok(meta) => (meta.modified().ok(), meta.len()),
+        Err(_) => (None, 0),
+    }
+}
+
+/// The documents, for the checks and, at S1.9, for navigation: number, size, PNG bytes.
 #[cfg(feature = "stage0-checks")]
 pub fn history_summary() -> Vec<(u64, u32, u32, usize)> {
-    HISTORY
+    DOCUMENTS
         .lock()
         .map(|h| {
             h.iter()
-                .map(|r| (r.id, r.width, r.height, r.png.len()))
+                .map(|d| (d.id, d.width, d.height, d.bytes()))
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// What the page needs about the document on screen against the managed list (§3.3):
+/// whether it IS a managed document, when a document that exists for this file was last
+/// annotated (the route to its saved edit, shown only while the file itself is on screen),
+/// and whether the file has changed on disk since the document preserved it.
+struct Standing {
+    managed: bool,
+    edited_ago_s: Option<u64>,
+    source_changed: bool,
+}
+
+fn standing() -> Standing {
+    let id = current_document_id();
+    let key = state()
+        .document
+        .lock()
+        .ok()
+        .and_then(|slot| slot.as_ref().map(|d| (d.opened.path.clone(), d.index)));
+    let Some((path, frame)) = key else {
+        // A capture is a managed document from the moment it exists (§3.3).
+        return Standing {
+            managed: true,
+            edited_ago_s: None,
+            source_changed: false,
+        };
+    };
+    let Ok(documents) = DOCUMENTS.lock() else {
+        return Standing {
+            managed: false,
+            edited_ago_s: None,
+            source_changed: false,
+        };
+    };
+    let now = std::time::SystemTime::now();
+    let ago = |at: std::time::SystemTime| now.duration_since(at).map(|d| d.as_secs()).unwrap_or(0);
+    match documents.iter().find(|d| d.id == id) {
+        Some(own) => {
+            let source_changed = match &own.source {
+                Source::File { modified, len, .. } => file_stamp(&path) != (*modified, *len),
+                Source::Capture => false,
+            };
+            Standing {
+                managed: true,
+                edited_ago_s: None,
+                source_changed,
+            }
+        }
+        None => Standing {
+            managed: false,
+            edited_ago_s: documents
+                .iter()
+                .find(|d| d.is_for(&path, frame))
+                .map(|d| ago(d.annotated)),
+            source_changed: false,
+        },
+    }
+}
+
+/// Annotate (§3.3): a capture is managed already, so nothing happens; a file on screen
+/// gets its managed document, created with the decoded image preserved, or resumed when
+/// one exists for that path and frame, never a second one. Resuming shows the document's
+/// own preserved pixels, not the file as it is now on disk. The mode itself is the page's;
+/// this returns the image info the page loads.
+#[tauri::command]
+pub fn editor_annotate() -> Result<ImageInfo, String> {
+    let image = state().image().ok_or("no image is loaded")?;
+    let id = current_document_id();
+    let key = {
+        let slot = state()
+            .document
+            .lock()
+            .map_err(|_| "the document is poisoned")?;
+        slot.as_ref()
+            .map(|d| (d.opened.path.clone(), d.index, d.opened.format.name()))
+    };
+    let Some((path, frame, name)) = key else {
+        return editor_image_info();
+    };
+    // The list is read under its lock and the lock is released here, before the image info
+    // is built: that reads the list too, and a lock held across it would wait on itself.
+    let (own, existing) = {
+        let documents = DOCUMENTS.lock().map_err(|_| "the documents are poisoned")?;
+        let own = documents.iter().any(|d| d.id == id);
+        let existing = (!own)
+            .then(|| {
+                documents
+                    .iter()
+                    .find(|d| d.is_for(&path, frame))
+                    .map(|d| (d.id, d.frame(name)))
+            })
+            .flatten();
+        (own, existing)
+    };
+    if own {
+        // Annotate, View, Annotate inside the same document: nothing to create.
+        return editor_image_info();
+    }
+    match existing {
+        Some((existing_id, preserved)) => {
+            CURRENT_ID.store(existing_id, Ordering::SeqCst);
+            state().set_frame(preserved?);
+            if let Ok(mut documents) = DOCUMENTS.lock() {
+                if let Some(document) = documents.iter_mut().find(|d| d.id == existing_id) {
+                    document.annotated = std::time::SystemTime::now();
+                }
+            }
+            crate::log(&format!(
+                "annotate: document {existing_id} resumed for {} frame {frame}",
+                path.display()
+            ));
+        }
+        None => {
+            let (modified, len) = file_stamp(&path);
+            preserve(
+                image,
+                id,
+                Source::File {
+                    path: path.clone(),
+                    frame,
+                    modified,
+                    len,
+                },
+            );
+            crate::log(&format!(
+                "annotate: document {id} created for {} frame {frame}",
+                path.display()
+            ));
+        }
+    }
+    editor_image_info()
 }
 
 /// The hotkey's label, for the page's empty state.
@@ -335,7 +561,7 @@ fn present_frame(frame: Frame) -> Result<u128, String> {
     // The previous capture is kept, never overwritten (§3.3), whatever replaces it.
     if let Some(previous) = state().image() {
         if previous.frame.source == "capture" {
-            retain(previous, current_document_id());
+            preserve(previous, current_document_id(), Source::Capture);
         }
     }
     next_document_id();
@@ -483,7 +709,10 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_open_dialog,
         editor_fullscreen,
         editor_navigate,
+        editor_annotate,
         checks::editor_window_title,
+        checks::editor_managed,
+        checks::editor_replace_in_folder,
         checks::editor_make_folder,
         checks::editor_open_path,
         checks::editor_remove_from_folder,
@@ -524,6 +753,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_hotkey,
         editor_open_dialog,
         editor_fullscreen,
+        editor_annotate,
         editor_navigate,
     ]);
     builder.register_asynchronous_uri_scheme_protocol("region", |_ctx, request, responder| {
@@ -652,6 +882,14 @@ pub struct ImageInfo {
     pub position: u32,
     pub total: u32,
     pub context: String,
+    /// Whether the image on screen is a managed document: a capture always, a file once
+    /// Annotate created or resumed its document (§3.3). The page's mode follows it.
+    pub managed: bool,
+    /// The route to a saved edit: seconds since a document that exists for this file and
+    /// frame was last annotated, while the file itself is on screen; null otherwise.
+    pub edited_ago_s: Option<u64>,
+    /// A resumed document whose file has changed on disk since it preserved its image.
+    pub source_changed: bool,
 }
 
 #[tauri::command]
@@ -690,6 +928,7 @@ pub fn editor_image_info() -> Result<ImageInfo, String> {
         },
         Err(_) => (0, 0, String::new()),
     };
+    let standing = standing();
     Ok(ImageInfo {
         width: image.frame.width(),
         height: image.frame.height(),
@@ -702,6 +941,9 @@ pub fn editor_image_info() -> Result<ImageInfo, String> {
         position,
         total,
         context,
+        managed: standing.managed,
+        edited_ago_s: standing.edited_ago_s,
+        source_changed: standing.source_changed,
     })
 }
 
@@ -1827,6 +2069,65 @@ mod checks {
         history_summary()
     }
 
+    /// One managed document as the S1.5 check sees it.
+    #[derive(serde::Serialize)]
+    pub struct ManagedLine {
+        pub id: u64,
+        pub source: String,
+        pub path: String,
+        pub frame: u32,
+        pub width: u32,
+        pub height: u32,
+        /// The PNG's size, zero while the encode thread is still running.
+        pub bytes: usize,
+    }
+
+    /// The managed documents, for the S1.5 check: never two for one file and frame.
+    #[tauri::command]
+    pub fn editor_managed() -> Vec<ManagedLine> {
+        DOCUMENTS
+            .lock()
+            .map(|documents| {
+                documents
+                    .iter()
+                    .map(|d| {
+                        let (source, path, frame) = match &d.source {
+                            Source::Capture => ("capture".to_string(), String::new(), 0),
+                            Source::File { path, frame, .. } => {
+                                ("file".to_string(), path.display().to_string(), *frame)
+                            }
+                        };
+                        ManagedLine {
+                            id: d.id,
+                            source,
+                            path,
+                            frame,
+                            width: d.width,
+                            height: d.height,
+                            bytes: d.bytes(),
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Overwrites one file of the check folder with the reference scene, a different
+    /// picture of a different size, so the check can see that a resumed document keeps its
+    /// own preserved image while the file on disk has moved on (§3.3).
+    #[tauri::command]
+    pub fn editor_replace_in_folder(name: String) -> Result<(), String> {
+        if name.contains('/') || name.contains('\\') || name.contains("..") {
+            return Err("a name, not a path".into());
+        }
+        std::fs::copy(
+            fixture_dir().join("reference-scene.png"),
+            folder_dir().join(name),
+        )
+        .map(|_| ())
+        .map_err(|err| err.to_string())
+    }
+
     fn folder_dir() -> std::path::PathBuf {
         std::env::current_exe()
             .map(|exe| exe.with_file_name("s14-folder"))
@@ -2176,5 +2477,47 @@ mod tests {
         // 1000 asked, 1000 exist, output 1000: exactly the region, no resample.
         let p = plan(0, 0, 1000, 1000, 1000, 1000);
         assert!(p.is_one_to_one());
+    }
+    fn small_image(width: u32, height: u32, fill: u8) -> Arc<Image> {
+        Arc::new(Image::new(Frame {
+            geometry: FrameGeometry {
+                origin_x: 0,
+                origin_y: 0,
+                width,
+                height,
+            },
+            rgba: vec![fill; (width * height * 4) as usize],
+            source: "test",
+        }))
+    }
+
+    #[test]
+    fn a_document_is_preserved_once_and_found_by_its_file_and_frame_case_blind() {
+        let path = std::path::PathBuf::from("C:\\Pictures\\Client\\Shot.PNG");
+        let source = Source::File {
+            path: path.clone(),
+            frame: 2,
+            modified: None,
+            len: 0,
+        };
+        // Numbers no other test uses, since the registry is process-wide.
+        preserve(small_image(4, 3, 7), 900_001, source.clone());
+        preserve(small_image(4, 3, 9), 900_001, source);
+        let documents = DOCUMENTS.lock().unwrap();
+        let mine: Vec<&Managed> = documents.iter().filter(|d| d.id == 900_001).collect();
+        assert_eq!(
+            mine.len(),
+            1,
+            "a second preserve under the same number is ignored"
+        );
+        let document = mine[0];
+        assert!(document.is_for(std::path::Path::new("c:\\pictures\\client\\shot.png"), 2));
+        assert!(
+            !document.is_for(&path, 0),
+            "another frame of the file is another document"
+        );
+        let frame = document.frame("test").unwrap();
+        assert_eq!((frame.width(), frame.height()), (4, 3));
+        assert_eq!(frame.rgba[0], 7, "the first image is the one preserved");
     }
 }
