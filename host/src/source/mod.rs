@@ -87,8 +87,10 @@ pub struct DecodedFrame {
     pub rgba: Vec<u8>,
 }
 
-/// What happened at decode, in words, for the evidence line and the S0.8 report.
+/// What happened at decode, in words, for the evidence line and the S0.8 report. Three of
+/// the fields are read only by the decode report, which the product build does not carry.
 #[derive(Debug, Clone, Default)]
+#[cfg_attr(not(feature = "stage0-checks"), allow(dead_code))]
 pub struct Notes {
     /// The EXIF orientation that was applied, 1 to 8, if the file carried one.
     pub orientation_applied: Option<u8>,

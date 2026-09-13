@@ -204,6 +204,9 @@
     const url = `http://region.localhost/?x=${x}&y=${y}&w=${srcW}&h=${srcH}&ow=${outW}&oh=${outH}`;
     const askedAt = performance.now();
     const response = await fetch(url, { cache: 'no-store' });
+    // 409 is the host saying a newer request replaced this one, which is the design, not
+    // an error: the newer one paints. Anything else is a real refusal.
+    if (response.status === 409) return;
     if (!response.ok) throw new Error(`the region was refused: ${response.status}`);
     const whole = new Uint8Array(await response.arrayBuffer());
     const header = new DataView(whole.buffer, 0, 8);
@@ -429,6 +432,10 @@
   // ---------------------------------------------------------------- editing
 
   const startEditing = (callout) => {
+    // Another note still being typed is committed first. Without this its typed text was
+    // never read back: layoutScene rewrote its element from the stale model text, and what
+    // had been typed was gone (review of 2026-09-13, R1).
+    if (model.editing && model.editing !== callout) commitEditing();
     model.editing = callout;
     model.selected = callout;
     layoutScene();
@@ -541,7 +548,9 @@
 
   window.addEventListener('keydown', (event) => {
     // Copy the composed image, current text edits included, from anywhere (§3.6).
-    if (event.ctrlKey && event.shiftKey && !event.altKey && (event.key === 'C' || event.key === 'c')) {
+    // By physical key, so the shortcut is the same under a Hebrew layout, where event.key
+    // for that key is a Hebrew letter. The rest of the keyboard contract is S1.7.
+    if (event.ctrlKey && event.shiftKey && !event.altKey && event.code === 'KeyC') {
       copyComposed().catch((err) => console.error('copy failed', err && err.stack ? err.stack : String(err)));
       event.preventDefault();
       return;

@@ -1997,7 +1997,7 @@ them.
 
 # Part 12: the review trail
 
-Sixty-two findings were raised against the plan and folded into the parts above. This table
+Seventy-two findings were raised against the plan and folded into the parts above. This table
 is the record; the fixes themselves live where the table points. Severity is how the finding
 was rated when it was raised.
 
@@ -2059,12 +2059,22 @@ was rated when it was raised.
 | F54 | The image crate does not read EXIF orientation out of a WebP, so a tagged WebP comes out as stored | 🟡 | §3.7, S0.5 | Open: §3.7 promises orientation for JPEG and HEIC only; recorded, not scheduled |
 | F55 | WIC's converter does not apply an embedded colour profile, so a tagged TIFF, HEIC or AVIF would have been shown and exported as if sRGB | 🟠 | §3.7 contract, S0.5 | Resolved: the frame's colour context is read and converted through the same sRGB step as the other providers |
 | F56 | Panning is clamped to the image, so the far edge of a margin cannot be reached at a zoom above fit | 🟡 | S0.6, S1.2 | Open: with S1.2's automatic margin; today a margin is only set by a check |
-| F57 | The product build warns that three fields of the decode notes are read only by the feature-gated report | 🟡 | S0.5, `host/src/source/mod.rs` | Open, pre-existing: a cfg attribute or a use in the product; reported by the S0.6 review, not fixed there |
+| F57 | The product build warns that three fields of the decode notes are read only by the feature-gated report | 🟡 | S0.5, `host/src/source/mod.rs` | Resolved in the review of 2026-09-13 (R5): the fields and one platform function carry a cfg attribute for the product build |
 | F58 | S0.7 says memory growth with the library "is a failure of R11", and no part of the plan defines R11 | 🟡 | S0.7, §3.8 | Open: read at S0.7 as §3.8's rule that memory must not grow with the size of the library or a folder, which is what was measured; the label needs a home or a rewrite |
 | F59 | The tray process's memory floor is about 170 MB, and 162 to 165 MB of it is the hidden editor's web view | 🟡 | S0.7, part 5, part 8 | Open: judged on its own, as S0.7 asks; part 8 has no row that fires on it. A web view destroyed when idle and recreated on the hotkey would lower it and cost the editor interval its warm start |
 | F60 | The main display is wide gamut (132% of sRGB by its EDID primaries), so the sRGB decision's own revisit trigger has fired: a capture taken there is treated as sRGB when it is not | 🟠 | §3.7, sRGB decision, S0.8 | Decided 2026-09-13 at Rotem's delegation: sRGB stays for v1, because the captured numbers are what the application drew and a display tag would oversaturate them everywhere else; the revisit trigger is now a colour-managed desktop (automatic colour management or HDR on), which the product detects. Recorded in Decisions |
 | F61 | HDR is detected and logged, and nothing tells the user that a capture on an HDR display is the SDR rendering | 🟡 | S0.8, S1 | Open: a one-line notice in the editor when the frozen display had HDR on; Stage 1 |
 | F62 | The hotkey against an elevated application in the foreground is not measured, and cannot be by a synthesized key | 🟠 | S0.8, S0.1 | Measured 2026-09-13: Rotem pressed the key with Task Manager, an elevated window, in front; the release product logged "HOTKEY FIRED", the overlay came up, and a selection reached the editor. The hotkey works against an elevated foreground on this machine. Closed |
+| F63 | Clicking from a note being typed straight into another note lost the first note's text: the switch never committed it, and the layout rewrote its element from the stale model | 🔴 | §3.5, S0.4, S0.6 | Fixed in the review of 2026-09-13 (R1): a switch commits the note being left; editor check 9 covers it |
+| F64 | A superseded region answer, the host's 409 by design, was raised by the page as an error on every held key | 🟠 | Part 5 display policy, S0.4b | Fixed (R2): a 409 returns quietly |
+| F65 | Ctrl+Shift+C matched the key's character, so under a Hebrew layout the copy key was dead | 🟠 | §3.6, S0.6, S1.7 | Fixed (R3): matched by physical key; the rest of the contract's layout check is S1.7's |
+| F66 | An opened still was held twice in the host, a full clone kept for a second ask nothing makes | 🟠 | §3.8, S0.5, S0.7 | Fixed (R4): the provider keeps the file's bytes and decodes again if asked twice |
+| F67 | A capture arriving while a note is being typed discards that note with the previous capture | 🟡 | S1.1 | Open: S1.1's capture lifecycle decides what a new capture does to the previous document |
+| F68 | The margin colour is written in two places, the host's composer and the page's mat | 🟡 | S0.6, Backlog | Open: hand the colour to the page with the image info; a backlog item |
+| F69 | An overlay panic would leak its windows and GDI objects, replaced without teardown on the next capture | 🟡 | S0.2 | Open: tear down a leftover state at the start of a selection; has not happened |
+| F70 | A poisoned region mailbox would stop every later view from painting | 🟡 | S0.4b | Open: recover from the poisoned lock and answer with an error; nothing in the worker panics today |
+| F71 | The SVG raster cap of 16384 a side allows a one-gigabyte pixmap from a hostile viewBox | 🟡 | §3.7, S0.5 | Open: cap the area, or refuse the open with a message |
+| F72 | The self test called any still difference after a drag a leaked overlay, and a window repainting as it took the foreground back failed it while the product was right | 🟡 | S0.2 self test | Fixed in the review of 2026-09-13 (R11): the leak check asks whether an overlay window is still alive; the crop predates the overlay by construction |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the
 two things it compares and the failure that would turn it red (`project-os/QA.md` §12), and a

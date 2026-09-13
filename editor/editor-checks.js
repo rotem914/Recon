@@ -364,6 +364,19 @@ export async function runChecks(editor, invoke) {
     const oneLine = el(single).querySelector('.t').offsetHeight;
     check('the committed note is laid out on two lines', twoLines >= oneLine * 1.8,
       `${twoLines}px against ${oneLine}px for one line`);
+
+    // Clicking straight from one note into another, with no Escape between: the first
+    // note's typed text has to survive. It did not (review of 2026-09-13, R1).
+    const first = editor.createCallout({ x: 300, y: 900 });
+    const second = editor.createCallout({ x: 900, y: 900 });
+    editor.layoutScene();
+    editor.startEditing(first);
+    document.execCommand('insertText', false, 'typed into the first');
+    editor.startEditing(second);
+    document.execCommand('insertText', false, 'then the second');
+    editor.commitEditing();
+    check('switching notes mid-typing keeps the first note\'s text', first.text === 'typed into the first' && second.text === 'then the second',
+      `${JSON.stringify(first.text)} and ${JSON.stringify(second.text)}`);
     model.callouts = [];
     editor.layoutScene();
   }

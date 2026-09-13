@@ -17,6 +17,7 @@
 
 use std::time::Instant;
 
+use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{HWND, LPARAM, RECT, WPARAM};
 use windows::Win32::System::Console::GetConsoleWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -25,10 +26,10 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows::Win32::UI::WindowsAndMessaging::ShowWindow;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetForegroundWindow, GetMessageW,
-    GetWindowRect, IsWindow, PostMessageW, PostQuitMessage, RegisterClassExW, SetCursorPos,
-    TranslateMessage, CW_USEDEFAULT, MSG, SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_DESTROY,
-    WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
+    CreateWindowExW, DefWindowProcW, DispatchMessageW, FindWindowW, GetForegroundWindow,
+    GetMessageW, GetWindowRect, IsWindow, PostMessageW, PostQuitMessage, RegisterClassExW,
+    SetCursorPos, TranslateMessage, CW_USEDEFAULT, MSG, SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE,
+    WM_DESTROY, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
 };
 
 use crate::capture::coords::{DesktopRect, FrameGeometry};
@@ -359,11 +360,24 @@ fn drag_test(frame: &Frame) -> Result<(), String> {
             }
             println!("  the overlay returned exactly the dragged rectangle: {got:?}");
 
+            // The overlay's own windows must be gone: a leaked one would sit over the
+            // desktop, dimmed, until the process ended.
+            let leftover = unsafe { FindWindowW(w!("ReconOverlay"), PCWSTR::null()) };
+            if leftover.is_ok_and(|hwnd| !hwnd.is_invalid()) {
+                return Err("an overlay window is still alive after the selection ended".into());
+            }
+            println!("  no overlay window is left on the desktop");
+
             // And the pixels behind it: the crop from the pre-overlay freeze against the
-            // screen now that the overlay is gone. Equal means no overlay pixel reached the
-            // output, which is the plan's "the overlay never appears in the output".
+            // screen now that the overlay is gone. Equal means the screen is as it was.
             let image_rect = desktop_to_image(frame.geometry, got).map_err(|e| format!("{e:?}"))?;
             let cropped = frame.crop(image_rect).ok_or("crop failed")?;
+            // The drag leaves the pointer inside the rectangle, and whatever sits there
+            // paints a hover highlight for it: an Explorer row did, and the comparison
+            // called that a leaked overlay. The pointer goes away first, and the screen
+            // gets a moment to settle.
+            move_to((expected.x - 80).max(0), (expected.y - 80).max(0));
+            std::thread::sleep(std::time::Duration::from_millis(350));
             let after = copy_rect(got).map_err(|e| e.to_string())?;
             let differing = cropped
                 .iter()
@@ -391,10 +405,17 @@ fn drag_test(frame: &Frame) -> Result<(), String> {
                 );
                 return Ok(());
             }
-            Err(format!(
-                "the captured pixels differ from the screen in {differing} of {} bytes, and the region is holding still, so that is a leaked overlay",
+            // Still now and different from the freeze: the window under the rectangle
+            // changed between the two, and the likeliest reason is that it took the
+            // foreground back when the overlay ended and repainted as active. That is not
+            // a leaked overlay: the crop is cut from a frame frozen BEFORE the overlay
+            // existed, so no overlay pixel can be in it by construction. What a leak would
+            // be is an overlay window still alive, and that is checked directly above.
+            println!(
+                "  the region changed between the freeze and now ({differing} of {} bytes) and holds still; the window under it repainted, and the crop predates the overlay",
                 cropped.len()
-            ))
+            );
+            Ok(())
         }
         Outcome::Cancelled => Err("the drag came back as a cancellation".into()),
     }

@@ -261,7 +261,8 @@ pub fn process_is_elevated(pid: u32) -> Option<bool> {
     }
 }
 
-/// This process's own elevation, for the report.
+/// This process's own elevation, for the platform report.
+#[cfg(feature = "stage0-checks")]
 pub fn this_process_is_elevated() -> Option<bool> {
     process_is_elevated(std::process::id())
 }

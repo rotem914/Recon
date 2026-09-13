@@ -187,6 +187,10 @@ one is worth trusting. Group the rows under the dimensions above.
 - 🔴 **Text leaves an editable element intact.** Read committed text in a way that keeps
   line breaks; `textContent` on a contenteditable drops them. (Source:
   `notes/2026-09-13-review.md`, T6.)
+- 🔴 **Every way out of a note commits it.** A click into another note, a new capture, a
+  key that changes the document: each path that leaves a note being typed reads its text
+  back first, or the layout rewrites the element from the stale model and the typing is
+  gone. (Source: `notes/2026-09-13-code-review-2.md`, R1; the open case is F67.)
 
 ### State & concurrency
 

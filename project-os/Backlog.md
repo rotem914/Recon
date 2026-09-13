@@ -26,7 +26,7 @@ The owner-curated open-items list. One place to see what is still open.
 
 | Added | Item | Source |
 |---|---|---|
-| | | |
+| 2026-09-13 | The margin colour is written twice, in the host's composer and in the editor page; give it one home and hand it to the page (F68) | Code review 2026-09-13, R7 |
 
 ## Done
 

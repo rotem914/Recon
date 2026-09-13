@@ -34,7 +34,30 @@ pub fn open(path: &Path, format: Format, bytes: Vec<u8>) -> Result<Opened, OpenE
         return open_animation(path, format, bytes);
     }
 
-    let mut decoder = image::ImageReader::new(Cursor::new(&bytes))
+    let (frame, notes) = decode_still(&bytes, format)?;
+    let (width, height) = (frame.width, frame.height);
+    Ok(Opened {
+        path: path.to_path_buf(),
+        format,
+        kind: Kind::Still,
+        width,
+        height,
+        notes,
+        source: Box::new(Still {
+            frame: Some(frame),
+            bytes,
+            format,
+        }),
+    })
+}
+
+/// One still, decoded from the file's bytes: orientation applied once, sRGB once.
+fn decode_still(bytes: &[u8], format: Format) -> Result<(DecodedFrame, Notes), OpenError> {
+    let corrupt = |err: &dyn std::fmt::Display| OpenError::Corrupt {
+        format,
+        detail: err.to_string(),
+    };
+    let mut decoder = image::ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
         .map_err(|e| corrupt(&e))?
         .into_decoder()
@@ -64,21 +87,14 @@ pub fn open(path: &Path, format: Format, bytes: Vec<u8>) -> Result<Opened, OpenE
         provider: "image crate",
         remarks: Vec::new(),
     };
-    Ok(Opened {
-        path: path.to_path_buf(),
-        format,
-        kind: Kind::Still,
-        width,
-        height,
+    Ok((
+        DecodedFrame {
+            width,
+            height,
+            rgba: rgba.into_raw(),
+        },
         notes,
-        source: Box::new(Still {
-            frame: Some(DecodedFrame {
-                width,
-                height,
-                rgba: rgba.into_raw(),
-            }),
-        }),
-    })
+    ))
 }
 
 fn open_animation(path: &Path, format: Format, bytes: Vec<u8>) -> Result<Opened, OpenError> {
@@ -149,26 +165,21 @@ fn open_animation(path: &Path, format: Format, bytes: Vec<u8>) -> Result<Opened,
     })
 }
 
-/// A still: decoded once at open, handed over on the first ask, decoded again if asked
-/// twice (which nothing does today).
+/// A still: decoded once at open and handed over on the first ask; a second ask decodes it
+/// again from the file's bytes. The first version kept a second copy of the pixels for that
+/// case, which doubled every opened still in memory, 192 MB twice for a 48-megapixel PNG,
+/// for an ask nothing makes today (review of 2026-09-13, R4).
 struct Still {
     frame: Option<DecodedFrame>,
+    bytes: Vec<u8>,
+    format: Format,
 }
 
 impl FrameSource for Still {
     fn frame(&mut self, _index: u32) -> Result<DecodedFrame, OpenError> {
         match self.frame.take() {
-            Some(frame) => {
-                // Keep a copy for a second ask: a still is small next to the cost of a
-                // surprising "no frame" on the second open of the same document.
-                self.frame = Some(DecodedFrame {
-                    width: frame.width,
-                    height: frame.height,
-                    rgba: frame.rgba.clone(),
-                });
-                Ok(frame)
-            }
-            None => Err(OpenError::NoSuchFrame { index: 0, count: 1 }),
+            Some(frame) => Ok(frame),
+            None => decode_still(&self.bytes, self.format).map(|(frame, _)| frame),
         }
     }
 }
