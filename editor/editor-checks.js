@@ -736,6 +736,37 @@ export async function runChecks(editor, invoke) {
     await editor.setZoom(model.fitZoom);
   }
 
+  // ---------------------------------------------------------------- 19. S1.4: folder navigation
+  say('');
+  say('S1.4: the folder in logical order, the position at both ends, a vanished file skipped, the context named');
+  {
+    const dir = await invoke('editor_make_folder');
+    const at = (name) => `${dir}\\${name}`;
+    let info = await invoke('editor_open_path', { path: at('img2.png') });
+    await editor.loadImage(info);
+    check('the folder is listed in logical order and the file placed in it', info.position === 4 && info.total === 5 && info.context === 'folder',
+      `${info.position} of ${info.total} in ${JSON.stringify(info.context)}`);
+    info = await invoke('editor_navigate', { step: 'next' });
+    await editor.loadImage(info);
+    check('next goes to img10 after img2, not to IMG1', info.file === 'img10.png' && info.position === 5, `${info.file} ${info.position} of ${info.total}`);
+    info = await invoke('editor_navigate', { step: 'next' });
+    check('the last file stays at the end', info.file === 'img10.png' && info.position === 5, `${info.file} ${info.position} of ${info.total}`);
+    info = await invoke('editor_navigate', { step: 'first' });
+    await editor.loadImage(info);
+    check('first is a.gif', info.file === 'a.gif' && info.position === 1, `${info.file} ${info.position} of ${info.total}`);
+    info = await invoke('editor_navigate', { step: 'previous' });
+    check('the first file stays at the start', info.file === 'a.gif' && info.position === 1);
+    await invoke('editor_remove_from_folder', { name: 'b.jpg' });
+    info = await invoke('editor_navigate', { step: 'next' });
+    await editor.loadImage(info);
+    check('a file gone since the listing is skipped, and the count follows', info.file === 'IMG1.png' && info.position === 2 && info.total === 4,
+      `${info.file} ${info.position} of ${info.total}`);
+    info = await invoke('editor_navigate', { step: 'last' });
+    await editor.loadImage(info);
+    check('last is img10', info.file === 'img10.png' && info.position === 4 && info.total === 4);
+    check('the HUD names the context', document.getElementById('hud').textContent.includes('4 of 4 in folder'));
+  }
+
   say('');
   if (failures === 0) {
     say('RESULT: every check passed.');

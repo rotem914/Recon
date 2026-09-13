@@ -53,6 +53,7 @@ Recon/
 │       ├── focus.rs                # the return target: the application the capture began in, back in front on hide
 │       ├── registration.rs         # the file types in "Open with" and Default apps, under the user, never a default taken
 │       ├── dialog.rs               # Ctrl+O: Windows' own picker, owned by the editor, on its own thread
+│       ├── folder.rs               # the folder context: listed once, logical order, previous and next, a gone file skipped
 │       ├── measure.rs              # --measure and --walk: the thirty-run measurement and memory sample, feature-gated
 │       ├── config.rs               # the hotkey, and where it was read from
 │       ├── overlay.rs              # the Win32 selection overlay, one window per display

@@ -98,6 +98,8 @@ pub struct Editor {
     image: Mutex<Option<Arc<Image>>>,
     /// Set when the image came from a file; a capture leaves it empty.
     document: Mutex<Option<Document>>,
+    /// The folder the opened file came from, listed once, for previous and next (S1.4).
+    folder: Mutex<Option<crate::folder::Context>>,
 }
 
 impl Editor {
@@ -105,6 +107,7 @@ impl Editor {
         Self {
             image: Mutex::new(None),
             document: Mutex::new(None),
+            folder: Mutex::new(None),
         }
     }
 
@@ -365,7 +368,62 @@ pub fn open_path(path: &std::path::Path) -> Result<u128, String> {
     );
     let name = opened.format.name();
     state().set_document(Some(Document { opened, index: 0 }));
+    // The folder context: kept when the file is in the folder already listed, built once
+    // otherwise (§3.4: read once per navigation context, never per keystroke).
+    if let Ok(mut slot) = state().folder.lock() {
+        let position = slot.as_ref().and_then(|ctx| {
+            (path.parent() == Some(ctx.dir.as_path()))
+                .then(|| ctx.contains(path))
+                .flatten()
+        });
+        match (slot.as_mut(), position) {
+            (Some(ctx), Some(index)) => ctx.index = index,
+            _ => *slot = crate::folder::build(path),
+        }
+    }
     present_frame(frame_of(decoded, name))
+}
+
+/// Previous, next, first or last in the folder (§3.4). A file gone since the listing is
+/// skipped with a log line; an end stays where it is and returns the image as it is.
+#[tauri::command]
+pub fn editor_navigate(step: String) -> Result<ImageInfo, String> {
+    let step = match step.as_str() {
+        "previous" => crate::folder::Step::Previous,
+        "next" => crate::folder::Step::Next,
+        "first" => crate::folder::Step::First,
+        "last" => crate::folder::Step::Last,
+        other => return Err(format!("{other:?} is not a step")),
+    };
+    loop {
+        let target = {
+            let slot = state()
+                .folder
+                .lock()
+                .map_err(|_| "the folder context is poisoned")?;
+            let ctx = slot
+                .as_ref()
+                .ok_or("no folder is being walked: the image on screen did not come from a file")?;
+            ctx.target(step).map(|i| (i, ctx.files[i].clone()))
+        };
+        let Some((index, path)) = target else {
+            return editor_image_info();
+        };
+        match open_path(&path) {
+            Ok(_) => return editor_image_info(),
+            Err(err) => {
+                crate::log(&format!(
+                    "skipped {}: {err}",
+                    path.file_name().unwrap_or_default().to_string_lossy()
+                ));
+                if let Ok(mut slot) = state().folder.lock() {
+                    if let Some(ctx) = slot.as_mut() {
+                        ctx.forget(index);
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn frame_of(decoded: source::DecodedFrame, name: &'static str) -> Frame {
@@ -424,7 +482,11 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_hotkey,
         editor_open_dialog,
         editor_fullscreen,
+        editor_navigate,
         checks::editor_window_title,
+        checks::editor_make_folder,
+        checks::editor_open_path,
+        checks::editor_remove_from_folder,
         checks::editor_history,
         checks::editor_dialog_outcome,
         checks::editor_press_escape,
@@ -462,6 +524,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_hotkey,
         editor_open_dialog,
         editor_fullscreen,
+        editor_navigate,
     ]);
     builder.register_asynchronous_uri_scheme_protocol("region", |_ctx, request, responder| {
         let query = request.uri().query().unwrap_or_default().to_string();
@@ -584,6 +647,11 @@ pub struct ImageInfo {
     /// The document's number: a new capture or file gets the next one, a frame of the same
     /// file keeps it (S1.1).
     pub document_id: u64,
+    /// Where the file sits in its folder, one-based, and how many supported files the folder
+    /// holds; 0 of 0 for a capture. The context names the list being walked (§3.4).
+    pub position: u32,
+    pub total: u32,
+    pub context: String,
 }
 
 #[tauri::command]
@@ -612,6 +680,16 @@ pub fn editor_image_info() -> Result<ImageInfo, String> {
         },
         Err(_) => (String::new(), "still".to_string(), 0, 1),
     };
+    let (position, total, context) = match state().folder.lock() {
+        Ok(slot) => match slot.as_ref() {
+            Some(ctx) if !file.is_empty() => {
+                let (p, t) = ctx.position();
+                (p, t, "folder".to_string())
+            }
+            _ => (0, 0, String::new()),
+        },
+        Err(_) => (0, 0, String::new()),
+    };
     Ok(ImageInfo {
         width: image.frame.width(),
         height: image.frame.height(),
@@ -621,6 +699,9 @@ pub fn editor_image_info() -> Result<ImageInfo, String> {
         index,
         count,
         document_id: current_document_id(),
+        position,
+        total,
+        context,
     })
 }
 
@@ -1744,6 +1825,57 @@ mod checks {
     #[tauri::command]
     pub fn editor_history() -> Vec<(u64, u32, u32, usize)> {
         history_summary()
+    }
+
+    fn folder_dir() -> std::path::PathBuf {
+        std::env::current_exe()
+            .map(|exe| exe.with_file_name("s14-folder"))
+            .unwrap_or_else(|_| "s14-folder".into())
+    }
+
+    /// A folder for the S1.4 check: five supported files whose names sort one way as text
+    /// and another way logically, and one that is not an image.
+    #[tauri::command]
+    pub fn editor_make_folder() -> Result<String, String> {
+        let from = fixture_dir();
+        if !from.join("gif-three-frames.gif").exists() {
+            source::fixtures::make_export_set(&from).map_err(|err| err.to_string())?;
+        }
+        let dir = folder_dir();
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+        for (name, source) in [
+            ("img10.png", "png-alpha-and-swapped-profile.png"),
+            ("img2.png", "png-alpha-and-swapped-profile.png"),
+            ("IMG1.png", "png-alpha-and-swapped-profile.png"),
+            ("b.jpg", "jpeg-orientation-6.jpg"),
+            ("a.gif", "gif-three-frames.gif"),
+        ] {
+            std::fs::copy(from.join(source), dir.join(name)).map_err(|err| err.to_string())?;
+        }
+        std::fs::write(
+            dir.join("notes.txt"),
+            b"not an image
+",
+        )
+        .map_err(|err| err.to_string())?;
+        Ok(dir.display().to_string())
+    }
+
+    /// Opens a file through the product's own path, folder context included.
+    #[tauri::command]
+    pub fn editor_open_path(path: String) -> Result<ImageInfo, String> {
+        open_path(std::path::Path::new(&path))?;
+        editor_image_info()
+    }
+
+    /// Removes one file of the check folder, so the walk meets a file that has gone.
+    #[tauri::command]
+    pub fn editor_remove_from_folder(name: String) -> Result<(), String> {
+        if name.contains('/') || name.contains('\\') || name.contains("..") {
+            return Err("a name, not a path".into());
+        }
+        std::fs::remove_file(folder_dir().join(name)).map_err(|err| err.to_string())
     }
 
     /// The window's title, for the S1.3 check.

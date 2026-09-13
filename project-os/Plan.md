@@ -377,7 +377,7 @@ is a contract broken on day one.
 | Delete outside text editing | Delete the selected annotation | 1 |
 | Undo and redo | While a note is being edited, undo works on the typing and never reaches object operations. Once editing ends, that text change takes its place in document history as one grouped step | 1 |
 | `Ctrl+O` | Open an image file | 1, built at S1.2 |
-| Previous and next image, outside text editing | Walk the active navigation context, folder or Recon history, in the §3.4 order | 1 |
+| Previous and next image, outside text editing | Walk the active navigation context, folder or Recon history, in the §3.4 order | 1, built at S1.4: PageDown and PageUp, Home and End for the first and last; the ends stop |
 | Fit to window · actual size · zoom in · zoom out | Viewing controls, no effect on export resolution | 1, built: keys, the wheel to pan, Ctrl with the wheel to zoom around the pointer |
 | Fullscreen | Enter fullscreen | 1, built: F11, and the same key or Escape out |
 | `Ctrl+S` | Save As a PNG file, to a new file. Internal saving stays automatic | 1 |
@@ -1781,9 +1781,18 @@ work rather than a feature count.
       window title beside the dimensions the HUD already shows. Zoom changes nothing an
       export contains: the composer reads the image, never the view (S0.6). Dragging to pan
       with the pointer is S1.5's, where viewing mode and annotation mode part ways.
-- [ ] S1.4 Folder navigation: previous and next across the supported types in the opened
+- [x] S1.4 Folder navigation: previous and next across the supported types in the opened
       file's folder, the defined numeric-aware order, the position indicator, and the named
       active context so it can never be confused with Recon history. Model: Opus 5.
+      **Built 2026-09-14.** The folder is listed once, when a file is opened from a folder
+      that is not the current context, and never on a keystroke; the supported types are
+      the twelve extensions of §3.7, by name. The order is Windows' own logical comparison,
+      so a.gif, b.jpg, IMG1.png, img2.png, img10.png, checked in a folder built for it. The
+      image info carries the position, the count and the context's name, and the HUD says
+      "4 of 4 in folder". PageDown and PageUp walk, Home and End jump, the ends stop. A
+      file that has vanished since the listing is skipped with a log line and the count
+      follows. History is a second list and S1.9's; the context name is what keeps the two
+      apart on screen.
 - [ ] S1.5 The transition into annotation: viewing mode arms no tool and no click can create
       a callout, an explicit Annotate action switches modes, and leaving annotation keeps the
       work. Annotate creates a managed document with its preserved decoded image, or resumes

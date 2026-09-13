@@ -21,6 +21,7 @@ mod config;
 mod dialog;
 mod editor;
 mod focus;
+mod folder;
 mod marks;
 #[cfg(feature = "stage0-checks")]
 mod measure;

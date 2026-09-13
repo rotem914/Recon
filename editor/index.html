@@ -445,13 +445,14 @@
       : `${(model.zoom * 100).toFixed(0)}%`;
     const where = model.image.file
       ? `${model.image.file}  ${model.image.kind}` +
-        (model.image.count > 1 ? `  ${model.image.index + 1} of ${model.image.count}  [ ] to step` : '')
+        (model.image.count > 1 ? `  ${model.image.index + 1} of ${model.image.count}  [ ] to step` : '') +
+        (model.image.total > 0 ? `  ${model.image.position} of ${model.image.total} in ${model.image.context}` : '')
       : model.image.source;
     hud.textContent =
       `${model.image.width}x${model.image.height}  ${where}\n` +
       `zoom ${zoomText}   pan ${Math.round(model.pan.x)},${Math.round(model.pan.y)}   ` +
       `callouts ${model.callouts.length}   text ${sizeShown}px   dpr ${dpr()}\n` +
-      `0 fit  1 actual size  +/- zoom  wheel pan  Ctrl+wheel zoom  F11 fullscreen  Ctrl +/- text size  arrows pan  click to add  Esc commit  Del remove  Ctrl+O open`;
+      `0 fit  1 actual size  +/- zoom  wheel pan  Ctrl+wheel zoom  F11 fullscreen  PgUp/PgDn folder  Ctrl +/- text size  arrows pan  click to add  Esc commit  Del remove  Ctrl+O open`;
   };
 
   // ---------------------------------------------------------------- editing
@@ -654,6 +655,18 @@
       return;
     }
     if (event.key === 'Enter' && model.selected) { startEditing(model.selected); event.preventDefault(); return; }
+
+    // Previous and next through the folder the file came from, first and last at the ends
+    // (§3.4, §3.6). The host answers with the image now on screen; at an end that is the
+    // same one, and the same document keeps its view.
+    const steps = { PageDown: 'next', PageUp: 'previous', Home: 'first', End: 'last' };
+    if (steps[event.key] && model.image.total > 0) {
+      invoke('editor_navigate', { step: steps[event.key] })
+        .then((info) => loadImage(info))
+        .catch((err) => console.error('navigate', err));
+      event.preventDefault();
+      return;
+    }
 
     // Frames of an animation or pages of a file, by index, which is §3.7's contract made
     // visible: the frame on screen is the one asked for, never a default first frame.
