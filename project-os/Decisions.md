@@ -69,10 +69,11 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-10 · _The stack: a Rust host owning the pixels, a web view laying out the text._ (recorded as decided; superseded below, it is a candidate)
 - 2026-09-10 · One native decode route, and the original never enters the web view.
 - 2026-09-10 · The annotation text layer is DOM, and the export is that same DOM.
-- 2026-09-10 · Why the required format set is affordable, superseding one paragraph.
+- 2026-09-10 · _Why the required format set is affordable, superseding one paragraph._ (the libavif clause is superseded below; the membership stands)
 - 2026-09-10 · The stack is a recommended candidate, not a settled decision.
 - 2026-09-11 · A note's text size is the user's, with no minimum on-screen size.
 - 2026-09-13 · The display proxy is served from a pyramid of halves, by one worker.
+- 2026-09-13 · AVIF decodes through the Windows imaging stack, not a bundled libavif.
 
 ---
 
@@ -637,3 +638,46 @@ Cost: memory for the levels, a third of the image again at most, held for the li
 image; and a first fit view that pays for level 1. Tiles would cap memory per view and
 allow partial repaints, which is what would make them worth it: revisit if S0.7's memory
 slope or a very large image (S0.5's stall test) argues for them.
+
+---
+
+## 2026-09-13 · AVIF decodes through the Windows imaging stack, not a bundled libavif
+
+### Context
+
+The plan named libavif with a dav1d backend for AVIF, so that a required format would not
+depend on a codec installed on the machine (part 6c). S0.5 could not build that chain: it
+needs a C toolchain (cmake, nasm, meson) this machine does not have, and the three pure-Rust
+AV1 decoders on crates.io do not compile on Rust 1.98. AVIF was wired through the Windows
+imaging stack instead, which needs the AV1 Video Extension, and on real files it decoded
+every still, 4K, 10-bit and alpha included, but returned one frame of an animated AVIF
+(F51, F53). Rotem was asked on 2026-09-13 and delegated the call.
+
+### Options
+
+1. Accept the Windows imaging stack for AVIF: no build dependency, an installed codec at
+   run time, stills complete, animation as a first frame, the named-codec message when the
+   codec is missing.
+2. Install the C toolchain and build libavif with dav1d: the format decodes with nothing
+   installed, animation included, and every contributor of the open-source release needs the
+   same toolchain to build the host.
+3. Wait for a pure-Rust AV1 decoder that compiles here, and ship without AVIF until then.
+
+### Decision
+
+Option 1, by the assistant at Rotem's delegation. HEIC already takes exactly this route with
+the same degraded state, and part 6c already counts the named-codec message as a pass for
+it; AVIF joins that clause rather than opening a new one. The AV1 Video Extension ships with
+current Windows 11, and this machine had it without anyone installing it. An animated AVIF
+has not been seen in the daily use the product is for: screenshots, client material and
+phone photos. Option 2 buys that rare case at the price of a C toolchain on every machine
+that builds Recon, forever. Option 3 drops a required format for an unknown wait.
+
+### Consequences
+
+AVIF stays required; its degraded state is the message that names the codec and the store,
+and an animated AVIF shows its first frame, said in §3.7 and part 6c. The build stays pure
+Rust, with three decode dependencies instead of four. The provider sits behind the one image
+source interface, so moving AVIF to another decoder later touches one file and no caller.
+Revisit when a pure-Rust AV1 decoder compiles on the project's toolchain, or when daily use
+(S1.12) meets an AVIF this route cannot open; either one reopens F51 and F53 together.

@@ -434,7 +434,7 @@ rather than quietly dropped.
 | **GIF** | Decode and play the animation, transparency included. Frame access by index, so annotation takes a still of the frame actually on screen. |
 | **TIFF** | Decode, pages exposed as page navigation with the count visible. Annotation operates on the displayed page. |
 | **HEIC / HEIF** | Decode, orientation applied. Annotate directly. Depends on codecs installed on the machine, so a missing codec is reported as a missing codec with the way to install it, never as a corrupt file. |
-| **AVIF** | Decode, transparency preserved. An animated AVIF follows the animation rule, frame access included. Through the Windows imaging stack for now, so it depends on the AV1 Video Extension being installed, reported as a missing codec when it is not (F51), and an animated AVIF shows its first frame only on that route (F53). |
+| **AVIF** | Decode, transparency preserved, through the Windows imaging stack (decided 2026-09-13, F51). It depends on the AV1 Video Extension being installed and is reported as a missing codec when it is not, the way HEIC is. An animated AVIF shows its first frame only on this route, so the animation rule does not apply to it (F53); a buildable AV1 decoder would lift that. |
 | **SVG** | Render for viewing at any size. Annotation rasterizes once at the displayed size in physical device pixels, shows and stores those dimensions, and preserves the original vector file. |
 
 An unsupported or unreadable file says so plainly, names the format, and leaves the file
@@ -917,8 +917,8 @@ Explorer closely enough to feel predictable is checked in S1.4, not assumed here
 | Paste destinations | Claude and ChatGPT. Both read the clipboard the way a web application does. PNG is the implementation choice, not a proven requirement: a Chromium-based reader can convert native bitmap data into PNG for the page, so nothing here claims a bitmap-only clipboard would fail. What decides acceptance is the paste actually working in those two surfaces, recorded with the surface and its version. |
 | Reference environment | Rotem's main machine at its current display scale. The environment, the font details and the web view runtime version are recorded with the reference images and in the S0.8 report. |
 | The stack | A Rust host owning the pixels, a WebView2 editor laying out the text, packaged with Tauri v2. Argued in part 5 from the decode surface, from the bidirectional editing model, and from this project's own browser-driven QA gate. Recorded in `project-os/Decisions.md`. |
-| Decoding | One native route for all nine formats. The web view decodes nothing, and the decoded original never crosses into it at full resolution. This flips the earlier two-provider recommendation, because a preserved image born in the renderer cannot survive a premultiplied canvas byte for byte. Recorded in `project-os/Decisions.md`. Built at S0.5 as three providers behind one interface: the `image` crate, `resvg`, and WIC for TIFF, HEIC and, pending F51, AVIF. |
-| TIFF and HEIC | Both through WIC in the host: TIFF with its pages, HEIC through whatever codec the machine has, with the named missing-codec message rather than a corrupt-file one. |
+| Decoding | One native route for all nine formats. The web view decodes nothing, and the decoded original never crosses into it at full resolution. This flips the earlier two-provider recommendation, because a preserved image born in the renderer cannot survive a premultiplied canvas byte for byte. Recorded in `project-os/Decisions.md`. Built at S0.5 as three providers behind one interface: the `image` crate, `resvg`, and WIC for TIFF, HEIC and AVIF (F51, decided 2026-09-13). |
+| TIFF, HEIC and AVIF | All three through WIC in the host: TIFF with its pages, HEIC and AVIF through whatever codec the machine has, with the named missing-codec message rather than a corrupt-file one. |
 | The annotation text layer | DOM in image-space pixels with `unicode-bidi: plaintext`, zoom as a CSS transform so layout precedes it, and export through a serialized `foreignObject` with fonts and styles inlined. Recorded in `project-os/Decisions.md`. |
 | Note text size | 20 image pixels by default, stored per note, stepped with `Ctrl +` and `Ctrl -`, and the size last used becomes the next note's default. A note scales with the image and there is no minimum on-screen size. Rotem's call on F46, recorded in `project-os/Decisions.md`. |
 
@@ -940,14 +940,16 @@ Nothing in this plan now waits on a decision. What waits is measurement.
 "Ship the shorter list" is bounded. It is not a licence to drop a format because it turned
 out to be inconvenient.
 
-**Required in Stage 1:** PNG, JPG, GIF, WebP, BMP, AVIF and SVG.
+**Required in Stage 1:** PNG, JPG, GIF, WebP, BMP, AVIF and SVG. AVIF decodes through the
+Windows imaging stack (decided 2026-09-13, F51), so it degrades the way HEIC does: the
+named-codec message is a pass, and an animated AVIF shows its first frame.
 
 The reason this set is affordable has changed, and it is worth re-reading before it is
 treated as settled. It used to be "the web view decodes all seven for free". With one native
-decode route that is void: the seven are affordable because `image` covers five of them and
-`resvg` and libavif cover the other two, all in the host's own toolchain. The membership does
-not change. The price does: four decode dependencies and their security watch, forever, as
-part 11 now says.
+decode route that is void: the seven are affordable because `image` covers five of them,
+`resvg` covers SVG, and the Windows imaging stack covers AVIF with nothing added to the
+build. The membership does not change. The price does: three decode dependencies and their
+security watch, forever, as part 11 now says, plus one installed codec for AVIF and HEIC.
 
 **Required to attempt, allowed to degrade:** HEIC and HEIF. On a machine without the codec,
 the message that names it and says how to install it is a pass, not a gap.
@@ -1252,7 +1254,8 @@ three pure-Rust AV1 ports on crates.io do not compile on Rust 1.98. AVIF therefo
 through WIC here, which means it depends on the AV1 Video Extension being installed, the
 same way HEIC depends on its extension. Part 6c lists AVIF as required with no degraded
 state; the options are to accept the codec dependency for AVIF with the named-codec
-message, or to add the C toolchain and build the chain the plan named.
+message, or to add the C toolchain and build the chain the plan named. Decided 2026-09-13,
+at Rotem's delegation: the Windows imaging stack, recorded in `project-os/Decisions.md`.
 
 **Two carried gates, restated.** The export leg of the animation, orientation, colour and
 SVG tests runs at S0.6; the save-and-restart leg at S1.8. And one number for the record:
@@ -1832,9 +1835,9 @@ was rated when it was raised.
 | F48 | S0.5 could not close as written: three of its gates need the export and the store, which are later steps | 🟠 | S0.5, S0.6, S1.8 | Resolved: the legs are carried gates in S0.6 and S1.8, and the export spike runs first |
 | F49 | The four Stage 0 pieces had never run as one thing, so the second latency interval had nothing to measure | 🟠 | S0.4b | Resolved: hotkey to editor on the product path, 13 ms from selection to shown |
 | F50 | The check-only commands let the page ask the host to capture the screen and write files, in the runtime the product editor will use | 🟠 | Part 5 boundaries, S0.4b | Resolved: behind the stage0-checks feature, and the page's permissions are in one capability file |
-| F51 | The AVIF chain the plan named, libavif with dav1d, cannot be built on this machine without a C toolchain, and the pure-Rust AV1 ports do not compile on this Rust; AVIF decodes through WIC and so depends on an installed codec, which part 6c does not allow for a required format | 🟠 | §3.7, part 6a, part 6c, S0.5 | Open: Rotem's scope call, accept the codec dependency and first-frame-only animation (F53), or add the toolchain and build the named chain |
+| F51 | The AVIF chain the plan named, libavif with dav1d, cannot be built on this machine without a C toolchain, and the pure-Rust AV1 ports do not compile on this Rust; AVIF decodes through WIC and so depends on an installed codec, which part 6c does not allow for a required format | 🟠 | §3.7, part 6a, part 6c, S0.5 | Decided 2026-09-13 at Rotem's delegation: the Windows imaging stack, with the named-codec message as the degraded state, like HEIC; part 6c says so. Revisit if a pure-Rust AV1 decoder compiles on this toolchain, or daily use (S1.12) meets an AVIF this route cannot open |
 | F52 | The first fit view of a 48-megapixel image waits 442 ms for pyramid level 1 in release | 🟡 | Part 11, S0.5, S1.3 | Open: a 2x2 box average would build the level in a fraction of the time; revisit if S1.12 shows files that large in daily use |
-| F53 | An animated AVIF through WIC is one frame: the frame-by-index rule in §3.5 is unmet for AVIF sequences on this route | 🟠 | §3.7, S0.5, F51 | Open: part of Rotem's AVIF call; the named libavif chain or a buildable AV1 decoder would close it |
+| F53 | An animated AVIF through WIC is one frame: the frame-by-index rule in §3.5 is unmet for AVIF sequences on this route | 🟠 | §3.7, S0.5, F51 | Accepted 2026-09-13 with F51: first frame only, stated in §3.7 and part 6c; a buildable AV1 decoder would close it, on F51's revisit triggers |
 | F54 | The image crate does not read EXIF orientation out of a WebP, so a tagged WebP comes out as stored | 🟡 | §3.7, S0.5 | Open: §3.7 promises orientation for JPEG and HEIC only; recorded, not scheduled |
 | F55 | WIC's converter does not apply an embedded colour profile, so a tagged TIFF, HEIC or AVIF would have been shown and exported as if sRGB | 🟠 | §3.7 contract, S0.5 | Resolved: the frame's colour context is read and converted through the same sRGB step as the other providers |
 

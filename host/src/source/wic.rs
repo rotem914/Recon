@@ -3,10 +3,10 @@
 //! TIFF is here for its pages: WIC exposes every page as a frame. HEIC and AVIF are here
 //! because their decoders are codecs installed on the machine (the HEIF Image Extension,
 //! the HEVC and AV1 Video Extensions), and part 5 says a missing codec is reported as a
-//! missing codec with the way to install it, never as a corrupt file. The plan named
+//! missing codec with the way to install it, never as a corrupt file. The plan first named
 //! libavif with dav1d for AVIF; that chain needs a C toolchain this machine does not have,
-//! and the pure-Rust ports did not compile here, so AVIF takes this route today and the
-//! report says so (S0.5's evidence line).
+//! and the pure-Rust ports did not compile here, so AVIF takes this route, decided on
+//! 2026-09-13 (`project-os/Decisions.md`). An animated AVIF is one frame here (F53).
 //!
 //! Every frame is converted to 32-bit straight-alpha RGBA by WIC's own converter, so one
 //! shape comes out whatever the file held. The file is opened for reading only, with the
