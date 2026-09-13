@@ -76,6 +76,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-13 · AVIF decodes through the Windows imaging stack, not a bundled libavif.
 - 2026-09-13 · The clipboard is published by the host in three formats, PNG first.
 - 2026-09-13 · Stage 0 verdict: the candidate stack is adopted, every component kept.
+- 2026-09-13 · A capture stays sRGB on a wide-gamut display; the trigger moves to a managed desktop.
 
 ---
 
@@ -752,3 +753,37 @@ the sRGB decision (F60), and the hotkey against an elevated application, which o
 press can measure (F62). Replacing Tauri later would mean re-implementing the tray, the
 global shortcut, the file activation and the updater, as part 8 says; that is the cost
 this entry accepts. Revisit if Stage 1 use finds a cost the measurements did not.
+
+---
+
+## 2026-09-13 · A capture stays sRGB on a wide-gamut display; the trigger moves to a managed desktop
+
+### Context
+
+The sRGB decision of 2026-09-10 named one trigger for revisiting it: the record of what this
+machine's displays are. S0.8 made that record, and the main display is wide gamut, 132% of
+sRGB's area by its own EDID primaries. Rotem was asked whether a capture should stay sRGB or
+be tagged with its display's profile, and delegated the call.
+
+### Options
+
+1. Keep treating a capture as sRGB, untagged, as every other screenshot tool does.
+2. Tag each capture with the profile of the display it was taken on.
+3. Convert each capture from the display's profile to sRGB at freeze.
+
+### Decision
+
+Option 1, by the assistant at Rotem's delegation. On a Windows desktop that is not colour
+managed, an application draws sRGB numbers and a wide-gamut panel shows them more saturated
+than meant; the freeze copies those numbers. Treating them as sRGB keeps the application's
+intent, which is what a designer annotating a UI is judging, and what the people who receive
+the paste see on their own screens. Option 2 would make the paste reproduce the panel's
+exaggeration everywhere else. Option 3 would change the very numbers the application drew,
+which is the rule 11 discipline broken at the freeze.
+
+### Consequences
+
+Nothing changes in the pipeline. The revisit trigger changes: a desktop that Windows colour
+manages, with automatic colour management or HDR on, stops handing plain sRGB numbers to
+GDI, and `host/src/platform.rs` reads that state per display. When that state is seen on
+the machine, or a client's colours are questioned, this entry is the one to supersede.

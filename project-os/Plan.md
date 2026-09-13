@@ -468,6 +468,15 @@ one. S0.8 records what this machine's displays actually are, and that is the tri
 revisiting it. A designer judging UI color on a wide-gamut display is the case that would
 make this matter.
 
+**Revisited 2026-09-13, and sRGB stays (F60).** The main display is wide gamut, and the
+capture still carries the numbers the application drew, which on an unmanaged Windows
+desktop are sRGB numbers shown more saturated than meant. Treating them as sRGB keeps the
+application's intent and matches what every other screenshot tool hands on; tagging them
+with the display's profile would make the paste look oversaturated on everyone else's
+screen. The trigger moves to Windows' own colour management: when the desktop is managed
+(Windows 11 automatic colour management on, or HDR on), the frozen pixels stop being plain
+sRGB numbers, and that state is what `host/src/platform.rs` now reads.
+
 S0.5 tests this through the whole cycle rather than at decode alone, because applying
 orientation twice and shifting color on reopen are exactly the bugs that pass a
 decode-time check.
@@ -2052,7 +2061,7 @@ was rated when it was raised.
 | F57 | The product build warns that three fields of the decode notes are read only by the feature-gated report | 🟡 | S0.5, `host/src/source/mod.rs` | Open, pre-existing: a cfg attribute or a use in the product; reported by the S0.6 review, not fixed there |
 | F58 | S0.7 says memory growth with the library "is a failure of R11", and no part of the plan defines R11 | 🟡 | S0.7, §3.8 | Open: read at S0.7 as §3.8's rule that memory must not grow with the size of the library or a folder, which is what was measured; the label needs a home or a rewrite |
 | F59 | The tray process's memory floor is about 170 MB, and 162 to 165 MB of it is the hidden editor's web view | 🟡 | S0.7, part 5, part 8 | Open: judged on its own, as S0.7 asks; part 8 has no row that fires on it. A web view destroyed when idle and recreated on the hotkey would lower it and cost the editor interval its warm start |
-| F60 | The main display is wide gamut (132% of sRGB by its EDID primaries), so the sRGB decision's own revisit trigger has fired: a capture taken there is treated as sRGB when it is not | 🟠 | §3.7, sRGB decision, S0.8 | Open: Rotem's call. Keep sRGB for v1 with the record stated, or tag captures with the display's profile (a decision entry superseding the sRGB one) |
+| F60 | The main display is wide gamut (132% of sRGB by its EDID primaries), so the sRGB decision's own revisit trigger has fired: a capture taken there is treated as sRGB when it is not | 🟠 | §3.7, sRGB decision, S0.8 | Decided 2026-09-13 at Rotem's delegation: sRGB stays for v1, because the captured numbers are what the application drew and a display tag would oversaturate them everywhere else; the revisit trigger is now a colour-managed desktop (automatic colour management or HDR on), which the product detects. Recorded in Decisions |
 | F61 | HDR is detected and logged, and nothing tells the user that a capture on an HDR display is the SDR rendering | 🟡 | S0.8, S1 | Open: a one-line notice in the editor when the frozen display had HDR on; Stage 1 |
 | F62 | The hotkey against an elevated application in the foreground is not measured, and cannot be by a synthesized key | 🟠 | S0.8, S0.1 | Open: Rotem presses it once. Run the product, open Task Manager (elevated), click it, press the capture key; the log's first overlay line names the window and "elevated", or "HOTKEY FIRED" never appears. Either result is recorded here, and no decision rests on a guess |
 
