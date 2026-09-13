@@ -48,6 +48,8 @@ Recon/
 │   ├── references/s06/             # the six reviewed reference outputs and their environment (S0.6)
 │   └── src/
 │       ├── main.rs                 # tray, hotkey, capture to editor, the selection guard, the diagnostic flags
+│       ├── marks.rs                # S0.7's marks on one clock: hotkey to overlay usable, selection to editor usable
+│       ├── measure.rs              # --measure and --walk: the thirty-run measurement and memory sample, feature-gated
 │       ├── config.rs               # the hotkey, and where it was read from
 │       ├── overlay.rs              # the Win32 selection overlay, one window per display
 │       ├── selftest.rs             # --selftest and --capture-demo: S0.2's evidence, feature-gated

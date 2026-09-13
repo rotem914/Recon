@@ -10,7 +10,7 @@ members = ["pixels"]
 
 [features]
 # The diagnostic runs and the commands they need: --selftest, --bench, --editor-check,
-# --editor-demo, --capture-demo. A product build has none of them, so no command lets the
+# --editor-demo, --capture-demo, --measure. A product build has none of them, so no command lets the
 # page freeze the screen or write a file (part 5's boundary, review T7).
 stage0-checks = ["dep:tiff"]
 
@@ -37,6 +37,9 @@ windows = { version = "0.61", features = [
     "Win32_System_DataExchange",
     "Win32_System_Memory",
     "Win32_System_Ole",
+    "Win32_System_Threading",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Diagnostics_ToolHelp",
 ] }
 
 # The one decode route (part 6a): PNG, JPEG, BMP, GIF and WebP here, SVG through resvg,

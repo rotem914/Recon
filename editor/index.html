@@ -813,7 +813,20 @@
       await loadImage(event.payload);
       drawHud();
       console.log(`capture shown ${Math.round(performance.now() - arrived)} ms after the page heard of it`);
+      // S0.7's two editor marks, each sent the moment it happens and stamped by the host
+      // when it arrives, so late by one crossing and never early. Painted: the second
+      // animation frame after the new pixels went into the canvas. Focused: the new image
+      // is loaded and this page has the keyboard, so a click or a key lands on it.
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        invoke('editor_mark', { name: 'page painted' }).catch(() => {});
+      }));
+      const focused = document.hasFocus() || await Promise.race([
+        new Promise((resolve) => window.addEventListener('focus', () => resolve(true), { once: true })),
+        new Promise((resolve) => setTimeout(() => resolve(false), 3000)),
+      ]);
+      if (focused) invoke('editor_mark', { name: 'page focused' }).catch(() => {});
     });
+    invoke('editor_mark', { name: 'page booted' }).catch(() => {});
     try {
       const info = await invoke('editor_image_info');
       await loadImage(info);

@@ -7,7 +7,7 @@
 // evidence for each step is the log and S0.7's instrumentation needs the same habit.
 //
 // The `stage0-checks` cargo feature carries the diagnostic runs (--selftest, --bench,
-// --editor-check, --editor-demo, --capture-demo) and the commands they need. A product
+// --editor-check, --editor-demo, --capture-demo, --measure) and the commands they need. A product
 // build has none of them (review T7).
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -19,6 +19,9 @@ mod clipboard;
 mod compose;
 mod config;
 mod editor;
+mod marks;
+#[cfg(feature = "stage0-checks")]
+mod measure;
 mod overlay;
 #[cfg(feature = "stage0-checks")]
 mod selftest;
@@ -69,6 +72,10 @@ impl Drop for Selecting {
 /// keypress and a repeated one look different in the log.
 static FIRES: AtomicU32 = AtomicU32::new(0);
 
+/// Whether the capture hotkey was registered, so a measurement run never presses a key that
+/// would reach another application instead (S0.7).
+static HOTKEY_REGISTERED: AtomicBool = AtomicBool::new(false);
+
 fn now_ms() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -90,10 +97,13 @@ fn log(line: &str) {
 /// because the hotkey handler must return immediately: a handler that blocks is a hotkey
 /// that stops arriving.
 fn begin_capture() {
+    // S0.7's first mark, taken before anything else on this path.
+    let received = std::time::Instant::now();
     let Some(guard) = Selecting::acquire() else {
         log("ignored: a selection is already on screen");
         return;
     };
+    marks::begin(received);
 
     std::thread::spawn(move || {
         // Moved into the thread so it is released when this closure ends, whether that is a
@@ -104,6 +114,7 @@ fn begin_capture() {
 
         match source.freeze() {
             Ok(frame) => {
+                marks::mark(marks::FREEZE_DONE);
                 log(&format!(
                     "freeze: {}x{} at {},{} in {} ms via {}",
                     frame.width(),
@@ -138,8 +149,12 @@ fn begin_capture() {
                                         image_rect.height,
                                         pixels.len()
                                     ));
+                                    // Not while measuring: the product writes nothing here, and a
+                                    // 5120-wide PNG encode would sit inside the editor interval (S0.7).
                                     #[cfg(feature = "stage0-checks")]
-                                    write_capture(image_rect.width, image_rect.height, &pixels);
+                                    if !measuring() {
+                                        write_capture(image_rect.width, image_rect.height, &pixels);
+                                    }
                                     // The capture becomes an image of its own. Its geometry
                                     // keeps where it came from for the log only; nothing
                                     // downstream reads a desktop coordinate (part 5).
@@ -154,10 +169,13 @@ fn begin_capture() {
                                         source: "capture",
                                     };
                                     match editor::present(captured) {
-                                        Ok(show_ms) => log(&format!(
-                                            "editor shown: {} ms from selection, the show itself {show_ms} ms",
-                                            selected_at.elapsed().as_millis()
-                                        )),
+                                        Ok(show_ms) => {
+                                            marks::mark(marks::EDITOR_SHOW_RETURNED);
+                                            log(&format!(
+                                                "editor shown: {} ms from selection, the show itself {show_ms} ms",
+                                                selected_at.elapsed().as_millis()
+                                            ))
+                                        }
                                         Err(err) => log(&format!("EDITOR NOT SHOWN: {err}")),
                                     }
                                 }
@@ -261,9 +279,22 @@ static CAPTURE_DEMO: AtomicBool = AtomicBool::new(false);
 #[cfg(feature = "stage0-checks")]
 static OPEN_DEMO: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
+/// A measurement run: how many captures, and the folder to walk afterwards (S0.7).
+#[cfg(feature = "stage0-checks")]
+static MEASURE: std::sync::Mutex<Option<(usize, Option<String>)>> = std::sync::Mutex::new(None);
+
+/// Whether a measurement is running, so the checks build's page does not load its probe
+/// image and put a picture into the memory floor that the product would never have.
+#[cfg(feature = "stage0-checks")]
+pub fn measuring() -> bool {
+    MEASURE.lock().map(|slot| slot.is_some()).unwrap_or(false)
+}
+
 fn main() {
     // Before anything else, and before any window or device context exists.
     let awareness = capture::display::make_per_monitor_aware();
+    // Startup is measured from here (S0.7); the operating system's time before main is not.
+    marks::process_started();
 
     #[cfg(feature = "stage0-checks")]
     {
@@ -289,6 +320,10 @@ fn main() {
         }
         if let Some(path) = arg_value("--open-demo") {
             *OPEN_DEMO.lock().expect("the open-demo slot") = Some(path);
+        }
+        if let Some(runs) = arg_value("--measure") {
+            *MEASURE.lock().expect("the measure slot") =
+                Some((runs.parse().unwrap_or(30), arg_value("--walk")));
         }
         if let Some(dir) = arg_value("--make-fixtures") {
             println!("dpi at startup  : {awareness}");
@@ -378,7 +413,10 @@ fn main() {
             // and F15 says the conflict is reported and another key can be chosen.
             match cfg.hotkey.parse::<tauri_plugin_global_shortcut::Shortcut>() {
                 Ok(shortcut) => match app.global_shortcut().register(shortcut) {
-                    Ok(()) => log(&format!("hotkey registered: {}", cfg.hotkey)),
+                    Ok(()) => {
+                        HOTKEY_REGISTERED.store(true, Ordering::SeqCst);
+                        log(&format!("hotkey registered: {}", cfg.hotkey))
+                    }
                     Err(err) => log(&format!(
                         "HOTKEY UNAVAILABLE: {} could not be registered ({err}). \
                          Another application is holding it. Recon is still running: \
@@ -394,6 +432,7 @@ fn main() {
             }
 
             log("ready: waiting on the hotkey or the tray");
+            marks::startup(marks::READY);
 
             if let Some(path) = open_at_start.clone() {
                 std::thread::spawn(move || {
@@ -417,6 +456,11 @@ fn main() {
             if let Some(path) = OPEN_DEMO.lock().ok().and_then(|slot| slot.clone()) {
                 let handle = app.handle().clone();
                 std::thread::spawn(move || selftest::open_demo(handle, path));
+            }
+            #[cfg(feature = "stage0-checks")]
+            if let Some((runs, walk)) = MEASURE.lock().ok().and_then(|slot| slot.clone()) {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || measure::run(handle, runs, walk));
             }
             Ok(())
         })

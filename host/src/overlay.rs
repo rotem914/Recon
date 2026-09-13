@@ -26,10 +26,10 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, VK_ESCAPE};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetForegroundWindow,
-    GetMessageW, LoadCursorW, PostQuitMessage, RegisterClassExW, SetForegroundWindow, ShowWindow,
-    TranslateMessage, CS_HREDRAW, CS_VREDRAW, IDC_CROSS, MSG, SW_SHOW, WM_DESTROY, WM_ERASEBKGND,
-    WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_PAINT, WNDCLASSEXW,
-    WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+    GetMessageW, LoadCursorW, PostMessageW, PostQuitMessage, RegisterClassExW, SetForegroundWindow,
+    ShowWindow, TranslateMessage, CS_HREDRAW, CS_VREDRAW, IDC_CROSS, MSG, SW_SHOW, WM_APP,
+    WM_DESTROY, WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_PAINT,
+    WNDCLASSEXW, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
 
 use crate::capture::coords::DesktopRect;
@@ -38,6 +38,10 @@ use crate::capture::Frame;
 
 /// How dark the unselected area gets. 0 is untouched, 255 is black.
 const DIM_ALPHA: u8 = 140;
+
+/// Posted by the overlay to itself once its windows exist. Its dispatch is S0.7's mark
+/// "overlay accepting input": the loop that delivers the pointer to these windows is running.
+const WM_ACCEPTING: u32 = WM_APP + 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
@@ -55,6 +59,8 @@ struct Surface {
     dc: HDC,
     bitmap: HBITMAP,
     previous: HGDIOBJ,
+    /// Whether this display's overlay has painted once, for S0.7's "overlay displayed".
+    painted: bool,
 }
 
 struct Drag {
@@ -106,6 +112,7 @@ pub fn select_region(frame: &Frame) -> Outcome {
             if let Some(state) = cell.borrow().as_ref() {
                 if let Some(first) = state.surfaces.first() {
                     let _ = SetForegroundWindow(first.hwnd);
+                    let _ = PostMessageW(Some(first.hwnd), WM_ACCEPTING, WPARAM(0), LPARAM(0));
                 }
             }
         });
@@ -294,6 +301,7 @@ unsafe fn build_surface(frame: &Frame, monitor: &MonitorInfo, screen_dc: HDC) ->
         dc,
         bitmap,
         previous,
+        painted: false,
     })
 }
 
@@ -330,6 +338,27 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         WM_ERASEBKGND => LRESULT(1), // every pixel is painted in WM_PAINT
         WM_PAINT => {
             unsafe { paint(hwnd) };
+            // S0.7: "overlay displayed" is the moment every display's overlay has painted once.
+            let all_painted = STATE.with(|cell| {
+                let mut borrowed = cell.borrow_mut();
+                let state = borrowed.as_mut()?;
+                let surface = state
+                    .surfaces
+                    .iter_mut()
+                    .find(|s| s.hwnd.0 as isize == hwnd.0 as isize)?;
+                if surface.painted {
+                    return None;
+                }
+                surface.painted = true;
+                Some(state.surfaces.iter().all(|s| s.painted))
+            });
+            if all_painted == Some(true) {
+                crate::marks::mark(crate::marks::OVERLAY_DISPLAYED);
+            }
+            LRESULT(0)
+        }
+        WM_ACCEPTING => {
+            crate::marks::mark(crate::marks::OVERLAY_ACCEPTING);
             LRESULT(0)
         }
         WM_LBUTTONDOWN => {
@@ -416,6 +445,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                     state.outcome = Outcome::Cancelled;
                 } else {
                     state.outcome = Outcome::Selected(rect);
+                    crate::marks::mark(crate::marks::SELECTION_COMPLETED);
                 }
                 Some(())
             });

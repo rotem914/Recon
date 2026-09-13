@@ -26,6 +26,7 @@ use tauri::{AppHandle, Emitter, Manager, UriSchemeResponder, WebviewUrl, Webview
 
 use crate::capture::coords::{FrameGeometry, ImageRect};
 use crate::capture::Frame;
+use crate::marks;
 use crate::source::{self, Kind, Opened};
 
 // ---------------------------------------------------------------- the image, and its levels
@@ -124,6 +125,24 @@ impl Editor {
 pub fn state() -> &'static Editor {
     static STATE: OnceLock<Editor> = OnceLock::new();
     STATE.get_or_init(Editor::new)
+}
+
+/// The live image's pixels, for S0.7's memory sample: the frame, and the pyramid levels built
+/// from it so far. A document behind a file is not counted; an animation keeps its decoded
+/// frames there.
+#[cfg(feature = "stage0-checks")]
+pub fn live_bytes() -> (usize, usize) {
+    match state().image() {
+        Some(image) => {
+            let levels = image
+                .levels
+                .lock()
+                .map(|l| l.iter().map(|level| level.rgba.len()).sum())
+                .unwrap_or(0);
+            (image.frame.rgba.len(), levels)
+        }
+        None => (0, 0),
+    }
 }
 
 // ---------------------------------------------------------------- the window
@@ -261,6 +280,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_window_metrics,
         editor_log,
         editor_frame,
+        editor_mark,
         checks::editor_load_probe,
         checks::editor_load_screen,
         checks::editor_look_at_window,
@@ -289,6 +309,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_log,
         editor_frame,
         editor_copy,
+        editor_mark,
     ]);
     builder.register_asynchronous_uri_scheme_protocol("region", |_ctx, request, responder| {
         let query = request.uri().query().unwrap_or_default().to_string();
@@ -372,6 +393,18 @@ pub fn editor_copy(request: tauri::ipc::Request<'_>) -> Result<CopyReport, Strin
         compose_ms,
         published,
     })
+}
+
+/// The page's marks for S0.7: booted, painted, focused. Stamped here when they arrive, so
+/// on the host's clock and late by one crossing. Any other name is ignored.
+#[tauri::command]
+pub fn editor_mark(name: String) {
+    match name.as_str() {
+        "page painted" => marks::mark(marks::PAGE_PAINTED),
+        "page focused" => marks::mark(marks::PAGE_FOCUSED),
+        "page booted" => marks::startup(marks::PAGE_BOOTED),
+        _ => {}
+    }
 }
 
 /// Everything the page says, on the terminal.
@@ -1487,6 +1520,9 @@ mod checks {
     /// Loads the synthetic probe as the current image, for the detail check.
     #[tauri::command]
     pub fn editor_load_probe(width: u32, height: u32) -> Result<ImageInfo, String> {
+        if crate::measuring() {
+            return Err("a measurement is running, and the product has no probe".into());
+        }
         if width == 0 || height == 0 || width > 8192 || height > 8192 {
             return Err(format!("{width}x{height} is not a probe size"));
         }

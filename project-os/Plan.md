@@ -1495,7 +1495,7 @@ Plus: a paste verified in Claude and in ChatGPT, with the surface and version re
 beside each result.
 
 ----
-**[ ] S0.7 · Instrumentation and the thirty-run measurement**
+**[x] S0.7 · Instrumentation and the thirty-run measurement**
 
 Model: Opus 5. Mechanical, known shape. Release build only.
 
@@ -1525,6 +1525,72 @@ library is a failure of R11. The floor is a separate question and it is not exem
 process sits in the tray all day, so report the floor as a number to be judged on its own,
 alongside the delta across thirty captures and across a folder walk, and state the explicit
 release discipline that produced it.
+
+**Measured 2026-09-13, release build, and both intervals are well inside their targets.**
+Thirty captures of this machine's one display, 5120x1440 at 100%, with the process already in
+the tray and the editor hidden. That is 89% of a 4K frame's pixels; the plan's 4K runs need a
+4K display this machine no longer has. The run drives the product path with the real hotkey
+and a synthesized drag of the whole display; the drag is in neither interval.
+
+**Hotkey received to overlay usable:** 74.0 59.3 56.6 63.3 74.9 71.1 72.3 70.1 75.7 80.5 75.6
+73.9 75.5 74.4 76.7 76.4 72.5 74.5 72.6 86.7 74.7 73.2 74.7 73.3 70.2 73.9 76.4 74.0 69.8 74.0
+ms. Maximum 86.7 ms against 250. The freeze is about 49 ms of it.
+
+**Selection completed to editor usable:** 113.1 116.6 121.8 125.9 125.5 129.6 124.4 124.7 125.1
+121.1 125.7 124.9 130.4 124.3 124.8 125.5 130.0 134.1 120.6 124.8 125.1 112.4 122.1 124.6 122.0
+120.5 125.3 124.8 123.0 121.2 ms. Maximum 134.1 ms against 500. The show returns about 22 ms
+after the selection; the page's region, paint and focus take about 100 ms more.
+
+**The percentile method:** nearest rank, the value at rank ceil(p/100 x n) in ascending order.
+With thirty samples the 95th percentile is the 29th value, the second-worst: 80.5 ms for the
+overlay and 130.4 ms for the editor. Medians by the same method: 74.0 and 124.7 ms.
+
+**How "usable" was read, on one clock.** Every mark is taken in the host, in `host/src/marks.rs`;
+the page's two are stamped when the host hears of them, so they are late by one crossing,
+never early. The overlay is usable at the later of "displayed", every display's overlay
+painted once, and "accepting input", a message it posts to itself being dispatched by its
+own loop. The editor is usable at the latest of the show call returning, the page's second
+animation frame after the new pixels, and the page holding keyboard focus with the image
+loaded. What this cannot see: the compositor's final present, up to one display refresh
+after "displayed". After each run the host looked at the editor on the screen: 4.4 to 4.9%
+black and 286 to 359 coarse colours in every run, so a picture, never a blank surface.
+
+**Process startup, measured separately,** from the start of `main` over seven launches: ready
+255 to 328 ms, the editor page booted 18 to 46 ms after that. From launch, including the
+operating system's time before `main`: 268 to 304 ms warm, 646 ms for the first launch.
+
+**Memory, as a floor and a slope.** Private bytes of the host plus the six web view processes
+it starts; working sets are in the CSV.
+
+The floor, tray and hidden editor, nothing captured: 168 to 172 MB over seven launches. The
+host is 6 to 7 MB of it and the web view 162 to 165 MB. That number is judged on its own: a
+process that sits in the tray all day costs 170 MB, and nearly all of it is the web view that
+the stack decision chose (part 5). Part 8 has no row for it; it is F59.
+
+Across thirty captures: 220 MB after them, 52 MB above the floor. 35 MB of that is the live
+document, the last capture and its pyramid, kept on purpose while the editor is hidden. No
+slope: the host is flat after the first capture, and the web view climbs about 3.6 MB per
+capture and falls back when it collects, at captures 16, 23 and 29, to 170 to 178 MB each time.
+
+Across a folder walk of the twenty-eight real files from S0.5: a peak of 361 MB while a 4K
+AVIF and the animated files were open, and 200 MB after, 20 MB below where the walk started,
+with the live image down to 0.1 MB. Memory does not grow with the number of images seen.
+
+**The release discipline that produced it.** The host holds one image: the current capture
+or the opened frame, plus the pyramid levels built from it, replaced and never accumulated
+on each capture or open. Nothing is retained across images, because the store is S1.8; today
+retained history is zero by construction, and the live document is the number above. An
+opened animation keeps its decoded frames while it is the current file. The page holds one
+viewport-sized canvas, and each region's buffer is garbage once painted. The editor is hidden,
+never destroyed, so its web view is part of the floor.
+
+**Not measured here, and why.** A 4K display, as above. The 225% scaling case, because this
+display is at 100% today. The product build itself: the measurement runs on the checks build,
+with the two checks-only costs on the timed path switched off while it measures, the probe
+image at boot and the PNG written for every capture. The first attempt kept that PNG write
+and was also disturbed: five runs lost their marks because someone was using the machine.
+Its editor median was 154 ms, and the harness now waits for quiet input and counts only clean
+runs. That attempt is in the History row.
 
 ----
 **[ ] S0.8 · The limits, and the go or no-go report**
@@ -1732,6 +1798,11 @@ plan did not say so until the review of 2026-09-13 (F47). The same runs were rep
 | S0.6 copy of the 5120x1440 demo: web view PNG encode of the layer, host decode plus compose, PNG encode plus two DIBs, clipboard publish | not run | 38, 18, 51, 22 ms |
 | S0.6 copy of an 880x400 document: compose, encode, publish | 10, 32, 1 ms | 0, 1, 0 ms |
 | S0.6 check 3, text box on screen against the composite, three cases | 0 pixels differ | 0 pixels differ |
+| S0.7 hotkey received to overlay usable, 30 runs at 5120x1440: max, 95th by nearest rank, median | not run | 86.7, 80.5, 74.0 ms |
+| S0.7 selection completed to editor usable, 30 runs: max, 95th by nearest rank, median | not run | 134.1, 130.4, 124.7 ms |
+| S0.7 process start to ready, and to the editor page booted | not run | 255 to 328, 276 to 374 ms |
+| S0.7 memory floor, tray and hidden editor, private bytes, host plus web view | not run | 168 to 172 MB (host 6 to 7) |
+| S0.7 memory after 30 captures, and after a 28-file walk | not run | 220 MB (35 MB the live document), 200 MB |
 | Open an 8000x6000 PNG (192 MB on disk): read and decode, then hand over the frame | 326, 25 ms | 100, 26 ms |
 | That file's first fit view, waiting on pyramid level 1 (4000x3000) | 640 ms (514 for the level) | 575 ms (442 for the level) |
 | Open a 120x90 GIF, three frames, and show it | 3 ms to shown | 3 ms to shown |
@@ -1845,7 +1916,7 @@ them.
 
 # Part 12: the review trail
 
-Fifty-seven findings were raised against the plan and folded into the parts above. This table
+Fifty-nine findings were raised against the plan and folded into the parts above. This table
 is the record; the fixes themselves live where the table points. Severity is how the finding
 was rated when it was raised.
 
@@ -1908,6 +1979,8 @@ was rated when it was raised.
 | F55 | WIC's converter does not apply an embedded colour profile, so a tagged TIFF, HEIC or AVIF would have been shown and exported as if sRGB | 🟠 | §3.7 contract, S0.5 | Resolved: the frame's colour context is read and converted through the same sRGB step as the other providers |
 | F56 | Panning is clamped to the image, so the far edge of a margin cannot be reached at a zoom above fit | 🟡 | S0.6, S1.2 | Open: with S1.2's automatic margin; today a margin is only set by a check |
 | F57 | The product build warns that three fields of the decode notes are read only by the feature-gated report | 🟡 | S0.5, `host/src/source/mod.rs` | Open, pre-existing: a cfg attribute or a use in the product; reported by the S0.6 review, not fixed there |
+| F58 | S0.7 says memory growth with the library "is a failure of R11", and no part of the plan defines R11 | 🟡 | S0.7, §3.8 | Open: read at S0.7 as §3.8's rule that memory must not grow with the size of the library or a folder, which is what was measured; the label needs a home or a rewrite |
+| F59 | The tray process's memory floor is about 170 MB, and 162 to 165 MB of it is the hidden editor's web view | 🟡 | S0.7, part 5, part 8 | Open: judged on its own, as S0.7 asks; part 8 has no row that fires on it. A web view destroyed when idle and recreated on the hotkey would lower it and cost the editor interval its warm start |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the
 two things it compares and the failure that would turn it red (`project-os/QA.md` §12), and a

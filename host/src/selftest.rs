@@ -571,19 +571,19 @@ pub fn open_demo(app: tauri::AppHandle, path: String) {
     app.exit(0);
 }
 
-fn move_to(x: i32, y: i32) {
+pub(crate) fn move_to(x: i32, y: i32) {
     unsafe {
         let _ = SetCursorPos(x, y);
     }
     std::thread::sleep(std::time::Duration::from_millis(40));
 }
 
-fn press_left() {
+pub(crate) fn press_left() {
     unsafe { mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0) };
     std::thread::sleep(std::time::Duration::from_millis(60));
 }
 
-fn release_left() {
+pub(crate) fn release_left() {
     unsafe { mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0) };
     std::thread::sleep(std::time::Duration::from_millis(60));
 }
