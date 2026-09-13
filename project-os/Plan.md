@@ -1816,9 +1816,26 @@ work rather than a feature count.
       in between, sees the new file on reopen and the preserved image on resume, with the
       line that the file has moved on. The folder position is the same before, during and
       after. Frame stepping inside an annotated animation is F79; the cap is F80.
-- [ ] S1.6 Callout completion: the deterministic candidate positions, the neutral margin when
+- [x] S1.6 Callout completion: the deterministic candidate positions, the neutral margin when
       a bubble cannot fit, and stable numbering with gaps, identical in the editor and in
       every output. Model: Fable 5.1.
+      **Built 2026-09-14.** Eight candidates around the anchor in a fixed order, below
+      right first, which is where the first version always put a note, the gaps a
+      proportion of the text size; the first one inside the composition and clear of the
+      other bubbles and their anchors wins, else the first clear one and the margin grows
+      to hold it, else the first. The margin is what the notes need over a floor of zero,
+      recomputed when a note is created, typed into, committed, resized, removed or dropped
+      after a drag, never during one, and it shrinks back when the notes no longer need it;
+      the fit view follows when the view was at fit. Numbers were already stable with gaps;
+      the check now reads them out of the exported layer's markup. The pan runs over the
+      whole composition when it does not fit the window, so a note in the margin is
+      reachable at any zoom, which closes F56. Checked on the 640x400 scene: the same
+      anchors place the same way twice, four notes near one anchor overlap nothing, each
+      edge and the corner send the bubble to the open side, a 120x80 crop takes a 236 by
+      37 margin and exports as 356x117 with every source pixel exact, a long note typed
+      near the bottom takes 247 below and gives it back when dragged up, a moved bubble
+      stays put when another arrives, and the S0.6 references are unchanged. One rule of
+      the order is Rotem's to reverse, F81. Recorded in Decisions.
 - [ ] S1.7 The keyboard contract, routed by context, with the stage column honored, the
       viewing and navigation keys inert while a note is being edited, and undo and redo in
       full against the acceptance sequence in §3.6. Model: Opus 5, the contract is written.
@@ -2129,7 +2146,7 @@ was rated when it was raised.
 | F53 | An animated AVIF through WIC is one frame: the frame-by-index rule in §3.5 is unmet for AVIF sequences on this route | 🟠 | §3.7, S0.5, F51 | Accepted 2026-09-13 with F51: first frame only, stated in §3.7 and part 6c; a buildable AV1 decoder would close it, on F51's revisit triggers |
 | F54 | The image crate does not read EXIF orientation out of a WebP, so a tagged WebP comes out as stored | 🟡 | §3.7, S0.5 | Open: §3.7 promises orientation for JPEG and HEIC only; recorded, not scheduled |
 | F55 | WIC's converter does not apply an embedded colour profile, so a tagged TIFF, HEIC or AVIF would have been shown and exported as if sRGB | 🟠 | §3.7 contract, S0.5 | Resolved: the frame's colour context is read and converted through the same sRGB step as the other providers |
-| F56 | Panning is clamped to the image, so the far edge of a margin cannot be reached at a zoom above fit | 🟡 | S0.6, S1.2 | Open: with S1.2's automatic margin; today a margin is only set by a check |
+| F56 | Panning is clamped to the image, so the far edge of a margin cannot be reached at a zoom above fit | 🟡 | S0.6, S1.6 | Closed at S1.6: the pan runs over the composition when it does not fit the window, and the check reaches the margin's far edge at zoom 8 |
 | F57 | The product build warns that three fields of the decode notes are read only by the feature-gated report | 🟡 | S0.5, `host/src/source/mod.rs` | Resolved in the review of 2026-09-13 (R5): the fields and one platform function carry a cfg attribute for the product build |
 | F58 | S0.7 says memory growth with the library "is a failure of R11", and no part of the plan defines R11 | 🟡 | S0.7, §3.8 | Open: read at S0.7 as §3.8's rule that memory must not grow with the size of the library or a folder, which is what was measured; the label needs a home or a rewrite |
 | F59 | The tray process's memory floor is about 170 MB, and 162 to 165 MB of it is the hidden editor's web view | 🟡 | S0.7, part 5, part 8 | Open: judged on its own, as S0.7 asks; part 8 has no row that fires on it. A web view destroyed when idle and recreated on the hotkey would lower it and cost the editor interval its warm start |
@@ -2154,6 +2171,7 @@ was rated when it was raised.
 | F78 | Several files dropped at once open the first only; the folder they came from is S1.4's navigation context | 🟡 | S1.2, S1.4 | Open: S1.4 |
 | F79 | A managed document is keyed by path and frame, but stepping frames inside it keeps the document's number while its preserved image is the one frame, so a note placed on frame 3 of a resumed frame-0 document sits on pixels the document does not hold | 🟠 | §3.8, S1.5, S1.8 | Open: S1.8 decides what a document of an animation preserves, one frame or the frame it is asked for |
 | F80 | The in-memory list of documents is capped at fifty, and an annotated file's document dropped at the cap loses its notes with no store to fall back on | 🟠 | S1.1 decision, S1.5, S1.8 | Open: the store at S1.8 removes the cap; until then fifty documents in a session is the limit, and the log names the drop |
+| F81 | When no candidate is both inside the picture and clear of the other bubbles, placement takes a clear one in the margin over an overlapping one inside, so a crowded corner grows the canvas rather than stacking bubbles | 🟡 | §3.5, S1.6 | Open, Rotem's call: the order can prefer inside-and-overlapping instead; one line in `placeCallout` |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the
 two things it compares and the failure that would turn it red (`project-os/QA.md` §12), and a

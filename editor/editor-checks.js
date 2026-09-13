@@ -446,8 +446,14 @@ export async function runChecks(editor, invoke) {
 
     await editor.setMargin({ left: 30, top: 0, right: 120, bottom: 20 });
     r = await exportCheck('semi-transparent-margin', 'source');
+    // The margin asked for is a floor: since S1.6 the second note, which reaches past the
+    // right edge, takes the room it needs on top of it (§3.5), so the output is the source
+    // plus the margin the notes settled on, never less than the one asked for.
+    const m = model.margin;
     check('with a margin: the source is exact at its offset and the output is source plus margins',
-      r.source_mismatches === 0 && r.width === 320 + 150 && r.height === 200 + 20, `${r.width}x${r.height}, ${r.source_mismatches} mismatches`);
+      r.source_mismatches === 0 && r.width === 320 + m.left + m.right && r.height === 200 + m.top + m.bottom
+        && m.left === 30 && m.top === 0 && m.right >= 120 && m.bottom >= 20,
+      `${r.width}x${r.height} with the margin ${editor.marginString()} over the floor 30,0,120,20, ${r.source_mismatches} mismatches`);
     say(`origin-clean on WebView2 ${r.webview_version}: the layer read back from the canvas`);
   }
 
@@ -885,6 +891,150 @@ export async function runChecks(editor, invoke) {
     check('the mode on a capture changes no document', model.image.document_id === shot.document_id && managed.filter((m) => m.id === shot.document_id).length === 0);
     model.callouts = [];
     editor.layoutScene();
+  }
+
+  // ---------------------------------------------------------------- 21. S1.6: placement, the margin, the numbers
+  say('');
+  say('S1.6: deterministic placement near the anchor, the margin when a bubble cannot fit, numbers with their gaps in the output');
+  {
+    const reset = async (name) => {
+      await openFixture(name);
+      model.callouts = [];
+      model.nextNumber = 1;
+      await editor.setMargin({ left: 0, top: 0, right: 0, bottom: 0 });
+      editor.layoutScene();
+    };
+    const rect = (c) => ({ x: c.box.x, y: c.box.y, w: c.box.width, h: editor.heightOf(c) });
+    const inside = (c) => {
+      const r = rect(c);
+      return r.x >= -model.margin.left && r.y >= -model.margin.top
+        && r.x + r.w <= model.image.width + model.margin.right && r.y + r.h <= model.image.height + model.margin.bottom;
+    };
+    const coversOwnAnchor = (c) => {
+      const r = rect(c);
+      return c.anchor.x >= r.x && c.anchor.x < r.x + r.w && c.anchor.y >= r.y && c.anchor.y < r.y + r.h;
+    };
+    const overlap = (a, b) => {
+      const p = rect(a); const q = rect(b);
+      return p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h;
+    };
+    const marginText = () => editor.marginString();
+
+    // Deterministic: the same clicks twice give the same boxes.
+    await reset('reference-scene.png');
+    const clicks = [{ x: 300, y: 120 }, { x: 310, y: 130 }, { x: 320, y: 140 }, { x: 600, y: 380 }];
+    const run = () => clicks.map((at) => { const c = editor.createCallout(at); editor.layoutScene(); return `${c.box.x},${c.box.y}`; });
+    const first = run();
+    model.callouts = []; model.nextNumber = 1; editor.layoutScene();
+    const second = run();
+    check('the same anchors place the same way twice', first.join(' ') === second.join(' '), first.join(' '));
+    check('bubbles near one anchor take different places, none overlapping, none over its anchor',
+      model.callouts.every((c, i) => !coversOwnAnchor(c) && model.callouts.slice(0, i).every((o) => !overlap(c, o))),
+      model.callouts.map((c) => `${c.box.x},${c.box.y}`).join(' '));
+    check('all inside the picture, so the margin stayed 0', model.callouts.every(inside) && marginText() === '0,0,0,0', marginText());
+
+    // Anchors near each edge and corner of the 640x400 scene.
+    await reset('reference-scene.png');
+    const edges = [
+      ['right edge', { x: 630, y: 200 }, (c) => c.box.x + c.box.width <= 630],
+      ['left edge', { x: 10, y: 200 }, (c) => c.box.x >= 10],
+      ['bottom edge', { x: 320, y: 390 }, (c) => c.box.y + editor.heightOf(c) <= 390],
+      ['top edge', { x: 320, y: 10 }, (c) => c.box.y >= 10],
+      ['bottom right corner', { x: 630, y: 390 }, (c) => c.box.x + c.box.width <= 630 && c.box.y + editor.heightOf(c) <= 390],
+    ];
+    for (const [name, at, onTheOtherSide] of edges) {
+      const c = editor.createCallout(at);
+      editor.layoutScene();
+      check(`${name}: the bubble goes to the open side, inside, clear of its anchor`, inside(c) && !coversOwnAnchor(c) && onTheOtherSide(c),
+        `anchor ${at.x},${at.y} box ${c.box.x},${c.box.y} ${c.box.width}x${editor.heightOf(c)}`);
+      model.callouts = []; editor.layoutScene();
+    }
+    check('and the margin stayed 0 through all of it', marginText() === '0,0,0,0', marginText());
+
+    // A crop too small for any bubble: the margin grows, the picture is not shrunk, the
+    // export is the composition with the source exact inside it.
+    {
+      const small = await invoke('editor_load_probe', { width: 120, height: 80 });
+      await editor.loadImage(small);
+      model.callouts = []; model.nextNumber = 1;
+      const c = editor.createCallout({ x: 60, y: 40 });
+      editor.layoutScene();
+      await editor.settle();
+      check('a bubble that cannot fit takes a margin', marginText() !== '0,0,0,0' && inside(c) && !coversOwnAnchor(c), `margin ${marginText()}, box ${c.box.x},${c.box.y}`);
+      c.text = 'too big for this crop';
+      editor.layoutScene();
+      const layer = await editor.exportLayer();
+      const r = await invoke('editor_export_check', layer.bytes, { headers: { name: 's16-small', margin: layer.margin, mode: 'source' } });
+      const comp = { w: 120 + model.margin.left + model.margin.right, h: 80 + model.margin.top + model.margin.bottom };
+      check('the export is the composition, with every source pixel exact', r.width === comp.w && r.height === comp.h && r.source_mismatches === 0,
+        `${r.width}x${r.height} for a 120x80 crop, ${r.source_mismatches} source pixels differ`);
+      check('the fit view shows the whole composition', Math.abs(model.zoom - model.fitZoom) < 0.0005);
+    }
+
+    // A long note near the bottom grows the margin below as it is typed, and gives it
+    // back when the note goes.
+    await reset('reference-scene.png');
+    {
+      const c = editor.createCallout({ x: 200, y: 300 });
+      editor.layoutScene();
+      const before = marginText();
+      editor.startEditing(c);
+      const textEl = document.querySelector(`[data-id="${c.id}"] .t`);
+      textEl.textContent = 'A long note that wraps over several lines: the save button does nothing on a slow connection, and the user gets no sign that anything happened, and then the second click saves twice. בעברית: הכפתור לא מגיב.';
+      textEl.dispatchEvent(new InputEvent('input', { bubbles: true }));
+      await sleep(30);
+      check('typing past the bottom takes room below, and nowhere else', before === '0,0,0,0' && model.margin.bottom > 0 && model.margin.top === 0 && model.margin.left === 0 && model.margin.right === 0 && inside(c),
+        `margin ${marginText()}, box bottom ${c.box.y + editor.heightOf(c)}`);
+      editor.commitEditing();
+      const grown = marginText();
+      // Dragged back up: dropped, the margin comes back.
+      c.box.y = 40;
+      await editor.settle();
+      check('dropped back inside, the margin goes', grown !== '0,0,0,0' && marginText() === '0,0,0,0', `${grown} then ${marginText()}`);
+      // A manual place stays put when another note arrives.
+      const placed = { ...c.box };
+      const other = editor.createCallout({ x: 200, y: 60 });
+      editor.layoutScene();
+      check('a moved bubble stays where it was put when another is added', c.box.x === placed.x && c.box.y === placed.y && !overlap(c, other),
+        `kept ${c.box.x},${c.box.y}; the new one ${other.box.x},${other.box.y}`);
+    }
+
+    // Numbers keep their gaps in the output: the export's markup carries 1 and 3.
+    await reset('reference-scene.png');
+    {
+      const a = editor.createCallout({ x: 100, y: 100 }); a.text = 'one';
+      const b = editor.createCallout({ x: 300, y: 100 }); b.text = 'two';
+      const c = editor.createCallout({ x: 500, y: 100 }); c.text = 'three';
+      editor.layoutScene();
+      editor.removeCallout(b);
+      await editor.settle();
+      const layer = await editor.exportLayer();
+      const badges = [...layer.markup.matchAll(/>(\d+)<\/div>/g)].map((m) => m[1]);
+      check('after deleting number 2 the output carries 1 and 3, in the editor and the layer alike',
+        badges.join(',') === '1,3' && model.callouts.map((x) => x.number).join(',') === '1,3', `badges ${badges.join(',')}`);
+      const d = editor.createCallout({ x: 100, y: 300 });
+      check('the next note is 4, the deleted number is never reused', d.number === 4);
+    }
+
+    // F56: with a margin, a zoom above fit can reach the margin's far edge.
+    await reset('reference-scene.png');
+    {
+      await editor.setMargin({ left: 0, top: 0, right: 240, bottom: 0 });
+      await editor.setZoom(8);
+      model.pan.x = 100000;
+      await editor.paintRegion();
+      const vp = { w: document.getElementById('stage').clientWidth };
+      const visibleW = (vp.w * editor.ratioOf()) / model.zoom;
+      const mat = document.getElementById('mat');
+      const matRight = parseFloat(mat.style.left) + parseFloat(mat.style.width);
+      check('the pan reaches the far edge of the margin', Math.abs(model.pan.x - (640 + 240 - visibleW)) < 1 && Math.abs(matRight - vp.w) < 2,
+        `pan ${Math.round(model.pan.x)}, the mat ends at ${matRight.toFixed(1)} of ${vp.w}`);
+      const canvasLeft = parseFloat(editor.canvas.style.left);
+      check('the picture ends where the margin begins', canvasLeft >= 0 && Math.abs(canvasLeft + parseFloat(editor.canvas.style.width) - (matRight - (240 * model.zoom) / editor.ratioOf())) < 2,
+        `canvas ${canvasLeft.toFixed(1)} + ${editor.canvas.style.width}`);
+      await editor.setMargin({ left: 0, top: 0, right: 0, bottom: 0 });
+      await editor.setZoom(model.fitZoom);
+    }
   }
 
   say('');

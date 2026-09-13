@@ -145,6 +145,9 @@
     // plus this, and the output is the source plus this (§3.6). Set explicitly for now;
     // growing it automatically when a bubble cannot fit is the placement work of S1.2.
     margin: { left: 0, top: 0, right: 0, bottom: 0 },
+    // The least margin, under the automatic one. Zero in the product; the checks raise it
+    // to build a document with a margin on purpose.
+    marginFloor: { left: 0, top: 0, right: 0, bottom: 0 },
     callouts: [],
     nextNumber: 1,
     selected: null,
@@ -176,14 +179,21 @@
   };
   const viewport = () => ({ w: stage.clientWidth, h: stage.clientHeight });
 
+  // The pan is the image coordinate at the viewport's top-left. Per axis: when the
+  // composition fits the window it is centred and the pan stays 0; when it does not, the
+  // pan runs over the whole composition, margin included, so a note placed in the margin
+  // can be reached at any zoom (F56).
   const clampPan = () => {
     const vp = viewport();
     const visibleW = (vp.w * dpr()) / model.zoom;
     const visibleH = (vp.h * dpr()) / model.zoom;
-    const maxX = Math.max(0, model.image.width - visibleW);
-    const maxY = Math.max(0, model.image.height - visibleH);
-    model.pan.x = Math.min(Math.max(0, model.pan.x), maxX);
-    model.pan.y = Math.min(Math.max(0, model.pan.y), maxY);
+    const comp = compositionSize();
+    const minX = comp.w <= visibleW ? 0 : -model.margin.left;
+    const maxX = comp.w <= visibleW ? 0 : model.image.width + model.margin.right - visibleW;
+    const minY = comp.h <= visibleH ? 0 : -model.margin.top;
+    const maxY = comp.h <= visibleH ? 0 : model.image.height + model.margin.bottom - visibleH;
+    model.pan.x = Math.min(Math.max(minX, model.pan.x), maxX);
+    model.pan.y = Math.min(Math.max(minY, model.pan.y), maxY);
   };
 
   const toImage = (event) => {
@@ -218,6 +228,7 @@
       callouts: model.callouts,
       nextNumber: model.nextNumber,
       margin: { ...model.margin },
+      marginFloor: { ...model.marginFloor },
       textSize: model.textSize,
     });
   };
@@ -229,14 +240,27 @@
     if (!model.image.width || vp.w < 2 || vp.h < 2) return;
     clampPan();
 
-    const outW = Math.max(1, Math.round(vp.w * dpr()));
-    const outH = Math.max(1, Math.round(vp.h * dpr()));
-    const srcW = Math.max(1, Math.round(outW / model.zoom));
-    const srcH = Math.max(1, Math.round(outH / model.zoom));
-    const x = Math.round(model.pan.x);
-    const y = Math.round(model.pan.y);
+    const visibleW = (vp.w * dpr()) / model.zoom;
+    const visibleH = (vp.h * dpr()) / model.zoom;
+    // The image's part of the view: a pan inside the margin leaves the image starting
+    // right of, or below, the viewport's edge, and the region stops at the image's edge.
+    const x = Math.max(0, Math.round(model.pan.x));
+    const y = Math.max(0, Math.round(model.pan.y));
+    const srcW = Math.round(Math.min(model.image.width, model.pan.x + visibleW) - x);
+    const srcH = Math.round(Math.min(model.image.height, model.pan.y + visibleH) - y);
+    const shown = srcW >= 1 && srcH >= 1;
+    canvas.style.display = shown ? '' : 'none';
+    const outW = Math.max(1, Math.round(srcW * model.zoom));
+    const outH = Math.max(1, Math.round(srcH * model.zoom));
 
     const ticket = ++regionRequest;
+    if (!shown) {
+      // Only margin in view: nothing to fetch, but the mat and the notes still move.
+      placeComposition(vp);
+      layoutScene();
+      drawHud();
+      return;
+    }
     const url = `http://region.localhost/?x=${x}&y=${y}&w=${srcW}&h=${srcH}&ow=${outW}&oh=${outH}`;
     const askedAt = performance.now();
     const response = await fetch(url, { cache: 'no-store' });
@@ -258,13 +282,22 @@
 
     canvas.width = width;
     canvas.height = height;
-    const cssW = width / dpr();
-    const cssH = height / dpr();
-    canvas.style.width = `${cssW}px`;
-    canvas.style.height = `${cssH}px`;
-    // Centred when the composition does not fill the window, which is what anyone expects
-    // of a viewer and is not what the first version did. The offset is where the IMAGE
-    // starts; with a margin the composition is centred and the image sits inside it.
+    canvas.style.width = `${width / dpr()}px`;
+    canvas.style.height = `${height / dpr()}px`;
+    placeComposition(vp);
+    context.putImageData(new ImageData(new Uint8ClampedArray(bytes), width, height), 0, 0);
+    lastRegion = { x, y, w: srcW, h: srcH, width, height, ms: Math.round(performance.now() - askedAt) };
+    console.log(`painted ${width}x${height} at zoom ${model.zoom.toFixed(3)} in ${lastRegion.ms} ms`);
+    layoutScene();
+    drawHud();
+  };
+
+  // Where the image and the mat sit in the viewport. Centred when the composition does
+  // not fill the window, which is what anyone expects of a viewer and is not what the
+  // first version did; otherwise the pan says where the image starts, which is left of
+  // the viewport for a pan into the image and right of it for a pan into the margin. The
+  // offset is where the IMAGE starts; the mat is the composition around it.
+  const placeComposition = (vp) => {
     const comp = compositionSize();
     const compW = (comp.w * model.zoom) / dpr();
     const compH = (comp.h * model.zoom) / dpr();
@@ -274,14 +307,18 @@
     // and the copy then differed on 12% of the text's pixels while agreeing at 100%
     // (S1.1, F74).
     const snap = (css) => Math.round(css * dpr()) / dpr();
+    // The image's origin sits at offset minus the pan, in every formula of this page; when
+    // the composition does not fit, the offset is 0 and the pan alone says where it is.
     model.offset.x = compW <= vp.w
       ? snap((vp.w - compW) / 2 + (model.margin.left * model.zoom) / dpr())
-      : Math.max(0, snap((vp.w - cssW) / 2));
+      : 0;
     model.offset.y = compH <= vp.h
       ? snap((vp.h - compH) / 2 + (model.margin.top * model.zoom) / dpr())
-      : Math.max(0, snap((vp.h - cssH) / 2));
-    canvas.style.left = `${model.offset.x}px`;
-    canvas.style.top = `${model.offset.y}px`;
+      : 0;
+    // The canvas holds the image from its first visible column, so it starts at the
+    // image's origin or at the viewport's edge, whichever is further right or down.
+    canvas.style.left = `${Math.max(0, snap(model.offset.x - (model.pan.x * model.zoom) / dpr()))}px`;
+    canvas.style.top = `${Math.max(0, snap(model.offset.y - (model.pan.y * model.zoom) / dpr()))}px`;
     const hasMargin = comp.w !== model.image.width || comp.h !== model.image.height;
     mat.style.display = hasMargin ? 'block' : 'none';
     if (hasMargin) {
@@ -290,11 +327,6 @@
       mat.style.width = `${compW}px`;
       mat.style.height = `${compH}px`;
     }
-    context.putImageData(new ImageData(new Uint8ClampedArray(bytes), width, height), 0, 0);
-    lastRegion = { x, y, w: srcW, h: srcH, width, height, ms: Math.round(performance.now() - askedAt) };
-    console.log(`painted ${width}x${height} at zoom ${model.zoom.toFixed(3)} in ${lastRegion.ms} ms`);
-    layoutScene();
-    drawHud();
   };
 
   // ---------------------------------------------------------------- the callout layer
@@ -331,9 +363,49 @@
     const next = stepTextSize(target ? target.textSize : model.textSize, direction);
     model.textSize = next;
     if (target) target.textSize = next;
-    layoutScene();
+    settle();
     drawHud();
     return next;
+  };
+
+  // A bubble's height: laid out when it is on screen, estimated from its size before
+  // that (one line: the padding, the line, the border).
+  const heightOf = (callout) => {
+    const el = scene.querySelector(`[data-id="${callout.id}"]`);
+    return el ? el.offsetHeight : Math.round((callout.textSize || model.textSize) * 2.15) + 2;
+  };
+
+  const rectOf = (callout) => ({ x: callout.box.x, y: callout.box.y, w: callout.box.width, h: heightOf(callout) });
+  const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  const covers = (r, point) => point.x >= r.x && point.x < r.x + r.w && point.y >= r.y && point.y < r.y + r.h;
+
+  // Placement (§3.5): a small deterministic set of candidates near the anchor, in a fixed
+  // order, none covering the anchor. The first one inside the composition and clear of
+  // the existing bubbles and their anchors wins; failing that, the first clear one, and
+  // the margin grows to hold it (fitMargin); failing that, the first. Never content-aware.
+  // The gaps are proportions of the text size, so the same picture places the same way
+  // at every size: 28 and 24 at the default of 20, which the first version hard-coded.
+  const placeCallout = (anchor, width, height, textSize, others) => {
+    const gx = Math.round(textSize * 1.4);
+    const gy = Math.round(textSize * 1.2);
+    const candidates = [
+      { x: anchor.x + gx, y: anchor.y + gy }, // below right, the first version's one place
+      { x: anchor.x - gx - width, y: anchor.y + gy }, // below left
+      { x: anchor.x + gx, y: anchor.y - gy - height }, // above right
+      { x: anchor.x - gx - width, y: anchor.y - gy - height }, // above left
+      { x: anchor.x + gx, y: anchor.y - Math.round(height / 2) }, // right
+      { x: anchor.x - gx - width, y: anchor.y - Math.round(height / 2) }, // left
+      { x: anchor.x - Math.round(width / 2), y: anchor.y + gy }, // below
+      { x: anchor.x - Math.round(width / 2), y: anchor.y - gy - height }, // above
+    ];
+    const comp = compositionSize();
+    const inside = (c) => c.x >= -model.margin.left && c.y >= -model.margin.top
+      && c.x + width <= comp.w - model.margin.left && c.y + height <= comp.h - model.margin.top;
+    const clear = (c) => {
+      const r = { x: c.x, y: c.y, w: width, h: height };
+      return !others.some((o) => overlaps(r, rectOf(o)) || covers(r, o.anchor));
+    };
+    return candidates.find((c) => inside(c) && clear(c)) || candidates.find(clear) || candidates[0];
   };
 
   const createCallout = (anchor) => {
@@ -341,19 +413,60 @@
     // Proportional to the text, so a note at 48 px is not three words per line. Thirteen
     // times the size is the 260 px the first version used, at the default of 20.
     const width = Math.round(textSize * 13);
+    const at = { x: Math.round(anchor.x), y: Math.round(anchor.y) };
+    const height = Math.round(textSize * 2.15) + 2;
+    const place = placeCallout(at, width, height, textSize, model.callouts);
     const callout = {
       id: `c${model.nextNumber}`,
       number: model.nextNumber++,
-      anchor: { x: Math.round(anchor.x), y: Math.round(anchor.y) },
-      // A deterministic first position, offset from the anchor. The candidate set is S1.2.
-      box: { x: Math.round(anchor.x) + 28, y: Math.round(anchor.y) + 24, width },
+      anchor: at,
+      box: { x: place.x, y: place.y, width },
       text: '',
       textSize,
       dirMode: 'auto',
       resolvedDir: 'ltr',
     };
     model.callouts.push(callout);
+    // A bubble that could not fit gets its margin now, before it is laid out, so the
+    // first paint already shows the room it took.
+    if (fitMargin()) paintRegion();
     return callout;
+  };
+
+  // The margin the notes need (§3.5): every bubble inside the composition, with its own
+  // padding as breathing room, over the floor the checks may set. Recomputed when a note
+  // is created, committed, resized, removed or dropped after a drag, never during one, so
+  // a bubble being moved does not have the picture shift under it. It shrinks back when
+  // the notes no longer need it. Returns whether the margin changed; the fit view follows
+  // when the view was at fit, so the whole composition stays in sight.
+  const fitMargin = () => {
+    if (drag || !model.image.width) return false;
+    const need = { ...model.marginFloor };
+    for (const callout of model.callouts) {
+      const r = rectOf(callout);
+      const pad = Math.round((callout.textSize || model.textSize) * 0.4);
+      need.left = Math.max(need.left, pad - r.x);
+      need.top = Math.max(need.top, pad - r.y);
+      need.right = Math.max(need.right, r.x + r.w + pad - model.image.width);
+      need.bottom = Math.max(need.bottom, r.y + r.h + pad - model.image.height);
+    }
+    let changed = false;
+    for (const edge of ['left', 'top', 'right', 'bottom']) {
+      const value = Math.max(0, Math.round(need[edge]));
+      if (value !== model.margin[edge]) { model.margin[edge] = value; changed = true; }
+    }
+    if (!changed) return false;
+    const wasFit = Math.abs(model.zoom - model.fitZoom) < 0.0005;
+    model.fitZoom = computeFit();
+    if (wasFit) model.zoom = model.fitZoom;
+    return true;
+  };
+
+  // Lay the notes out, then give them the margin they need, then paint if that changed.
+  const settle = () => {
+    layoutScene();
+    if (fitMargin()) return paintRegion();
+    return Promise.resolve();
   };
 
   const removeCallout = (callout) => {
@@ -555,7 +668,7 @@
     if (callout.text.trim() === '') {
       removeCallout(callout);
     }
-    layoutScene();
+    settle();
     drawHud();
   };
 
@@ -649,7 +762,15 @@
     if (text) document.execCommand('insertText', false, text.replace(/\r\n?/g, '\n'));
   });
 
-  const endDrag = () => { drag = null; };
+  const endDrag = () => {
+    if (!drag) return;
+    drag = null;
+    // A dropped bubble takes, or gives back, its margin.
+    settle();
+  };
+  // A note growing as it is typed takes its room as it goes, so nothing it holds is ever
+  // outside the composition an export would cut at.
+  stage.addEventListener('input', () => { if (model.editing && fitMargin()) paintRegion(); });
   // The wheel pans; with Ctrl it zooms around the pointer (§3.4). The wheel's numbers are
   // CSS pixels, so they become image pixels through the ratio and the zoom.
   stage.addEventListener('wheel', (event) => {
@@ -732,7 +853,7 @@
     if (model.editing) return; // typing owns every other key
 
     if (event.key === 'Delete' || event.key === 'Backspace') {
-      if (model.selected) { removeCallout(model.selected); layoutScene(); drawHud(); event.preventDefault(); }
+      if (model.selected) { removeCallout(model.selected); settle(); drawHud(); event.preventDefault(); }
       return;
     }
     if (event.key === 'Enter' && model.selected) { startEditing(model.selected); event.preventDefault(); return; }
@@ -825,8 +946,10 @@
 
   const setMargin = (margin) => {
     for (const edge of ['left', 'top', 'right', 'bottom']) {
-      model.margin[edge] = Math.max(0, Math.round(margin[edge] || 0));
+      model.marginFloor[edge] = Math.max(0, Math.round(margin[edge] || 0));
+      model.margin[edge] = model.marginFloor[edge];
     }
+    fitMargin();
     model.fitZoom = computeFit();
     return paintRegion();
   };
@@ -854,6 +977,7 @@
     model.image = info;
     const known = documents.get(info.document_id);
     model.margin = known ? { ...known.margin } : { left: 0, top: 0, right: 0, bottom: 0 };
+    model.marginFloor = known ? { ...known.marginFloor } : { left: 0, top: 0, right: 0, bottom: 0 };
     model.callouts = known ? known.callouts : [];
     model.nextNumber = known ? known.nextNumber : 1;
     if (known) model.textSize = known.textSize;
@@ -961,7 +1085,7 @@
     }
     const encodeMs = performance.now() - started - rasterMs;
     const bytes = new Uint8Array(await blob.arrayBuffer());
-    return { bytes, svgChars: svg.length, rasterMs, encodeMs, originClean, margin: marginString() };
+    return { bytes, svgChars: svg.length, rasterMs, encodeMs, originClean, margin: marginString(), markup };
   };
 
   // Copy the composed image (§3.6): the layer to the host, which composes it over the
@@ -1001,6 +1125,10 @@
     setFullscreen,
     setMode,
     stage,
+    settle,
+    fitMargin,
+    heightOf,
+    placeCallout,
     documents,
     emptyStateText,
     setMargin,
