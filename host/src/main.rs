@@ -15,6 +15,8 @@
 #[cfg(feature = "stage0-checks")]
 mod bench;
 mod capture;
+mod clipboard;
+mod compose;
 mod config;
 mod editor;
 mod overlay;

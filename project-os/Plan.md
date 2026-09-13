@@ -364,7 +364,7 @@ is a contract broken on day one.
 |---|---|---|
 | `Ctrl+C` while editing text | Normal text copy. It does not copy an image by surprise | 1 |
 | `Ctrl+C` outside text editing | Copy the full composed image, even with an annotation selected | 1 |
-| `Ctrl+Shift+C` anywhere in the editor | Copy the full composed image, current text edits included | 1 |
+| `Ctrl+Shift+C` anywhere in the editor | Copy the full composed image, current text edits included | 0, built at S0.6 as the one key the clipboard operation needed to be tried by hand |
 | `Ctrl+Enter` anywhere in the editor | Copy the full composed image, then return to the previous application after success | 1 |
 | `Enter` while editing a note | Insert a newline | 1 |
 | `Ctrl +` (or `Ctrl =`) in the editor | One text size up, on the note being edited or the selected one, and it becomes the default for the next note | 0 |
@@ -914,7 +914,7 @@ Explorer closely enough to feel predictable is checked in S1.4, not assumed here
 | Elevated windows | Test first. No elevated mode on an unverified assumption (S0.8). |
 | Image viewing | A core capability, in one window with two entry behaviors. Recorded in `project-os/Decisions.md`. |
 | Initial capture path | One copy of the whole virtual screen: one synchronous call already spans every display and every negative coordinate, so the foundation risk is retired at the lowest cost. It sits behind the capture interface, which must leave a video source possible later while adding no video infrastructure now. A second path is earned only under part 8. |
-| Paste destinations | Claude and ChatGPT. Both read the clipboard the way a web application does. PNG is the implementation choice, not a proven requirement: a Chromium-based reader can convert native bitmap data into PNG for the page, so nothing here claims a bitmap-only clipboard would fail. What decides acceptance is the paste actually working in those two surfaces, recorded with the surface and its version. |
+| Paste destinations | Claude and ChatGPT. Both read the clipboard the way a web application does. PNG is the implementation choice, not a proven requirement: a Chromium-based reader can convert native bitmap data into PNG for the page, so nothing here claims a bitmap-only clipboard would fail. What decides acceptance is the paste actually working in those two surfaces, recorded with the surface and its version. Accepted 2026-09-13: the host publishes `PNG`, `CF_DIBV5` and `CF_DIB` together, and a paste into claude.ai and into chatgpt.com, both the web apps in Chrome on that date, attached the composed image as a PNG in each. |
 | Reference environment | Rotem's main machine at its current display scale. The environment, the font details and the web view runtime version are recorded with the reference images and in the S0.8 report. |
 | The stack | A Rust host owning the pixels, a WebView2 editor laying out the text, packaged with Tauri v2. Argued in part 5 from the decode surface, from the bidirectional editing model, and from this project's own browser-driven QA gate. Recorded in `project-os/Decisions.md`. |
 | Decoding | One native route for all nine formats. The web view decodes nothing, and the decoded original never crosses into it at full resolution. This flips the earlier two-provider recommendation, because a preserved image born in the renderer cannot survive a premultiplied canvas byte for byte. Recorded in `project-os/Decisions.md`. Built at S0.5 as three providers behind one interface: the `image` crate, `resvg`, and WIC for TIFF, HEIC and AVIF (F51, decided 2026-09-13). |
@@ -1351,7 +1351,7 @@ report that a format is expensive or unavailable; it may not decide to ship with
 required one.
 
 ----
-**[ ] S0.6 · Output fidelity and the clipboard**
+**[x] S0.6 · Output fidelity and the clipboard**
 
 Model: Fable 5.1. Fidelity, and the one place work can be lost.
 
@@ -1381,6 +1381,69 @@ raster size tests. The frame or page chosen at S0.5 is what the export shows.
 
 Delivers: the composer used for both display and export, and a native clipboard operation
 publishing several image formats.
+
+**Built 2026-09-13.** The composer is one host function (`host/src/compose.rs`): the source
+dropped into the output byte for byte at the margin offset, alpha included, the margin around
+it in one neutral colour, and the page's layer over both in straight alpha. The page sends
+that layer in canvas space, decorations stripped by a colours-only "plain" state while the
+styles are read, and nothing is committed or blurred to make it: a note being typed is in
+the copy as typed (§3.6). The clipboard is the host's (`host/src/clipboard.rs`): `PNG`,
+`CF_DIBV5` and `CF_DIB` in one transaction, every format built before the clipboard is
+touched. `Ctrl+Shift+C` is wired so the operation can be tried by hand; the other copy keys
+stay S1.10. The margin colour is E9EAEC, a value picked to have one, and Rotem's to change.
+
+**Check 1, original pixels survive: passed, on a source that could fail it.** A 320x200 PNG
+whose alpha runs 0 to 255 with a band of odd values in the middle: no notes, the output is
+the source byte for byte; two notes, every uncovered pixel exact; a margin of 30, 0, 120 and
+20, the source exact at its offset in a 470x220 output. The same count is zero on the 5120
+x1440 demo capture (183,493 pixels covered) and on every one of the six documents below.
+
+**Check 2, annotated output is correct: six references, committed.** `host/references/s06/`
+holds ref-hebrew, ref-english, ref-mixed, ref-long, ref-edges and ref-margin, laid on a
+640x400 synthetic screen, plus `environment.txt`: WebView2 152.0.4191.66, the window at
+100% on a 5120x1440 display, the note font ui-sans-serif resolving to Segoe UI. The
+tolerance is stated there and in the check: a channel difference above 48, premultiplied,
+counts a pixel; a document passes at 0.5% or fewer; a different wrap or a moved box fails at
+any tolerance. The references were looked at (numbers right, arrows to the right edges,
+Hebrew right-aligned with its number on the right, the margin note inside the margin), and
+a second run against them was identical on every one. They are valid against that
+environment and that web view version only, which is why both are written beside them.
+
+**Check 3, the live editor and the output agree while typing: zero pixels differ.** In each
+of the three text cases a note was typed, the caret moved to the middle and more typed
+there, and the copy taken with the caret live. The text box on screen, at zoom 1 with the
+decorations off, against the same rectangle of the composite: identical, 0 of 22,680
+pixels, the same four line bands to the pixel, in Hebrew, English and mixed direction. The
+decorations are colours only, and the check asserts the text box does not move by a pixel
+when they are switched off. Editing is not ended by the copy, and focus stays.
+
+**Origin-clean on WebView2 152.0.4191.66:** true, on every run; still a watch item per
+update, and the message says so if it ever fails.
+
+**The margin case: passed.** A note entirely inside a 240-pixel right margin exports in an
+880x400 output, at its offset, and reaches the clipboard the same size.
+
+**The clipboard:** read back the way a destination reads it, all three formats present and
+the PNG the composite byte for byte. Then pasted, by hand through the browser, into
+claude.ai and chatgpt.com: both attached it as an image (part 6a records the surfaces).
+
+**Carried from S0.5, closed:** a stepped GIF exports frame 3, not frame 1; the rotated JPEG
+exports upright at 200x300 with its mark top right; the profiled PNG exports converted,
+its stored red green, its transparent half exact; the SVG exports at the raster size fixed
+at open. The save-and-restart leg stays with S1.8.
+
+**Not done here, on purpose.** The margin is set explicitly; growing it when a bubble
+cannot fit is S1.2's placement work. Panning cannot reach the far edge of a margin at a
+zoom above fit (F56, nit). The 225% display case of check 3 was not run, because this
+machine's display is at 100% today (part 10); the reference environment says so.
+
+**Reviewed (rule 17, high):** this task's own diff. Two findings on it, both fixed: the
+clipboard's comment claimed a failed publish leaves the old contents, which is only true
+before the clipboard is emptied, and a needless lint allowance. One pre-existing, reported
+not fixed: the product build warns that three fields of the decode notes are read only by
+the report (F57, nit). Reach: the export layer's two consumers, the demo and the checks, run
+green; the view offset and the file load, which every view uses, are covered by the seventy
+-three editor checks and by looking at the demo.
 
 Three separate checks, because one comparison cannot answer all three questions:
 
@@ -1666,6 +1729,9 @@ plan did not say so until the review of 2026-09-13 (F47). The same runs were rep
 | Export spike, 5120x1440 layer: serialize and rasterize in the web view | 3 ms | 3 ms |
 | Export spike: web view PNG encode of that layer, 193 KB | 41 ms | 38 ms |
 | Export spike: host decode, composite, encode to file | 50, 51, 269 ms | 7, 6, 14 ms |
+| S0.6 copy of the 5120x1440 demo: web view PNG encode of the layer, host decode plus compose, PNG encode plus two DIBs, clipboard publish | not run | 38, 18, 51, 22 ms |
+| S0.6 copy of an 880x400 document: compose, encode, publish | 10, 32, 1 ms | 0, 1, 0 ms |
+| S0.6 check 3, text box on screen against the composite, three cases | 0 pixels differ | 0 pixels differ |
 | Open an 8000x6000 PNG (192 MB on disk): read and decode, then hand over the frame | 326, 25 ms | 100, 26 ms |
 | That file's first fit view, waiting on pyramid level 1 (4000x3000) | 640 ms (514 for the level) | 575 ms (442 for the level) |
 | Open a 120x90 GIF, three frames, and show it | 3 ms to shown | 3 ms to shown |
@@ -1779,16 +1845,16 @@ them.
 
 # Part 12: the review trail
 
-Fifty-five findings were raised against the plan and folded into the parts above. This table
+Fifty-seven findings were raised against the plan and folded into the parts above. This table
 is the record; the fixes themselves live where the table points. Severity is how the finding
 was rated when it was raised.
 
 | # | Finding | Sev | Where it lives now | Status |
 |---|---|---|---|---|
-| F1 | Nothing guaranteed the exported image matched the editor | 🔴 | Part 5 boundaries, S0.6 three checks | Resolved in plan, verification pending |
+| F1 | Nothing guaranteed the exported image matched the editor | 🔴 | Part 5 boundaries, S0.6 three checks | Verified at S0.6: the live text box and the output are pixel-identical mid-typing |
 | F2 | The elevated-window claim was an assumption presented as documentation | 🟠 | S0.8, part 11 | Claim withdrawn, behavior to verify |
 | F3 | Two latency targets, and the timestamps could not produce one of them | 🔴 | S0.7 six marks, two intervals | Resolved in plan, verification pending |
-| F4 | Clipboard formats unspecified, so a passing paste test proved little | 🟠 | Part 6a destinations, S0.6 | Resolved in plan, acceptance at S0.6 |
+| F4 | Clipboard formats unspecified, so a passing paste test proved little | 🟠 | Part 6a destinations, S0.6 | Accepted at S0.6: PNG, CF_DIBV5 and CF_DIB published, both destinations took the paste |
 | F5 | The selection overlay should not be a web view | 🟠 | Part 5, the whole split | Resolved in plan |
 | F6 | Text direction was named but not defined | 🟠 | §3.5, S0.6 | Decided |
 | F7 | Undo was specified by context, which the user cannot see | 🟠 | §3.6 and its acceptance sequence, S1.7 | Decided |
@@ -1815,13 +1881,13 @@ was rated when it was raised.
 | F28 | The plan claimed a bitmap-only clipboard would fail in the two destinations | 🟠 | Part 6a | Claim removed; the paste itself is the criterion |
 | F29 | "Ship the shorter list" let S0.5 drop any format without a scope decision | 🟠 | Part 6c, part 8, S0.5 | Resolved: a required format is a blocked stage |
 | F30 | The two-provider decode split would have created the preserved image inside the renderer, where a premultiplied canvas cannot return a straight-alpha pixel unchanged | 🔴 | Part 5 boundary rule, part 6a, S0.6 check 1 | Resolved: one native route, and the original never enters the web view |
-| F31 | The exact-equality check used an opaque capture, so it could not fail on the only input that can | 🔴 | S0.6 check 1 | Resolved: a semi-transparent PNG case added |
+| F31 | The exact-equality check used an opaque capture, so it could not fail on the only input that can | 🔴 | S0.6 check 1 | Verified at S0.6 on a PNG whose alpha runs 0 to 255 |
 | F32 | The stack was justified by familiarity with another project, which rule 21 forbids as evidence | 🟠 | Part 5, `project-os/Mistakes.md` | Resolved: argued from this product's own requirements |
 | F33 | The replacement argument overstated what the alternatives cannot do: Qt has an editing model, native UI has automation peers, resvg has a C interface, Qt SVG has extensions since 6.7 | 🟠 | Part 5, its not-established section and comparison table | Resolved: downgraded to a recommended candidate with the overstatements named |
 | F34 | A browser flag the vendor does not support for production sat inside a readiness gate | 🟠 | S0.4, part 11 watch items | Resolved: the gate runs in the shipping configuration |
 | F35 | A fit-to-window display proxy cannot serve 100% or 200% zoom, so the everyday viewer would show mush | 🔴 | §3.4, part 5 display policy, S0.4 detail check | Resolved: detail follows the zoom, transport decided by S0.3 |
 | F36 | The stated direction override did not exist: `unicode-bidi: plaintext` ignores `direction` and resolves per paragraph, not per bubble | 🔴 | §3.5, part 5 text layer | Resolved: three explicit modes, resolved value stored |
-| F37 | The annotation export was sized to the source, so a callout inside the added margin would be cut off | 🔴 | §3.6, part 5 boundary rule, S0.6 margin case | Resolved: source plus stored margins, composited at the offset |
+| F37 | The annotation export was sized to the source, so a callout inside the added margin would be cut off | 🔴 | §3.6, part 5 boundary rule, S0.6 margin case | Verified at S0.6: a note inside a 240-pixel margin is in an 880x400 output |
 | F38 | Revision leftovers: two decode providers in two places, a web view decoder question, F18 still marked open, and dav1d described as a whole-file library | 🟠 | Part 5, S0.5, part 11, this table | Resolved in place |
 | F39 | Readiness ended at input acceptance, so a blank or stale window could score as ready | 🟠 | S0.7 | Resolved: content and input, on one timing basis |
 | F40 | The boundary figure the design was argued against was two to four times pessimistic, and it came from a discussion thread | 🟡 | Part 11's measured table, S0.3 | Resolved: measured here, and the plan quotes the measurement |
@@ -1840,6 +1906,8 @@ was rated when it was raised.
 | F53 | An animated AVIF through WIC is one frame: the frame-by-index rule in §3.5 is unmet for AVIF sequences on this route | 🟠 | §3.7, S0.5, F51 | Accepted 2026-09-13 with F51: first frame only, stated in §3.7 and part 6c; a buildable AV1 decoder would close it, on F51's revisit triggers |
 | F54 | The image crate does not read EXIF orientation out of a WebP, so a tagged WebP comes out as stored | 🟡 | §3.7, S0.5 | Open: §3.7 promises orientation for JPEG and HEIC only; recorded, not scheduled |
 | F55 | WIC's converter does not apply an embedded colour profile, so a tagged TIFF, HEIC or AVIF would have been shown and exported as if sRGB | 🟠 | §3.7 contract, S0.5 | Resolved: the frame's colour context is read and converted through the same sRGB step as the other providers |
+| F56 | Panning is clamped to the image, so the far edge of a margin cannot be reached at a zoom above fit | 🟡 | S0.6, S1.2 | Open: with S1.2's automatic margin; today a margin is only set by a check |
+| F57 | The product build warns that three fields of the decode notes are read only by the feature-gated report | 🟡 | S0.5, `host/src/source/mod.rs` | Open, pre-existing: a cfg attribute or a use in the product; reported by the S0.6 review, not fixed there |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the
 two things it compares and the failure that would turn it red (`project-os/QA.md` §12), and a

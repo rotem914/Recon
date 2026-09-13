@@ -269,8 +269,15 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         checks::editor_wants_checks,
         checks::editor_wants_demo,
         checks::editor_shoot_window,
-        checks::editor_export_layer,
         checks::editor_exit,
+        checks::editor_make_fixtures,
+        checks::editor_open_fixture,
+        checks::editor_window_origin,
+        checks::editor_export_check,
+        checks::editor_live_compare,
+        checks::editor_clipboard_readback,
+        checks::editor_environment,
+        editor_copy,
         checks::editor_svg_cases,
         checks::editor_svg_compare,
     ]);
@@ -281,6 +288,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_window_metrics,
         editor_log,
         editor_frame,
+        editor_copy,
     ]);
     builder.register_asynchronous_uri_scheme_protocol("region", |_ctx, request, responder| {
         let query = request.uri().query().unwrap_or_default().to_string();
@@ -289,6 +297,82 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
 }
 
 // ---------------------------------------------------------------- the product's commands
+
+/// Composes the page's annotation layer over the current image, in canvas space.
+///
+/// Returns the composite, the decoded layer (the checks count from it) and the time.
+fn compose_layer(
+    png: &[u8],
+    margin: crate::compose::Margin,
+) -> Result<(crate::compose::Composite, Vec<u8>, u128), String> {
+    let image = state().image().ok_or("no image is loaded")?;
+    let (w, h) = (image.frame.width(), image.frame.height());
+    let (cw, ch) = margin.canvas(w, h);
+    let started = Instant::now();
+    let layer = image::load_from_memory_with_format(png, image::ImageFormat::Png)
+        .map_err(|err| format!("the layer did not decode: {err}"))?
+        .into_rgba8();
+    if layer.dimensions() != (cw, ch) {
+        return Err(format!(
+            "the layer is {}x{} and the canvas is {cw}x{ch}",
+            layer.width(),
+            layer.height()
+        ));
+    }
+    let layer = layer.into_raw();
+    let composite =
+        crate::compose::compose(&image.frame.rgba, w, h, &layer, margin, crate::compose::MAT)?;
+    Ok((composite, layer, started.elapsed().as_millis()))
+}
+
+/// What a copy did, for the page's success line and the log.
+#[derive(serde::Serialize)]
+pub struct CopyReport {
+    pub width: u32,
+    pub height: u32,
+    pub compose_ms: u128,
+    pub published: crate::clipboard::Published,
+}
+
+/// Copy the composed image to the clipboard (§3.6). The page sends the annotation layer
+/// as a PNG in canvas space with the margin in a header; the host composes it over the
+/// untouched source and publishes the result in three formats. The web view never touches
+/// the clipboard (part 5).
+#[tauri::command]
+pub fn editor_copy(request: tauri::ipc::Request<'_>) -> Result<CopyReport, String> {
+    let margin = request
+        .headers()
+        .get("margin")
+        .and_then(|v| v.to_str().ok())
+        .map(crate::compose::Margin::parse)
+        .transpose()?
+        .unwrap_or_default();
+    let bytes = match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => bytes.clone(),
+        tauri::ipc::InvokeBody::Json(_) => {
+            return Err("the layer arrived as JSON, not as bytes".into())
+        }
+    };
+    let (composite, _, compose_ms) = compose_layer(&bytes, margin)?;
+    let published = crate::clipboard::publish(&composite.rgba, composite.width, composite.height)?;
+    println!(
+        "copied {}x{} to the clipboard: composed in {compose_ms} ms, encoded in {} ms, published in {} ms as {}",
+        composite.width,
+        composite.height,
+        published.encode_ms,
+        published.publish_ms,
+        published.formats.join(", ")
+    );
+    let (width, height) = (composite.width, composite.height);
+    #[cfg(feature = "stage0-checks")]
+    checks::remember_copy(composite);
+    Ok(CopyReport {
+        width,
+        height,
+        compose_ms,
+        published,
+    })
+}
 
 /// Everything the page says, on the terminal.
 ///
@@ -933,104 +1017,471 @@ mod checks {
         })
     }
 
-    /// What the export spike found, for the S0.6 record.
+    /// The last composite made by a check, so the live comparison and the clipboard
+    /// read-back have the exact bytes to compare against.
+    static LAST_COMPOSITE: Mutex<Option<Arc<crate::compose::Composite>>> = Mutex::new(None);
+
+    fn remember(composite: Arc<crate::compose::Composite>) {
+        if let Ok(mut slot) = LAST_COMPOSITE.lock() {
+            *slot = Some(composite);
+        }
+    }
+
+    /// A product copy, remembered for the read-back check.
+    pub fn remember_copy(composite: crate::compose::Composite) {
+        remember(Arc::new(composite));
+    }
+
+    fn last_composite() -> Result<Arc<crate::compose::Composite>, String> {
+        LAST_COMPOSITE
+            .lock()
+            .map_err(|_| "the composite slot is poisoned".to_string())?
+            .clone()
+            .ok_or_else(|| "no composite has been made yet".into())
+    }
+
+    /// Where the S0.6 reference images live: in the repository, beside the code, so a
+    /// reviewed reference is a committed file and a changed one is a diff.
+    fn reference_dir() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("references/s06")
+    }
+
+    fn fixture_dir() -> std::path::PathBuf {
+        std::env::current_exe()
+            .map(|exe| exe.with_file_name("s06-fixtures"))
+            .unwrap_or_else(|_| "s06-fixtures".into())
+    }
+
+    /// Generates the files the S0.6 checks open, beside the executable, once.
+    #[tauri::command]
+    pub fn editor_make_fixtures() -> Result<String, String> {
+        let dir = fixture_dir();
+        if !dir.join("reference-scene.png").exists() {
+            source::fixtures::make_export_set(&dir).map_err(|err| err.to_string())?;
+        }
+        Ok(dir.display().to_string())
+    }
+
+    /// Opens one of those files into the editor, frame 0, without showing the window or
+    /// emitting an event: the page called, so the page loads what comes back.
+    #[tauri::command]
+    pub fn editor_open_fixture(name: String) -> Result<ImageInfo, String> {
+        let path = fixture_dir().join(&name);
+        let mut opened = source::open(&path).map_err(|err| err.to_string())?;
+        let decoded = opened.frame(0).map_err(|err| err.to_string())?;
+        let format = opened.format.name();
+        state().set_document(Some(Document { opened, index: 0 }));
+        state().set_frame(frame_of(decoded, format));
+        editor_image_info()
+    }
+
+    /// The physical position of the window's client area on the desktop, so a rectangle
+    /// the page measured in CSS pixels can be found on the screen.
     #[derive(serde::Serialize)]
-    pub struct ExportReport {
+    pub struct WindowOrigin {
+        pub x: i32,
+        pub y: i32,
+    }
+
+    #[tauri::command]
+    pub fn editor_window_origin(app: AppHandle) -> Result<WindowOrigin, String> {
+        let window = app
+            .get_webview_window("editor")
+            .ok_or("there is no editor window")?;
+        let position = window.inner_position().map_err(|e| e.to_string())?;
+        Ok(WindowOrigin {
+            x: position.x,
+            y: position.y,
+        })
+    }
+
+    /// What one export check found.
+    #[derive(serde::Serialize)]
+    pub struct ExportCheck {
         pub webview_version: String,
-        pub layer_bytes: usize,
         pub width: u32,
         pub height: u32,
         /// Pixels the annotation layer touched at all, alpha above zero.
         pub covered: usize,
-        /// Pixels the layer left alone and that came out different from the source. The
-        /// whole point: this has to be zero, exactly.
+        /// Source pixels the layer left alone that came out different. Zero, exactly.
         pub source_mismatches: usize,
-        pub decode_ms: u128,
-        pub composite_ms: u128,
-        pub encode_ms: u128,
+        /// "none" when no reference was asked for, "new" when this run wrote one, "match"
+        /// or "differs" against an existing one.
+        pub reference: String,
+        pub differing: usize,
+        pub percent: f64,
+        pub bbox: Option<[u32; 4]>,
+        /// The pixel at the point the page asked about, if it did.
+        pub sample: Option<[u8; 4]>,
+        pub compose_ms: u128,
         pub path: String,
     }
 
-    /// The S0.6 export spike: the page sends the annotation layer as a PNG, the host
-    /// composites it over the untouched source at the origin (no margin yet), writes the
-    /// file, and compares every pixel the layer did not touch against the source.
-    ///
-    /// Straight-alpha "over": the layer arrives un-premultiplied from the canvas encoder,
-    /// and the source is opaque here, so the result is exact where alpha is 0 and a plain
-    /// blend elsewhere. The semi-transparent source case is S0.6's own check 1.
+    /// Differing pixels between two same-sized RGBA buffers, premultiplied so a fully
+    /// transparent pixel's colour does not count, at a channel tolerance of 48: enough to
+    /// absorb glyph antialiasing, far too little to hide a moved box or a different wrap.
+    pub fn compare(a: &[u8], b: &[u8], w: u32, h: u32) -> (usize, Option<[u32; 4]>) {
+        let mut differing = 0usize;
+        let mut bbox: Option<[u32; 4]> = None;
+        for y in 0..h {
+            for x in 0..w {
+                let i = ((y * w + x) * 4) as usize;
+                let pa = a[i + 3] as u32;
+                let pb = b[i + 3] as u32;
+                let mut off = pa.abs_diff(pb) > 48;
+                for c in 0..3 {
+                    let ca = a[i + c] as u32 * pa / 255;
+                    let cb = b[i + c] as u32 * pb / 255;
+                    if ca.abs_diff(cb) > 48 {
+                        off = true;
+                    }
+                }
+                if off {
+                    differing += 1;
+                    bbox = Some(match bbox {
+                        None => [x, y, x, y],
+                        Some([x0, y0, x1, y1]) => [x0.min(x), y0.min(y), x1.max(x), y1.max(y)],
+                    });
+                }
+            }
+        }
+        (differing, bbox)
+    }
+
+    /// The S0.6 export check: the page sends the annotation layer as a PNG in canvas
+    /// space with the margin in a header; the host composes it over the untouched source
+    /// exactly as a copy does, counts the source pixels that changed, writes the result
+    /// beside the executable, and, when asked, compares it against the committed reference
+    /// or creates that reference for review.
     #[tauri::command]
-    pub fn editor_export_layer(request: tauri::ipc::Request<'_>) -> Result<ExportReport, String> {
+    pub fn editor_export_check(request: tauri::ipc::Request<'_>) -> Result<ExportCheck, String> {
+        let header = |name: &str| -> Option<String> {
+            request
+                .headers()
+                .get(name)
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+        };
+        let name = header("name").unwrap_or_else(|| "export".into());
+        if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+            return Err(format!("{name:?} is not a check name"));
+        }
+        let margin =
+            crate::compose::Margin::parse(&header("margin").unwrap_or_else(|| "0,0,0,0".into()))?;
+        let mode = header("mode").unwrap_or_else(|| "source".into());
+        let sample_at = header("sample").and_then(|s| {
+            let mut it = s.split(',').map(|p| p.trim().parse::<u32>().ok());
+            Some((it.next()??, it.next()??))
+        });
         let bytes = match request.body() {
             tauri::ipc::InvokeBody::Raw(bytes) => bytes.clone(),
             tauri::ipc::InvokeBody::Json(_) => {
                 return Err("the layer arrived as JSON, not as bytes".into())
             }
         };
+
+        let (composite, layer, compose_ms) = compose_layer(&bytes, margin)?;
         let image = state().image().ok_or("no image is loaded")?;
-        let (w, h) = (image.frame.width(), image.frame.height());
-
-        let started = Instant::now();
-        let layer = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)
-            .map_err(|err| format!("the layer did not decode: {err}"))?
-            .into_rgba8();
-        let decode_ms = started.elapsed().as_millis();
-        if layer.width() != w || layer.height() != h {
-            return Err(format!(
-                "the layer is {}x{} and the image is {w}x{h}",
-                layer.width(),
-                layer.height()
-            ));
-        }
-
-        let started = Instant::now();
-        let src = &image.frame.rgba;
-        let lay = layer.as_raw();
-        let mut out = src.clone();
-        let mut covered = 0usize;
-        for i in 0..(w as usize * h as usize) {
-            let a = lay[i * 4 + 3] as u32;
-            if a == 0 {
-                continue;
+        let (sw, sh) = (image.frame.width(), image.frame.height());
+        let source_mismatches = crate::compose::source_mismatches(
+            &composite,
+            &image.frame.rgba,
+            sw,
+            sh,
+            &layer,
+            margin,
+        );
+        let covered = layer
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|px| px[3] != 0)
+            .count();
+        let sample = sample_at.and_then(|(x, y)| {
+            if x < composite.width && y < composite.height {
+                let i = ((y * composite.width + x) * 4) as usize;
+                Some([
+                    composite.rgba[i],
+                    composite.rgba[i + 1],
+                    composite.rgba[i + 2],
+                    composite.rgba[i + 3],
+                ])
+            } else {
+                None
             }
-            covered += 1;
-            for c in 0..3 {
-                let s = src[i * 4 + c] as u32;
-                let l = lay[i * 4 + c] as u32;
-                out[i * 4 + c] = ((l * a + s * (255 - a) + 127) / 255) as u8;
-            }
-            out[i * 4 + 3] = 255;
-        }
-        let composite_ms = started.elapsed().as_millis();
+        });
 
-        let mut source_mismatches = 0usize;
-        for i in 0..(w as usize * h as usize) {
-            if lay[i * 4 + 3] == 0 && out[i * 4..i * 4 + 4] != src[i * 4..i * 4 + 4] {
-                source_mismatches += 1;
-            }
-        }
-
-        let started = Instant::now();
         let path = std::env::current_exe()
-            .map(|exe| exe.with_file_name("s06-export.png"))
-            .unwrap_or_else(|_| "s06-export.png".into());
-        image::RgbaImage::from_raw(w, h, out)
-            .ok_or("the composite did not match its size")?
-            .save(&path)
-            .map_err(|err| err.to_string())?;
-        let encode_ms = started.elapsed().as_millis();
+            .map(|exe| exe.with_file_name(format!("s06-{name}.png")))
+            .unwrap_or_else(|_| format!("s06-{name}.png").into());
+        let out =
+            image::RgbaImage::from_raw(composite.width, composite.height, composite.rgba.clone())
+                .ok_or("the composite did not match its size")?;
+        out.save(&path).map_err(|err| err.to_string())?;
 
-        Ok(ExportReport {
+        let (reference, differing, percent, bbox) = if mode == "reference" {
+            let dir = reference_dir();
+            std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+            let reference_path = dir.join(format!("{name}.png"));
+            if reference_path.exists() {
+                let expected = image::open(&reference_path)
+                    .map_err(|err| format!("the reference did not open: {err}"))?
+                    .into_rgba8();
+                if expected.dimensions() != (composite.width, composite.height) {
+                    (
+                        format!(
+                            "differs: the reference is {}x{}",
+                            expected.width(),
+                            expected.height()
+                        ),
+                        composite.rgba.len() / 4,
+                        100.0,
+                        None,
+                    )
+                } else {
+                    let (differing, bbox) = compare(
+                        &composite.rgba,
+                        expected.as_raw(),
+                        composite.width,
+                        composite.height,
+                    );
+                    let percent =
+                        differing as f64 * 100.0 / (composite.rgba.len() / 4).max(1) as f64;
+                    (
+                        if differing == 0 {
+                            "match".into()
+                        } else {
+                            "differs".into()
+                        },
+                        differing,
+                        percent,
+                        bbox,
+                    )
+                }
+            } else {
+                out.save(&reference_path).map_err(|err| err.to_string())?;
+                ("new".into(), 0, 0.0, None)
+            }
+        } else {
+            ("none".into(), 0, 0.0, None)
+        };
+
+        remember(Arc::new(composite));
+        Ok(ExportCheck {
             webview_version: tauri::webview_version().unwrap_or_else(|_| "unknown".into()),
-            layer_bytes: bytes.len(),
-            width: w,
-            height: h,
+            width: sw + margin.left + margin.right,
+            height: sh + margin.top + margin.bottom,
             covered,
             source_mismatches,
-            decode_ms,
-            composite_ms,
-            encode_ms,
+            reference,
+            differing,
+            percent,
+            bbox,
+            sample,
+            compose_ms,
             path: path.display().to_string(),
         })
+    }
+
+    /// What the screen shows against what the composite holds, for the same rectangle.
+    #[derive(serde::Serialize)]
+    pub struct LiveCompare {
+        pub differing: usize,
+        pub percent: f64,
+        pub bbox: Option<[u32; 4]>,
+        /// Rows carrying text ink, grouped into lines: the wrap, read off the pixels.
+        pub live_lines: Vec<[u32; 2]>,
+        pub export_lines: Vec<[u32; 2]>,
+        pub width: u32,
+        pub height: u32,
+    }
+
+    /// Bands of consecutive rows that contain bright pixels, which on a dark bubble is
+    /// where the text is. Two renders with the same wrap have the same bands.
+    fn ink_lines(rgba: &[u8], w: u32, h: u32) -> Vec<[u32; 2]> {
+        let mut lines = Vec::new();
+        let mut open: Option<u32> = None;
+        for y in 0..h {
+            let row = &rgba[(y * w * 4) as usize..((y + 1) * w * 4) as usize];
+            let ink = row
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .any(|px| (px[0] as u32 + px[1] as u32 + px[2] as u32) / 3 > 150);
+            match (ink, open) {
+                (true, None) => open = Some(y),
+                (false, Some(start)) => {
+                    lines.push([start, y - 1]);
+                    open = None;
+                }
+                _ => {}
+            }
+        }
+        if let Some(start) = open {
+            lines.push([start, h - 1]);
+        }
+        lines
+    }
+
+    /// S0.6's third check: the live editor against the output while typing. The page names
+    /// a rectangle twice, on the desktop in physical pixels and in canvas space, and at
+    /// zoom 1 those are the same pixels; the host reads the screen and the last composite
+    /// and compares them.
+    #[tauri::command]
+    pub fn editor_live_compare(
+        screen_x: i32,
+        screen_y: i32,
+        canvas_x: u32,
+        canvas_y: u32,
+        width: u32,
+        height: u32,
+    ) -> Result<LiveCompare, String> {
+        let composite = last_composite()?;
+        if canvas_x + width > composite.width || canvas_y + height > composite.height {
+            return Err(format!(
+                "the rectangle {canvas_x},{canvas_y} {width}x{height} is outside the {}x{} composite",
+                composite.width, composite.height
+            ));
+        }
+        let rect = DesktopRect {
+            x: screen_x,
+            y: screen_y,
+            width,
+            height,
+        };
+        let live = screen::copy_rect(rect).map_err(|err| err.to_string())?;
+        let mut exported = Vec::with_capacity((width * height * 4) as usize);
+        for y in 0..height {
+            let from = (((canvas_y + y) * composite.width + canvas_x) * 4) as usize;
+            exported.extend_from_slice(&composite.rgba[from..from + (width * 4) as usize]);
+        }
+        // The screen is opaque; a semi-transparent composite pixel is what the screen would
+        // show over the page's paper, and no check uses one here, so alpha is forced.
+        for px in exported.as_chunks_mut::<4>().0 {
+            px[3] = 255;
+        }
+        let (differing, bbox) = compare(&live, &exported, width, height);
+        let name = "s06-live.png";
+        let path = std::env::current_exe()
+            .map(|exe| exe.with_file_name(name))
+            .unwrap_or_else(|_| name.into());
+        // Side by side, the live pixels on the left, the export on the right, to look at.
+        let mut pair = Vec::with_capacity((width * 2 * height * 4) as usize);
+        for y in 0..height as usize {
+            let row = width as usize * 4;
+            pair.extend_from_slice(&live[y * row..(y + 1) * row]);
+            pair.extend_from_slice(&exported[y * row..(y + 1) * row]);
+        }
+        if let Some(img) = image::RgbaImage::from_raw(width * 2, height, pair) {
+            let _ = img.save(&path);
+        }
+        Ok(LiveCompare {
+            differing,
+            percent: differing as f64 * 100.0 / (width * height).max(1) as f64,
+            bbox,
+            live_lines: ink_lines(&live, width, height),
+            export_lines: ink_lines(&exported, width, height),
+            width,
+            height,
+        })
+    }
+
+    /// The clipboard read back the way a destination would read it, against the last
+    /// composite. Checks only: the product never reads the clipboard.
+    #[derive(serde::Serialize)]
+    pub struct ClipboardReadBack {
+        pub png: bool,
+        pub dib_v5: bool,
+        pub dib: bool,
+        pub png_matches: bool,
+        pub width: u32,
+        pub height: u32,
+        pub png_bytes: usize,
+    }
+
+    #[tauri::command]
+    pub fn editor_clipboard_readback() -> Result<ClipboardReadBack, String> {
+        let composite = last_composite()?;
+        let back = crate::clipboard::read_back()?;
+        let (mut png_matches, mut width, mut height, mut png_bytes) = (false, 0, 0, 0);
+        if let Some(bytes) = &back.png {
+            png_bytes = bytes.len();
+            let decoded = image::load_from_memory_with_format(bytes, image::ImageFormat::Png)
+                .map_err(|err| format!("the clipboard PNG did not decode: {err}"))?
+                .into_rgba8();
+            width = decoded.width();
+            height = decoded.height();
+            png_matches = decoded.dimensions() == (composite.width, composite.height)
+                && decoded.as_raw() == &composite.rgba;
+        }
+        Ok(ClipboardReadBack {
+            png: back.png.is_some(),
+            dib_v5: back.dib_v5,
+            dib: back.dib,
+            png_matches,
+            width,
+            height,
+            png_bytes,
+        })
+    }
+
+    /// Writes the reference environment beside the reference images: what the images are
+    /// meaningful against (part 6a). The page supplies what only it knows.
+    #[tauri::command]
+    pub fn editor_environment(
+        app: AppHandle,
+        font: String,
+        css_size: String,
+    ) -> Result<String, String> {
+        let metrics = editor_window_metrics(app)?;
+        let monitors: Vec<String> = crate::capture::display::monitors()
+            .iter()
+            .map(|m| format!("{}x{} at {}%", m.rect.width, m.rect.height, m.scale_percent))
+            .collect();
+        let text = format!(
+            "S0.6 reference environment, written {}\n\
+             web view: WebView2 {}\n\
+             window: {}x{} physical for {} css, scale factor {}, window dpi {} ({}%)\n\
+             displays: {}\n\
+             note font: {}\n\
+             tolerance: a channel difference above 48, premultiplied, counts a pixel as differing; a reference passes at 0.5% or fewer differing pixels, and a wrap or box change fails at any tolerance\n",
+            date_today(),
+            tauri::webview_version().unwrap_or_else(|_| "unknown".into()),
+            metrics.physical_width,
+            metrics.physical_height,
+            css_size,
+            metrics.scale_factor,
+            metrics.window_dpi,
+            metrics.window_dpi * 100 / 96,
+            monitors.join(", "),
+            font,
+        );
+        let dir = reference_dir();
+        std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+        let path = dir.join("environment.txt");
+        std::fs::write(&path, text).map_err(|err| err.to_string())?;
+        Ok(path.display().to_string())
+    }
+
+    /// Today, from the system clock, as a date: no dependency for one line.
+    fn date_today() -> String {
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let days = secs / 86_400;
+        // Civil-from-days, Howard Hinnant's algorithm.
+        let z = days as i64 + 719_468;
+        let era = z.div_euclid(146_097);
+        let doe = z.rem_euclid(146_097);
+        let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+        let y = yoe + era * 400;
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        let mp = (5 * doy + 2) / 153;
+        let d = doy - (153 * mp + 2) / 5 + 1;
+        let m = if mp < 10 { mp + 3 } else { mp - 9 };
+        let y = if m <= 2 { y + 1 } else { y };
+        format!("{y:04}-{m:02}-{d:02}")
     }
 
     /// Loads the synthetic probe as the current image, for the detail check.

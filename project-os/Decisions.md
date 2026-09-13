@@ -74,6 +74,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-11 · A note's text size is the user's, with no minimum on-screen size.
 - 2026-09-13 · The display proxy is served from a pyramid of halves, by one worker.
 - 2026-09-13 · AVIF decodes through the Windows imaging stack, not a bundled libavif.
+- 2026-09-13 · The clipboard is published by the host in three formats, PNG first.
 
 ---
 
@@ -681,3 +682,38 @@ Rust, with three decode dependencies instead of four. The provider sits behind t
 source interface, so moving AVIF to another decoder later touches one file and no caller.
 Revisit when a pure-Rust AV1 decoder compiles on the project's toolchain, or when daily use
 (S1.12) meets an AVIF this route cannot open; either one reopens F51 and F53 together.
+
+---
+
+## 2026-09-13 · The clipboard is published by the host in three formats, PNG first
+
+### Context
+
+S0.6 delivers the clipboard operation, and part 6a makes acceptance the paste actually
+working in Claude and ChatGPT. Tauri ships a clipboard plugin, and the web view has a
+clipboard API of its own; either would have been less code than talking to Win32.
+
+### Options
+
+1. The web view's clipboard API: the page writes an image blob.
+2. Tauri's clipboard plugin: one bitmap format, written from the host.
+3. Win32 from the host: several formats in one transaction, chosen here.
+
+### Decision
+
+Option 3, by the assistant at S0.6. Part 5 keeps the web view off the clipboard, which
+rules out option 1 on its own; and a web view can only put a canvas-encoded image on the
+clipboard, which is the premultiplied round trip the preserved source must never take.
+Option 2 publishes one bitmap; a Chromium page reads the registered `PNG` format first
+and losslessly, and older Windows applications read `CF_DIB` only, so one format serves
+one kind of destination. Three formats built before the clipboard is touched serve all of
+them from the same composite.
+
+### Consequences
+
+`PNG` carries the exact composite, alpha included; `CF_DIBV5` carries it with alpha for
+system readers; `CF_DIB` is flattened over white for readers that ignore alpha. Both
+destinations took the paste as a PNG on 2026-09-13. The cost is one PNG encode plus two
+bitmap copies per copy, 51 plus 22 ms in release for a 5120x1440 capture, and a Win32
+module the product owns. Revisit if a destination turns out to need a fourth format, or if
+the encode time ever shows on the copy path in S1.12.

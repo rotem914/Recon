@@ -14,6 +14,9 @@
 
   #stage { position: absolute; inset: 0; overflow: hidden; cursor: crosshair; }
   #canvas { position: absolute; left: 0; top: 0; display: block; image-rendering: pixelated; }
+  /* The annotation margin, drawn under the picture in the same colour the host puts in the
+     output, so what is on screen is what a copy contains (§3.5, §3.6). */
+  #mat { position: absolute; left: 0; top: 0; display: none; background: #e9eaec; }
 
   /* Everything below is laid out in IMAGE pixels and scaled by one transform on this
      container. Part 5: layout is computed before the transform exists, so zoom cannot
@@ -42,6 +45,12 @@
   .anchor { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px;
             border-radius: 50%; background: #7aa7ff; border: 2px solid #0d1014;
             cursor: grab; }
+  /* Plain: no editing decoration at all, for the moment the scene is serialized into the
+     output and for the moment the screen is compared against it (S0.6 check 3). Colours
+     only, never a layout property, so switching it cannot move a pixel of text. */
+  body.plain .callout.selected { border-color: #3a4149; }
+  body.plain .callout .t:focus { background: transparent; outline: none; }
+  body.plain .callout .t { caret-color: transparent; }
 
   #hud { position: absolute; left: 12px; bottom: 10px; padding: 6px 10px; border-radius: 6px;
          background: rgba(10,12,14,.82); color: #cfd4da; font-size: 12px;
@@ -56,6 +65,7 @@
 </style>
 
 <div id="stage">
+  <div id="mat"></div>
   <canvas id="canvas"></canvas>
   <div id="scene">
     <svg id="arrows"></svg>
@@ -85,6 +95,7 @@
   window.addEventListener('unhandledrejection', (e) => toHost('error', `unhandled rejection: ${e.reason && e.reason.stack ? e.reason.stack : e.reason}`));
   const stage = document.getElementById('stage');
   const canvas = document.getElementById('canvas');
+  const mat = document.getElementById('mat');
   const scene = document.getElementById('scene');
   const arrows = document.getElementById('arrows');
   const hud = document.getElementById('hud');
@@ -117,6 +128,10 @@
     // The size the NEXT note gets, in image pixels. Each note then carries its own, so
     // changing the size later never rewrites the notes already written.
     textSize: 20,
+    // The annotation margin, image pixels per edge (§3.5). Canvas space is image space
+    // plus this, and the output is the source plus this (§3.6). Set explicitly for now;
+    // growing it automatically when a bubble cannot fit is the placement work of S1.2.
+    margin: { left: 0, top: 0, right: 0, bottom: 0 },
     callouts: [],
     nextNumber: 1,
     selected: null,
@@ -208,12 +223,28 @@
     const cssH = height / dpr();
     canvas.style.width = `${cssW}px`;
     canvas.style.height = `${cssH}px`;
-    // Centred when the image does not fill the window, which is what anyone expects of a
-    // viewer and is not what the first version did.
-    model.offset.x = Math.max(0, Math.round((vp.w - cssW) / 2));
-    model.offset.y = Math.max(0, Math.round((vp.h - cssH) / 2));
+    // Centred when the composition does not fill the window, which is what anyone expects
+    // of a viewer and is not what the first version did. The offset is where the IMAGE
+    // starts; with a margin the composition is centred and the image sits inside it.
+    const comp = compositionSize();
+    const compW = (comp.w * model.zoom) / dpr();
+    const compH = (comp.h * model.zoom) / dpr();
+    model.offset.x = compW <= vp.w
+      ? Math.round((vp.w - compW) / 2 + (model.margin.left * model.zoom) / dpr())
+      : Math.max(0, Math.round((vp.w - cssW) / 2));
+    model.offset.y = compH <= vp.h
+      ? Math.round((vp.h - compH) / 2 + (model.margin.top * model.zoom) / dpr())
+      : Math.max(0, Math.round((vp.h - cssH) / 2));
     canvas.style.left = `${model.offset.x}px`;
     canvas.style.top = `${model.offset.y}px`;
+    const hasMargin = comp.w !== model.image.width || comp.h !== model.image.height;
+    mat.style.display = hasMargin ? 'block' : 'none';
+    if (hasMargin) {
+      mat.style.left = `${model.offset.x - ((model.pan.x + model.margin.left) * model.zoom) / dpr()}px`;
+      mat.style.top = `${model.offset.y - ((model.pan.y + model.margin.top) * model.zoom) / dpr()}px`;
+      mat.style.width = `${compW}px`;
+      mat.style.height = `${compH}px`;
+    }
     context.putImageData(new ImageData(new Uint8ClampedArray(bytes), width, height), 0, 0);
     lastRegion = { x, y, w: srcW, h: srcH, width, height, ms: Math.round(performance.now() - askedAt) };
     console.log(`painted ${width}x${height} at zoom ${model.zoom.toFixed(3)} in ${lastRegion.ms} ms`);
@@ -509,6 +540,12 @@
   stage.addEventListener('pointercancel', endDrag);
 
   window.addEventListener('keydown', (event) => {
+    // Copy the composed image, current text edits included, from anywhere (§3.6).
+    if (event.ctrlKey && event.shiftKey && !event.altKey && (event.key === 'C' || event.key === 'c')) {
+      copyComposed().catch((err) => console.error('copy failed', err && err.stack ? err.stack : String(err)));
+      event.preventDefault();
+      return;
+    }
     // Text size, and it works while typing too: Ctrl is not a character, so the note being
     // written can be resized without leaving it.
     if (event.ctrlKey && !event.altKey && (event.key === '+' || event.key === '=')) {
@@ -578,14 +615,27 @@
     return paintRegion();
   };
 
+  const compositionSize = () => ({
+    w: model.image.width + model.margin.left + model.margin.right,
+    h: model.image.height + model.margin.top + model.margin.bottom,
+  });
+
   const computeFit = () => {
     const vp = viewport();
     if (!model.image.width) return 1;
-    return Math.min(
-      (vp.w * dpr()) / model.image.width,
-      (vp.h * dpr()) / model.image.height,
-      1
-    );
+    const comp = compositionSize();
+    return Math.min((vp.w * dpr()) / comp.w, (vp.h * dpr()) / comp.h, 1);
+  };
+
+  const marginString = () =>
+    `${model.margin.left},${model.margin.top},${model.margin.right},${model.margin.bottom}`;
+
+  const setMargin = (margin) => {
+    for (const edge of ['left', 'top', 'right', 'bottom']) {
+      model.margin[edge] = Math.max(0, Math.round(margin[edge] || 0));
+    }
+    model.fitZoom = computeFit();
+    return paintRegion();
   };
 
   window.addEventListener('resize', async () => {
@@ -607,6 +657,7 @@
       return;
     }
     model.image = info;
+    model.margin = { left: 0, top: 0, right: 0, bottom: 0 };
     model.callouts = [];
     model.nextNumber = 1;
     model.selected = null;
@@ -643,27 +694,38 @@
     }
   };
 
-  const exportLayer = async () => {
-    const { width, height } = model.image;
-    // Nothing selected and nothing being edited, so no decoration is in the export.
-    const keep = { selected: model.selected, editing: model.editing };
-    if (model.editing) commitEditing();
-    model.selected = null;
-    layoutScene();
+  // Colours only, never layout: the export and the live comparison both read the scene
+  // with this on, and the check asserts the text box does not move by a pixel.
+  const setPlain = (on) => document.body.classList.toggle('plain', !!on);
 
+  const exportLayer = async () => {
+    const { w: width, h: height } = compositionSize();
+    // The layer is a SNAPSHOT of the composition as it is, note being typed included
+    // (§3.6: copy carries the current text edits). Nothing is committed and nothing loses
+    // focus; the editing decorations are stripped by the plain state while the styles are
+    // read, and put back before this function returns.
+    setPlain(true);
     const root = document.createElementNS('http://www.w3.org/1999/xhtml', 'div');
     root.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
     root.setAttribute('style', `position:relative;width:${width}px;height:${height}px;margin:0;overflow:visible;`);
-    for (const child of scene.children) {
-      if (child.classList && child.classList.contains('anchor')) continue; // editing UI
-      const clone = child.cloneNode(true);
-      if (child.id === 'arrows') {
-        clone.removeAttribute('id');
-        clone.setAttribute('style', 'position:absolute;left:0;top:0;overflow:visible;');
-      } else {
-        inlineStyles(child, clone);
+    // Image space sits inside canvas space at the margin offset (part 5).
+    const inner = document.createElementNS('http://www.w3.org/1999/xhtml', 'div');
+    inner.setAttribute('style', `position:absolute;left:${model.margin.left}px;top:${model.margin.top}px;width:${model.image.width}px;height:${model.image.height}px;overflow:visible;`);
+    root.appendChild(inner);
+    try {
+      for (const child of scene.children) {
+        if (child.classList && child.classList.contains('anchor')) continue; // editing UI
+        const clone = child.cloneNode(true);
+        if (child.id === 'arrows') {
+          clone.removeAttribute('id');
+          clone.setAttribute('style', 'position:absolute;left:0;top:0;overflow:visible;');
+        } else {
+          inlineStyles(child, clone);
+        }
+        inner.appendChild(clone);
       }
-      root.appendChild(clone);
+    } finally {
+      setPlain(false);
     }
     const markup = new XMLSerializer().serializeToString(root);
     const svg =
@@ -692,14 +754,28 @@
       blob = await new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob gave nothing'))), 'image/png'));
     } catch (err) {
       originClean = false;
-      throw new Error(`the canvas could not be read back after drawing the layer: ${err.message}`);
+      let more = '';
+      try { more = `; toDataURL gave ${canvas.toDataURL('image/png').length} chars`; } catch (e2) { more = `; toDataURL threw ${e2.message}`; }
+      throw new Error(`the canvas could not be read back after drawing the layer: ${err.message}${more}`);
     }
     const encodeMs = performance.now() - started - rasterMs;
     const bytes = new Uint8Array(await blob.arrayBuffer());
+    return { bytes, svgChars: svg.length, rasterMs, encodeMs, originClean, margin: marginString() };
+  };
 
-    model.selected = keep.selected;
-    layoutScene();
-    return { bytes, svgChars: svg.length, rasterMs, encodeMs, originClean };
+  // Copy the composed image (§3.6): the layer to the host, which composes it over the
+  // untouched source and publishes the clipboard. The success line shows only after the
+  // host said it succeeded, and it is a HUD line, not a dialog.
+  let flashTimer = null;
+  const copyComposed = async () => {
+    const layer = await exportLayer();
+    const report = await invoke('editor_copy', layer.bytes, { headers: { margin: layer.margin } });
+    console.log(`copied ${report.width}x${report.height}: composed ${report.compose_ms} ms, encoded ${report.published.encode_ms} ms, published ${report.published.publish_ms} ms as ${report.published.formats.join(', ')}`);
+    drawHud();
+    hud.textContent += `\ncopied ${report.width}x${report.height} to the clipboard`;
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(drawHud, 1500);
+    return report;
   };
 
   window.reconEditor = {
@@ -718,6 +794,11 @@
     startEditing,
     commitEditing,
     resolveDirection,
+    exportLayer,
+    copyComposed,
+    setMargin,
+    marginString,
+    setPlain,
     canvas,
     context,
   };
@@ -773,8 +854,10 @@
         const layer = await exportLayer();
         console.log(`export layer: ${layer.svgChars} chars of svg, rasterized in ${layer.rasterMs.toFixed(0)} ms, encoded in ${layer.encodeMs.toFixed(0)} ms, ${layer.bytes.length} bytes, origin-clean ${layer.originClean}`);
         const sent = performance.now();
-        const report = await invoke('editor_export_layer', layer.bytes);
-        console.log(`export composited by the host in ${Math.round(performance.now() - sent)} ms round trip: ${JSON.stringify(report)}`);
+        const report = await invoke('editor_export_check', layer.bytes, { headers: { name: 'demo', margin: layer.margin, mode: 'source' } });
+        console.log(`export composed by the host in ${Math.round(performance.now() - sent)} ms round trip: ${JSON.stringify(report)}`);
+        const copy = await copyComposed();
+        console.log(`and on the clipboard: ${JSON.stringify(copy)}`);
         const ok = report.source_mismatches === 0 && report.covered > 0;
         console.log(ok ? 'EXPORT SPIKE: every untouched source pixel is exact, and the notes are in the file'
                        : 'EXPORT SPIKE FAILED: see the report');

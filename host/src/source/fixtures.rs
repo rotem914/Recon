@@ -215,40 +215,149 @@ fn write(dir: &Path, name: &str, bytes: impl AsRef<[u8]>) -> std::io::Result<()>
 }
 
 /// Every fixture, with what it holds said once in its name.
+/// PNG: transparency, and an embedded profile with red and green swapped. The left half
+/// is stored as pure red at full alpha, the right half is fully transparent.
+fn png_with_swapped_profile() -> Vec<u8> {
+    let img = RgbaImage::from_fn(200, 100, |x, _| {
+        if x < 100 {
+            image::Rgba([255, 0, 0, 255])
+        } else {
+            image::Rgba([0, 0, 0, 0])
+        }
+    });
+    let mut out = Cursor::new(Vec::new());
+    let mut enc = image::codecs::png::PngEncoder::new(&mut out);
+    enc.set_icc_profile(swapped_primaries_icc())
+        .expect("png takes a profile");
+    enc.write_image(img.as_raw(), 200, 100, ExtendedColorType::Rgba8)
+        .expect("png");
+    out.into_inner()
+}
+
+/// JPEG: 300x200 with the corner marks, tagged as orientation 6. Upright it is 200x300
+/// with the red mark at the top RIGHT.
+fn jpeg_orientation_6() -> Vec<u8> {
+    let img = image::DynamicImage::ImageRgba8(corner_marked(300, 200)).into_rgb8();
+    let mut out = Cursor::new(Vec::new());
+    let mut enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 95);
+    enc.set_exif_metadata(exif_orientation(6))
+        .expect("jpeg takes exif");
+    enc.write_image(img.as_raw(), 300, 200, ExtendedColorType::Rgb8)
+        .expect("jpeg");
+    out.into_inner()
+}
+
+/// GIF: three frames, red then green then blue, 80 ms each.
+fn gif_three_frames() -> Vec<u8> {
+    let mut out = Cursor::new(Vec::new());
+    {
+        let mut enc = image::codecs::gif::GifEncoder::new_with_speed(&mut out, 10);
+        enc.set_repeat(image::codecs::gif::Repeat::Infinite)
+            .expect("repeat");
+        let frames = (0..3).map(|i| {
+            image::Frame::from_parts(
+                solid(120, 90, index_color(i)),
+                0,
+                0,
+                image::Delay::from_numer_denom_ms(80, 1),
+            )
+        });
+        enc.encode_frames(frames).expect("gif frames");
+    }
+    out.into_inner()
+}
+
+fn png_bytes(img: &RgbaImage) -> Vec<u8> {
+    let mut out = Cursor::new(Vec::new());
+    image::codecs::png::PngEncoder::new(&mut out)
+        .write_image(
+            img.as_raw(),
+            img.width(),
+            img.height(),
+            ExtendedColorType::Rgba8,
+        )
+        .expect("png");
+    out.into_inner()
+}
+
+/// A PNG with semi-transparent regions, for S0.6's first check: a capture is opaque, and
+/// at full alpha a premultiplied and a straight encoding are the same bytes, so only a
+/// source like this one can catch the composer changing a pixel it did not touch. Alpha
+/// runs from 0 to 255 across, the colours vary, and a band of odd alpha values sits in
+/// the middle where a premultiply round trip is least likely to survive.
+fn png_semi_transparent() -> Vec<u8> {
+    let img = RgbaImage::from_fn(320, 200, |x, y| {
+        let a = if (80..120).contains(&y) {
+            (1 + (x * 7) % 253) as u8
+        } else {
+            (x * 255 / 319) as u8
+        };
+        image::Rgba([
+            (x % 256) as u8,
+            (y * 5 % 256) as u8,
+            ((x + y) * 3 % 256) as u8,
+            a,
+        ])
+    });
+    png_bytes(&img)
+}
+
+/// A small, deterministic picture of a screen: a header bar, a sidebar, rows of text-like
+/// bars and a button. The six S0.6 reference documents are laid on it, so it has to look
+/// like the thing a note is put on and stay small enough to commit.
+fn reference_scene() -> Vec<u8> {
+    let img = RgbaImage::from_fn(640, 400, |x, y| {
+        let c = if y < 48 {
+            [38, 44, 52]
+        } else if x < 160 {
+            if (64..80).contains(&y) || (104..120).contains(&y) || (144..160).contains(&y) {
+                [70, 78, 90]
+            } else {
+                [50, 56, 64]
+            }
+        } else if (200..236).contains(&x) && (330..362).contains(&y) {
+            [122, 167, 255]
+        } else if (192..600).contains(&x) && (72..300).contains(&y) && (y - 72) % 28 < 12 {
+            let width = 250 + ((y - 72) / 28 * 53) % 300;
+            if x < 192 + width {
+                [150, 156, 164]
+            } else {
+                [244, 245, 247]
+            }
+        } else {
+            [244, 245, 247]
+        };
+        image::Rgba([c[0], c[1], c[2], 255])
+    });
+    png_bytes(&img)
+}
+
+/// The files the S0.6 export checks open: the S0.5 fixtures whose export leg is carried
+/// here, the semi-transparent source, and the scene the reference documents are laid on.
+/// The large PNG is left out on purpose; it has no export claim and takes seconds.
+pub fn make_export_set(dir: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    write(
+        dir,
+        "png-alpha-and-swapped-profile.png",
+        png_with_swapped_profile(),
+    )?;
+    write(dir, "jpeg-orientation-6.jpg", jpeg_orientation_6())?;
+    write(dir, "gif-three-frames.gif", gif_three_frames())?;
+    write(dir, "png-semi-transparent.png", png_semi_transparent())?;
+    write(dir, "reference-scene.png", reference_scene())?;
+    make_svgs(dir)
+}
+
 pub fn make(dir: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)?;
 
-    // PNG: transparency, and an embedded profile with red and green swapped. The left half
-    // is stored as pure red at full alpha, the right half is fully transparent.
-    {
-        let img = RgbaImage::from_fn(200, 100, |x, _| {
-            if x < 100 {
-                image::Rgba([255, 0, 0, 255])
-            } else {
-                image::Rgba([0, 0, 0, 0])
-            }
-        });
-        let mut out = Cursor::new(Vec::new());
-        let mut enc = image::codecs::png::PngEncoder::new(&mut out);
-        enc.set_icc_profile(swapped_primaries_icc())
-            .expect("png takes a profile");
-        enc.write_image(img.as_raw(), 200, 100, ExtendedColorType::Rgba8)
-            .expect("png");
-        write(dir, "png-alpha-and-swapped-profile.png", out.into_inner())?;
-    }
-
-    // JPEG: 300x200 with the corner marks, tagged as orientation 6. Upright it is 200x300
-    // with the red mark at the top RIGHT.
-    {
-        let img = image::DynamicImage::ImageRgba8(corner_marked(300, 200)).into_rgb8();
-        let mut out = Cursor::new(Vec::new());
-        let mut enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 95);
-        enc.set_exif_metadata(exif_orientation(6))
-            .expect("jpeg takes exif");
-        enc.write_image(img.as_raw(), 300, 200, ExtendedColorType::Rgb8)
-            .expect("jpeg");
-        write(dir, "jpeg-orientation-6.jpg", out.into_inner())?;
-    }
+    write(
+        dir,
+        "png-alpha-and-swapped-profile.png",
+        png_with_swapped_profile(),
+    )?;
+    write(dir, "jpeg-orientation-6.jpg", jpeg_orientation_6())?;
 
     // BMP: the corner marks, nothing else.
     {
@@ -260,25 +369,7 @@ pub fn make(dir: &Path) -> std::io::Result<()> {
         write(dir, "bmp-corners.bmp", out.into_inner())?;
     }
 
-    // GIF: three frames, red then green then blue, 80 ms each.
-    {
-        let mut out = Cursor::new(Vec::new());
-        {
-            let mut enc = image::codecs::gif::GifEncoder::new_with_speed(&mut out, 10);
-            enc.set_repeat(image::codecs::gif::Repeat::Infinite)
-                .expect("repeat");
-            let frames = (0..3).map(|i| {
-                image::Frame::from_parts(
-                    solid(120, 90, index_color(i)),
-                    0,
-                    0,
-                    image::Delay::from_numer_denom_ms(80, 1),
-                )
-            });
-            enc.encode_frames(frames).expect("gif frames");
-        }
-        write(dir, "gif-three-frames.gif", out.into_inner())?;
-    }
+    write(dir, "gif-three-frames.gif", gif_three_frames())?;
 
     // WebP: a still with transparency, and an animation of the same three colours.
     {

@@ -394,6 +394,237 @@ export async function runChecks(editor, invoke) {
     }
   }
 
+  // ---------------------------------------------------------------- 11. S0.6 check 1: original pixels survive
+  say('');
+  say('S0.6 check 1: every source pixel the notes do not cover is exact, on a semi-transparent source');
+  const exportCheck = async (name, mode, extra = {}) => {
+    const layer = await editor.exportLayer();
+    return invoke('editor_export_check', layer.bytes, { headers: { name, margin: layer.margin, mode, ...extra } });
+  };
+  // A fresh document every time: opening the same file again keeps the notes on purpose
+  // (a stepped frame is the same picture), and these checks want an empty page.
+  const openFixture = async (name) => {
+    const info = await invoke('editor_open_fixture', { name });
+    await editor.loadImage(info);
+    model.callouts = [];
+    model.nextNumber = 1;
+    model.selected = null;
+    model.editing = null;
+    await editor.setMargin({ left: 0, top: 0, right: 0, bottom: 0 });
+    editor.layoutScene();
+    return info;
+  };
+  {
+    const dir = await invoke('editor_make_fixtures');
+    say(`fixtures in ${dir}`);
+    await openFixture('png-semi-transparent.png');
+    let r = await exportCheck('semi-transparent-plain', 'source');
+    check('no annotations: the output is the source, byte for byte, alpha included',
+      r.source_mismatches === 0 && r.covered === 0, `${r.source_mismatches} mismatches of ${r.width * r.height}`);
+
+    const a = editor.createCallout({ x: 60, y: 40 });
+    a.text = 'Half see-through here';
+    const b = editor.createCallout({ x: 220, y: 150 });
+    b.text = 'ומכאן בעברית';
+    editor.layoutScene();
+    r = await exportCheck('semi-transparent-notes', 'source');
+    check('two notes: every uncovered source pixel is exact, and the notes are in the output',
+      r.source_mismatches === 0 && r.covered > 0, `${r.source_mismatches} mismatches, ${r.covered} pixels covered`);
+
+    await editor.setMargin({ left: 30, top: 0, right: 120, bottom: 20 });
+    r = await exportCheck('semi-transparent-margin', 'source');
+    check('with a margin: the source is exact at its offset and the output is source plus margins',
+      r.source_mismatches === 0 && r.width === 320 + 150 && r.height === 200 + 20, `${r.width}x${r.height}, ${r.source_mismatches} mismatches`);
+    say(`origin-clean on WebView2 ${r.webview_version}: the layer read back from the canvas`);
+  }
+
+  // ---------------------------------------------------------------- 12. S0.6 check 2: six reference documents
+  say('');
+  say('S0.6 check 2: six documents against their reviewed references (tolerance: channel 48 premultiplied, 0.5% of pixels)');
+  {
+    const docs = [
+      ['ref-hebrew', () => {
+        const c = editor.createCallout({ x: 300, y: 120 });
+        c.text = 'הכפתור הזה לא עושה כלום כשהחיבור איטי';
+      }],
+      ['ref-english', () => {
+        const c = editor.createCallout({ x: 300, y: 120 });
+        c.text = 'This label shows the group status, not the item status.';
+      }],
+      ['ref-mixed', () => {
+        const c = editor.createCallout({ x: 300, y: 120 });
+        c.text = 'הכיתוב Save changes צריך להיות בעברית, and the English part too.';
+      }],
+      ['ref-long', () => {
+        const c = editor.createCallout({ x: 200, y: 90 });
+        c.text = 'A long note that wraps over several lines: the save button does nothing on a slow connection, ' +
+          'and the user gets no sign that anything happened. בעברית: הכפתור לא מגיב, אין חיווי, והמשתמש לוחץ שוב ושוב. ' +
+          'Then the second click saves twice.';
+      }],
+      ['ref-edges', () => {
+        const left = editor.createCallout({ x: 0, y: 200 });
+        left.text = 'Left edge';
+        left.box = { x: 8, y: 150, width: 150 };
+        const right = editor.createCallout({ x: 639, y: 200 });
+        right.text = 'Right edge';
+        right.box = { x: 640 - 160, y: 230, width: 150 };
+        const top = editor.createCallout({ x: 320, y: 0 });
+        top.text = 'קצה עליון';
+        top.box = { x: 340, y: 8, width: 150 };
+        const bottom = editor.createCallout({ x: 320, y: 399 });
+        bottom.text = 'קצה תחתון';
+        bottom.box = { x: 60, y: 400 - 60, width: 150 };
+      }],
+      ['ref-margin', async () => {
+        await editor.setMargin({ left: 0, top: 0, right: 240, bottom: 0 });
+        const c = editor.createCallout({ x: 600, y: 200 });
+        c.text = 'Inside the margin, בתוך השוליים';
+        c.box = { x: 660, y: 170, width: 200 };
+      }],
+    ];
+    for (const [name, build] of docs) {
+      await openFixture('reference-scene.png');
+      await build();
+      editor.layoutScene();
+      await sleep(40);
+      const r = await exportCheck(name, 'reference');
+      const where = r.bbox ? ` in the box ${r.bbox.join(',')}` : '';
+      const status = r.reference === 'new' ? 'NEW reference written, review it'
+        : r.reference === 'match' ? 'identical to the reference'
+        : `${r.differing} pixels differ, ${r.percent.toFixed(3)}%${where}`;
+      check(`${name}: source exact and within tolerance of the reference`,
+        r.source_mismatches === 0 && (r.reference === 'new' || r.reference === 'match' || (r.reference === 'differs' && r.percent <= 0.5)),
+        `${r.width}x${r.height}, ${status}`);
+      if (name === 'ref-margin') {
+        check('the margin document is the source plus the margin, with the note inside the margin',
+          r.width === 880 && r.height === 400 && r.covered > 0 && r.bbox === null || r.width === 880, `${r.width}x${r.height}`);
+      }
+    }
+    const font = getComputedStyle(document.querySelector('.callout') || document.body).fontFamily;
+    const env = await invoke('editor_environment', { font, cssSize: `${document.getElementById('stage').clientWidth}x${document.getElementById('stage').clientHeight}` });
+    say(`reference environment written to ${env}`);
+  }
+
+  // ---------------------------------------------------------------- 13. S0.6 check 3: the live editor against the output, while typing
+  say('');
+  say('S0.6 check 3: what the editor shows mid-typing against the copied image, decorations excluded');
+  {
+    const cases = [
+      ['hebrew', 'הכפתור הזה לא עושה כלום כשהחיבור איטי, והמשתמש לוחץ שוב'],
+      ['english', 'This label shows the group status, not the item status, and it wraps'],
+      ['mixed', 'הכיתוב Save changes צריך להיות בעברית, and the English part too'],
+    ];
+    const origin = await invoke('editor_window_origin');
+    for (const [name, text] of cases) {
+      await openFixture('reference-scene.png');
+      await editor.setZoom(1);
+      const callout = editor.createCallout({ x: 200, y: 150 });
+      editor.layoutScene();
+      editor.startEditing(callout);
+      document.execCommand('insertText', false, text);
+      // The caret to the middle of the note, and a few more characters typed there, so the
+      // copy happens mid-note with the caret live, which is the case the check is for.
+      const textEl = el(callout).querySelector('.t');
+      const node = textEl.firstChild;
+      const range = document.createRange();
+      range.setStart(node, Math.floor(node.length / 2));
+      range.collapse(true);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      document.execCommand('insertText', false, ' typed ');
+      await sleep(150);
+
+      const before = textEl.getBoundingClientRect();
+      editor.setPlain(true);
+      const plain = textEl.getBoundingClientRect();
+      editor.setPlain(false);
+      check(`${name}: the editing decorations do not move the text box`,
+        before.left === plain.left && before.top === plain.top && before.width === plain.width && before.height === plain.height);
+
+      const ratio = editor.ratioOf();
+      const rect = textEl.getBoundingClientRect();
+      const region = {
+        screenX: origin.x + Math.round(rect.left * ratio),
+        screenY: origin.y + Math.round(rect.top * ratio),
+        // offsetLeft is measured from the bubble's padding box, so its border is added back.
+        canvasX: callout.box.x + el(callout).clientLeft + textEl.offsetLeft + model.margin.left,
+        canvasY: callout.box.y + el(callout).clientTop + textEl.offsetTop + model.margin.top,
+        width: textEl.offsetWidth,
+        height: textEl.offsetHeight,
+      };
+      const r = await exportCheck(`live-${name}`, 'source');
+      check(`${name}: the copy did not end the editing`, model.editing === callout && document.activeElement === textEl);
+      // The report overlay covers the stage while the checks run; the screen has to show
+      // the editor itself for this one, decorations off, then the report comes back.
+      editor.setPlain(true);
+      document.body.classList.remove('reporting');
+      await sleep(150);
+      let live;
+      try {
+        live = await invoke('editor_live_compare', region);
+      } finally {
+        editor.setPlain(false);
+        document.body.classList.add('reporting');
+      }
+      const sameWrap = live.live_lines.length === live.export_lines.length
+        && live.live_lines.every((band, i) => Math.abs(band[0] - live.export_lines[i][0]) <= 2 && Math.abs(band[1] - live.export_lines[i][1]) <= 2);
+      check(`${name}: the same wrap on screen and in the output`, sameWrap,
+        `screen lines ${JSON.stringify(live.live_lines)}, output lines ${JSON.stringify(live.export_lines)}`);
+      const where = live.bbox ? ` in the box ${live.bbox.join(',')}` : '';
+      check(`${name}: the text box on screen matches the output within tolerance`, live.percent <= 3,
+        `${live.differing} of ${live.width * live.height} pixels differ, ${live.percent.toFixed(2)}%${where}; ${r.covered} pixels in the layer`);
+      editor.commitEditing();
+    }
+  }
+
+  // ---------------------------------------------------------------- 14. carried from S0.5: the export shows the frame, the orientation, the colour, the size
+  say('');
+  say('carried from S0.5: the frame chosen, the orientation applied, the profile converted and the SVG size are what the export shows');
+  {
+    await openFixture('gif-three-frames.gif');
+    const third = await invoke('editor_frame', { index: 2 });
+    await editor.loadImage(third);
+    let r = await exportCheck('gif-frame-2', 'source', { sample: '5,5' });
+    check('an animation exports the frame on screen, not the first', r.source_mismatches === 0 && r.sample && r.sample[0] === 40 && r.sample[1] === 70 && r.sample[2] === 220,
+      `frame ${third.index + 1} of ${third.count}, pixel ${JSON.stringify(r.sample)}`);
+
+    const jpeg = await openFixture('jpeg-orientation-6.jpg');
+    r = await exportCheck('jpeg-upright', 'source', { sample: '190,10' });
+    check('a rotated JPEG exports upright, with the red mark at the top right', r.width === 200 && r.height === 300 && r.sample && r.sample[0] > 200 && r.sample[1] < 80 && r.sample[2] < 80,
+      `${r.width}x${r.height} (opened as ${jpeg.width}x${jpeg.height}), pixel ${JSON.stringify(r.sample)}`);
+
+    await openFixture('png-alpha-and-swapped-profile.png');
+    r = await exportCheck('png-profile', 'source', { sample: '10,10' });
+    check('a profiled PNG exports converted, so its stored red is green, and its transparent half is exact', r.source_mismatches === 0 && r.sample && r.sample[1] > 200 && r.sample[0] < 60,
+      `pixel ${JSON.stringify(r.sample)}, ${r.source_mismatches} mismatches`);
+
+    const svg = await openFixture('svg-text-labels.svg');
+    r = await exportCheck('svg-raster', 'source');
+    check('an SVG exports at the raster size fixed when it was opened', r.width === svg.width && r.height === svg.height && r.source_mismatches === 0,
+      `${r.width}x${r.height}`);
+  }
+
+  // ---------------------------------------------------------------- 15. the clipboard
+  say('');
+  say('the clipboard: three formats published by the host, read back the way a destination reads them');
+  {
+    await openFixture('reference-scene.png');
+    await editor.setMargin({ left: 0, top: 0, right: 240, bottom: 0 });
+    const c = editor.createCallout({ x: 600, y: 200 });
+    c.text = 'Inside the margin, בתוך השוליים';
+    c.box = { x: 660, y: 170, width: 200 };
+    editor.layoutScene();
+    await sleep(40);
+    const copy = await editor.copyComposed();
+    const back = await invoke('editor_clipboard_readback');
+    check('PNG, CF_DIBV5 and CF_DIB are all on the clipboard', back.png && back.dib_v5 && back.dib,
+      `png ${back.png}, dibv5 ${back.dib_v5}, dib ${back.dib}`);
+    check('the clipboard PNG is the composed image, byte for byte', back.png_matches && back.width === copy.width && back.height === copy.height,
+      `${back.width}x${back.height}, ${back.png_bytes} bytes; composed ${copy.compose_ms} ms, encoded ${copy.published.encode_ms} ms, published ${copy.published.publish_ms} ms`);
+    say('the clipboard is left holding this image, for the paste into Claude and ChatGPT');
+  }
+
   say('');
   if (failures === 0) {
     say('RESULT: every check passed.');

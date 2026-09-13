@@ -45,13 +45,16 @@ Recon/
 │   ├── capabilities/default.json   # what the editor page may call: the host's commands and events
 │   ├── icons/                      # placeholder tray icon, the real one is a design task
 │   ├── pixels/                     # recon-pixels: crop and resample, optimised in every profile
+│   ├── references/s06/             # the six reviewed reference outputs and their environment (S0.6)
 │   └── src/
 │       ├── main.rs                 # tray, hotkey, capture to editor, the selection guard, the diagnostic flags
 │       ├── config.rs               # the hotkey, and where it was read from
 │       ├── overlay.rs              # the Win32 selection overlay, one window per display
 │       ├── selftest.rs             # --selftest and --capture-demo: S0.2's evidence, feature-gated
 │       ├── bench.rs                 # --bench: S0.3's boundary measurement, feature-gated
-│       ├── editor.rs                # the editor window, the image and its pyramid, the one region worker
+│       ├── editor.rs                # the editor window, the image and its pyramid, the one region worker, copy
+│       ├── compose.rs               # the composer: source exact at the margin offset, the layer over it
+│       ├── clipboard.rs             # the clipboard: PNG, CF_DIBV5 and CF_DIB in one transaction
 │       ├── capture/
 │       │   ├── mod.rs              # the capture interface and the frame it produces
 │       │   ├── coords.rs           # the ONE desktop-to-image conversion, with its tests
@@ -118,7 +121,8 @@ anything.
 | Enforcement | `project-os/guards/*`, `project-os/hooks-settings.json`, `project-os/install-hooks.mjs` | Hooks are read at session start. Re-run the installer after editing the settings file. |
 | Outside servers | `project-os/mcp/*` | One folder per server, read before that server's first call. |
 | The plan | `project-os/Plan.md` | One file, and there is never a second: the product, the decisions, the architecture and the stages. Free-standing documents go in `notes/`, created when one is needed, never at the root. |
-| The host | `host/*` | Tray, hotkey, freeze, overlay, the region service and the editor window today; decode, the store and the clipboard later. It never renders an annotation. Check-only code is behind the `stage0-checks` feature. |
+| The host | `host/*` | Tray, hotkey, freeze, overlay, the region service, the editor window, decode, the composer and the clipboard today; the store later. It never renders an annotation. Check-only code is behind the `stage0-checks` feature. |
+| The composer and the clipboard | `host/src/compose.rs`, `host/src/clipboard.rs` | One function makes every output: the source byte for byte at the margin offset, the page's layer over it. The clipboard publishes that output in three formats and never reads it in the product. The references the output is checked against live in `host/references/s06/`, with the environment they are valid for. |
 | The pixel crate | `host/pixels/*` | Crop and resample, non-generic on purpose so the work is compiled optimised even in a debug build. Knows nothing about screens, windows or files. |
 | The one conversion | `host/src/capture/coords.rs` | The only place allowed to subtract a frame origin. Part 5 names the four coordinate spaces; this file is the edge between two of them. |
 | The image source | `host/src/source/*` | Path in, decoded frame out, for all nine formats. Only ever reads a file (rule 11); the decode report hashes every file before and after to prove it. Orientation and the colour profile are applied here, once. |
