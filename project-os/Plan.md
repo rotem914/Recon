@@ -378,8 +378,8 @@ is a contract broken on day one.
 | Undo and redo | While a note is being edited, undo works on the typing and never reaches object operations. Once editing ends, that text change takes its place in document history as one grouped step | 1 |
 | `Ctrl+O` | Open an image file | 1, built at S1.2 |
 | Previous and next image, outside text editing | Walk the active navigation context, folder or Recon history, in the §3.4 order | 1 |
-| Fit to window · actual size · zoom in · zoom out | Viewing controls, no effect on export resolution | 1 |
-| Fullscreen | Enter fullscreen | 1 |
+| Fit to window · actual size · zoom in · zoom out | Viewing controls, no effect on export resolution | 1, built: keys, the wheel to pan, Ctrl with the wheel to zoom around the pointer |
+| Fullscreen | Enter fullscreen | 1, built: F11, and the same key or Escape out |
 | `Ctrl+S` | Save As a PNG file, to a new file. Internal saving stays automatic | 1 |
 | `Ctrl+Shift+Enter` | Send to Rogers, once that exists and is configured | 4 |
 
@@ -1772,8 +1772,15 @@ work rather than a feature count.
       opens Windows' own page. What only a hand can do: run the registration on this
       machine, then double-click and "Open with" in Explorer, and drop a file on the window.
       Those three are the asks; the picker is machine-checked to open and to close on Escape.
-- [ ] S1.3 The viewing surface: fit to window on open, actual size, zoom, pan, fullscreen,
+- [x] S1.3 The viewing surface: fit to window on open, actual size, zoom, pan, fullscreen,
       and the filename and pixel dimensions on screen. Model: Opus 5.
+      **Built 2026-09-14.** Fit on open, actual size and the key zoom were S0.4's; this step
+      adds the wheel, which pans, and Ctrl with the wheel, which zooms around the pointer so
+      the point under it stays put (checked to within a pixel), F11 in and out of fullscreen
+      with Escape leaving it before anything else Escape does, and the file's name in the
+      window title beside the dimensions the HUD already shows. Zoom changes nothing an
+      export contains: the composer reads the image, never the view (S0.6). Dragging to pan
+      with the pointer is S1.5's, where viewing mode and annotation mode part ways.
 - [ ] S1.4 Folder navigation: previous and next across the supported types in the opened
       file's folder, the defined numeric-aware order, the position indicator, and the named
       active context so it can never be confused with Recon history. Model: Opus 5.

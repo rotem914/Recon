@@ -696,6 +696,46 @@ export async function runChecks(editor, invoke) {
     check('Escape closes the picker with nothing chosen', outcome === 'Ctrl+O: nothing chosen', JSON.stringify(outcome));
   }
 
+  // ---------------------------------------------------------------- 18. S1.3: the viewing surface
+  say('');
+  say('S1.3: zoom around the pointer, wheel pan, fullscreen in and out, the file name in the title');
+  {
+    const info = await invoke('editor_open_fixture', { name: 'reference-scene.png' });
+    await editor.loadImage(info);
+    const title = await invoke('editor_window_title');
+    check('the file name is in the window title', title === 'reference-scene.png - Recon', JSON.stringify(title));
+
+    // Larger than the window, so the view can pan: a picture that fits is always centred,
+    // and a zoom around the pointer has nothing to hold then.
+    await editor.setZoom(6);
+    const stage = document.getElementById('stage');
+    const box = stage.getBoundingClientRect();
+    const cssX = box.width * 0.6;
+    const cssY = box.height * 0.4;
+    const under = () => ({
+      x: model.pan.x + ((cssX - model.offset.x) * editor.ratioOf()) / model.zoom,
+      y: model.pan.y + ((cssY - model.offset.y) * editor.ratioOf()) / model.zoom,
+    });
+    const before = under();
+    stage.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, ctrlKey: true, clientX: box.left + cssX, clientY: box.top + cssY, bubbles: true, cancelable: true }));
+    await sleep(200);
+    const after = under();
+    check('Ctrl+wheel zooms in around the pointer', model.zoom > 6 && Math.abs(after.x - before.x) < 1.5 && Math.abs(after.y - before.y) < 1.5,
+      `zoom ${model.zoom.toFixed(3)}, the point under the pointer moved ${(after.x - before.x).toFixed(2)},${(after.y - before.y).toFixed(2)} image px`);
+
+    const panBefore = { ...model.pan };
+    stage.dispatchEvent(new WheelEvent('wheel', { deltaY: 120, deltaX: 0, bubbles: true, cancelable: true }));
+    await sleep(200);
+    check('the wheel pans down', model.pan.y > panBefore.y, `pan ${panBefore.y.toFixed(1)} to ${model.pan.y.toFixed(1)}`);
+
+    const on = await editor.setFullscreen(true);
+    await sleep(300);
+    const off = await editor.setFullscreen(false);
+    await sleep(300);
+    check('fullscreen goes on and off through the host', on === true && off === false, `on ${on}, off ${off}`);
+    await editor.setZoom(model.fitZoom);
+  }
+
   say('');
   if (failures === 0) {
     say('RESULT: every check passed.');

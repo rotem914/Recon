@@ -314,6 +314,19 @@ pub fn hide(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// The file's name in the title, so it is visible without hunting (§3.4); a capture is
+/// plain "Recon".
+fn set_title(app: &AppHandle, info: &ImageInfo) {
+    if let Some(window) = app.get_webview_window("editor") {
+        let title = if info.file.is_empty() {
+            "Recon".to_string()
+        } else {
+            format!("{} - Recon", info.file)
+        };
+        let _ = window.set_title(&title);
+    }
+}
+
 fn present_frame(frame: Frame) -> Result<u128, String> {
     let app = app()?;
     // The previous capture is kept, never overwritten (§3.3), whatever replaces it.
@@ -325,6 +338,7 @@ fn present_frame(frame: Frame) -> Result<u128, String> {
     next_document_id();
     state().set_frame(frame);
     let info = editor_image_info()?;
+    set_title(app, &info);
     app.emit("capture-ready", &info)
         .map_err(|err| err.to_string())?;
     show(app)
@@ -409,6 +423,8 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_hide,
         editor_hotkey,
         editor_open_dialog,
+        editor_fullscreen,
+        checks::editor_window_title,
         checks::editor_history,
         checks::editor_dialog_outcome,
         checks::editor_press_escape,
@@ -445,6 +461,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_hide,
         editor_hotkey,
         editor_open_dialog,
+        editor_fullscreen,
     ]);
     builder.register_asynchronous_uri_scheme_protocol("region", |_ctx, request, responder| {
         let query = request.uri().query().unwrap_or_default().to_string();
@@ -616,6 +633,17 @@ pub fn editor_show(app: AppHandle) -> Result<u128, String> {
 #[tauri::command]
 pub fn editor_hide(app: AppHandle) -> Result<(), String> {
     hide(&app)
+}
+
+/// Fullscreen in and out (§3.4): one key in, the same key or Escape out. Returns the new
+/// state so the page knows which Escape it is handling.
+#[tauri::command]
+pub fn editor_fullscreen(app: AppHandle, on: bool) -> Result<bool, String> {
+    let window = app
+        .get_webview_window("editor")
+        .ok_or("there is no editor window")?;
+    window.set_fullscreen(on).map_err(|err| err.to_string())?;
+    window.is_fullscreen().map_err(|err| err.to_string())
 }
 
 /// The capture hotkey as configured, for the page's empty state.
@@ -1296,7 +1324,11 @@ mod checks {
         next_document_id();
         state().set_document(Some(Document { opened, index: 0 }));
         state().set_frame(frame_of(decoded, format));
-        editor_image_info()
+        let info = editor_image_info()?;
+        if let Ok(app) = app() {
+            set_title(app, &info);
+        }
+        Ok(info)
     }
 
     /// The physical position of the window's client area on the desktop, so a rectangle
@@ -1712,6 +1744,15 @@ mod checks {
     #[tauri::command]
     pub fn editor_history() -> Vec<(u64, u32, u32, usize)> {
         history_summary()
+    }
+
+    /// The window's title, for the S1.3 check.
+    #[tauri::command]
+    pub fn editor_window_title(app: AppHandle) -> Result<String, String> {
+        app.get_webview_window("editor")
+            .ok_or("there is no editor window")?
+            .title()
+            .map_err(|err| err.to_string())
     }
 
     /// What the last Ctrl+O did, for the S1.2 check.

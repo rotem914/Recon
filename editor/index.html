@@ -136,6 +136,7 @@
     nextNumber: 1,
     selected: null,
     editing: null,
+    fullscreen: false,
   };
 
   // The ratio of physical pixels to CSS pixels for THIS window, measured rather than
@@ -450,7 +451,7 @@
       `${model.image.width}x${model.image.height}  ${where}\n` +
       `zoom ${zoomText}   pan ${Math.round(model.pan.x)},${Math.round(model.pan.y)}   ` +
       `callouts ${model.callouts.length}   text ${sizeShown}px   dpr ${dpr()}\n` +
-      `0 fit  1 actual size  +/- zoom  Ctrl +/- text size  arrows pan  click to add  Esc commit  Del remove  Ctrl+O open`;
+      `0 fit  1 actual size  +/- zoom  wheel pan  Ctrl+wheel zoom  F11 fullscreen  Ctrl +/- text size  arrows pan  click to add  Esc commit  Del remove  Ctrl+O open`;
   };
 
   // ---------------------------------------------------------------- editing
@@ -567,6 +568,31 @@
   });
 
   const endDrag = () => { drag = null; };
+  // The wheel pans; with Ctrl it zooms around the pointer (§3.4). The wheel's numbers are
+  // CSS pixels, so they become image pixels through the ratio and the zoom.
+  stage.addEventListener('wheel', (event) => {
+    if (!model.image.width) return;
+    event.preventDefault();
+    if (event.ctrlKey) {
+      const factor = event.deltaY < 0 ? 1.25 : 1 / 1.25;
+      const box = stage.getBoundingClientRect();
+      setZoomAround(model.zoom * factor, event.clientX - box.left, event.clientY - box.top);
+      return;
+    }
+    const step = event.deltaMode === 1 ? 40 : 1;
+    model.pan.x += (event.deltaX * step * dpr()) / model.zoom;
+    model.pan.y += (event.deltaY * step * dpr()) / model.zoom;
+    paintRegion();
+  }, { passive: false });
+
+  const setFullscreen = async (on) => {
+    model.fullscreen = await invoke('editor_fullscreen', { on });
+    await measureRatio();
+    model.fitZoom = computeFit();
+    await paintRegion();
+    return model.fullscreen;
+  };
+
   stage.addEventListener('pointerup', endDrag);
   stage.addEventListener('pointercancel', endDrag);
 
@@ -605,9 +631,16 @@
       event.preventDefault();
       return;
     }
+    if (event.key === 'F11') {
+      setFullscreen(!model.fullscreen).catch((err) => console.error('fullscreen', err));
+      event.preventDefault();
+      return;
+    }
     if (event.key === 'Escape') {
       if (model.editing) { commitEditing(); event.preventDefault(); return; }
       if (model.selected) { model.selected = null; layoutScene(); event.preventDefault(); return; }
+      // Fullscreen leaves first (§3.6); the hide is the Escape after it.
+      if (model.fullscreen) { setFullscreen(false).catch((err) => console.error('fullscreen', err)); event.preventDefault(); return; }
       // The idle editor: hide, and the focus goes back to where the capture began (§3.1).
       // Pending changes are in memory until S1.8 gives them a store.
       invoke('editor_hide').catch((err) => console.error('hide', err));
@@ -641,6 +674,20 @@
     if (event.key === 'ArrowUp') { model.pan.y -= step; paintRegion(); return; }
     if (event.key === 'ArrowDown') { model.pan.y += step; paintRegion(); return; }
   });
+
+  // Zooms so that one image point stays under one viewport point: the centre for a key,
+  // the pointer for the wheel (§3.4). Anything else feels like the image jumped.
+  const setZoomAround = (next, cssX, cssY) => {
+    const vp = viewport();
+    const at = {
+      x: model.pan.x + ((cssX - model.offset.x) * dpr()) / model.zoom,
+      y: model.pan.y + ((cssY - model.offset.y) * dpr()) / model.zoom,
+    };
+    model.zoom = Math.min(8, Math.max(model.fitZoom / 4, next));
+    model.pan.x = at.x - ((cssX - model.offset.x) * dpr()) / model.zoom;
+    model.pan.y = at.y - ((cssY - model.offset.y) * dpr()) / model.zoom;
+    return paintRegion();
+  };
 
   const setZoom = (next) => {
     const vp = viewport();
@@ -844,6 +891,8 @@
     resolveDirection,
     exportLayer,
     copyComposed,
+    setZoomAround,
+    setFullscreen,
     documents,
     emptyStateText,
     setMargin,
