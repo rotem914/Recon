@@ -434,7 +434,7 @@ rather than quietly dropped.
 | **GIF** | Decode and play the animation, transparency included. Frame access by index, so annotation takes a still of the frame actually on screen. |
 | **TIFF** | Decode, pages exposed as page navigation with the count visible. Annotation operates on the displayed page. |
 | **HEIC / HEIF** | Decode, orientation applied. Annotate directly. Depends on codecs installed on the machine, so a missing codec is reported as a missing codec with the way to install it, never as a corrupt file. |
-| **AVIF** | Decode, transparency preserved. An animated AVIF follows the animation rule, frame access included. Through the Windows imaging stack for now, so it depends on the AV1 Video Extension being installed, reported as a missing codec when it is not (F51). |
+| **AVIF** | Decode, transparency preserved. An animated AVIF follows the animation rule, frame access included. Through the Windows imaging stack for now, so it depends on the AV1 Video Extension being installed, reported as a missing codec when it is not (F51), and an animated AVIF shows its first frame only on that route (F53). |
 | **SVG** | Render for viewing at any size. Annotation rasterizes once at the displayed size in physical device pixels, shows and stores those dimensions, and preserves the original vector file. |
 
 An unsupported or unreadable file says so plainly, names the format, and leaves the file
@@ -1203,7 +1203,7 @@ an engine-made paragraph break reads as a line break, and the committed note is 
 on two lines (54 px against 27 px for one).
 
 ----
-**[ ] S0.5 · Open and decode an existing image**
+**[x] S0.5 · Open and decode an existing image**
 
 Model: Fable 5.1. Format behavior, and a decision gate for the product surface.
 
@@ -1258,6 +1258,42 @@ message, or to add the C toolchain and build the chain the plan named.
 SVG tests runs at S0.6; the save-and-restart leg at S1.8. And one number for the record:
 the first fit view of the 48-megapixel PNG waits 442 ms for pyramid level 1 in release,
 which is F52.
+
+**Closed 2026-09-13, on twenty-eight real files fetched from public test sets.** Rotem asked
+for the files to be found rather than supplied, so they came from the AOM AV1-AVIF test
+suite (Link-U, Microsoft and Netflix folders), the Nokia HEIF sample set, libheif's
+examples, the recurser EXIF-orientation set, the ianare EXIF samples, Pillow's test images,
+tlnagy's example TIFFs, Google's WebP gallery, Mathias Bynens's animated WebP, an
+Illustrator export in a public repository, and two Figma exports quoted in public issues.
+They live in the scratch folder, not the repository; part 13 names the sources. Every one
+of the twenty-eight decoded, every one hashed the same afterwards, and nothing was written
+anywhere. What they showed, beyond the generated fixtures:
+
+HEIC decodes on this machine through its installed extension, three files, 1280x854 to
+1440x960, 13 to 51 ms to open. AVIF decodes the same way, eight files including 4K, 10-bit
+and alpha. A rotated AVIF from the Microsoft set came out upright and portrait, so WIC
+applies the file's rotation itself; looked at, it is a photograph of Ronda standing the
+right way up. A real animated WebP steps through its twelve frames, and the twelfth is the
+one on screen. A JPEG carrying a 400 KB profile was converted; a real EXIF-rotated
+landscape and portrait came out 1800x1200 and 1200x1800 with 6 and 8 applied. Multipage
+TIFFs of 27, 35 and 2 pages expose their pages. The two Figma exports, one with an alpha
+mask and one with a mask plus a filter and a gradient, and the Illustrator export with its
+style block all render within 0.7% of pixels of this web view.
+
+**Two things a real file found that a generated one could not.** First, WIC's converter
+does not apply an embedded colour profile: a profile-tagged TIFF came back unconverted
+until the frame's colour context was read and put through the same sRGB conversion the
+other providers use, which is done now and shows as "converted from a profile of 3144
+bytes" on that file (F55, resolved). Second, an animated AVIF through WIC is one frame: the
+two Netflix image sequences report a single frame, so frame access by index for AVIF
+sequences does not exist on this route (F53). That sharpens F51: the codec dependency is
+not the only cost of the WIC route for AVIF; the animation rule in §3.5 is unmet for it.
+
+**One small thing.** The `image` crate does not read EXIF orientation out of a WebP, so
+a WebP tagged with one comes out as stored (F54). §3.7 promises orientation for JPEG and
+HEIC, not WebP, and a phone does not write WebP, so it is a nit and it is recorded.
+
+**Still carried.** The export leg to S0.6 and the save-and-restart leg to S1.8, unchanged.
 
 One decode route, in the host, for all nine formats (part 6a). The web view decodes nothing.
 
@@ -1632,6 +1668,11 @@ plan did not say so until the review of 2026-09-13 (F47). The same runs were rep
 | Open a 120x90 GIF, three frames, and show it | 3 ms to shown | 3 ms to shown |
 | First SVG open, which loads the system fonts once | 165 ms | 17 ms |
 | Every other fixture: open and first frame | 0 to 8 ms | 0 to 8 ms |
+| Real HEIC, 1440x960 and 1280x854, through WIC: open, then frame 0 | 13 to 51 ms, 8 to 26 ms | not re-run |
+| Real AVIF, 800x533 to 3840x2160, through WIC: open, then frame 0 | 6 to 128 ms, 3 to 23 ms | not re-run |
+| Real 4608x1976 phone JPEG: open, then frame 0 | 43 ms, 4 ms | not re-run |
+| Real animated WebP, 400x400, 12 frames: open | 27 ms | not re-run |
+| Real 35-page TIFF, 439x167: open, then a page | 3 ms, 0 ms | not re-run |
 
 The fit view's debug number is the same as its release number because the resample now
 runs in `host/pixels`, which is optimised in every profile; the 1.1 s recorded below was the
@@ -1735,7 +1776,7 @@ them.
 
 # Part 12: the review trail
 
-Fifty-two findings were raised against the plan and folded into the parts above. This table
+Fifty-five findings were raised against the plan and folded into the parts above. This table
 is the record; the fixes themselves live where the table points. Severity is how the finding
 was rated when it was raised.
 
@@ -1791,8 +1832,11 @@ was rated when it was raised.
 | F48 | S0.5 could not close as written: three of its gates need the export and the store, which are later steps | 🟠 | S0.5, S0.6, S1.8 | Resolved: the legs are carried gates in S0.6 and S1.8, and the export spike runs first |
 | F49 | The four Stage 0 pieces had never run as one thing, so the second latency interval had nothing to measure | 🟠 | S0.4b | Resolved: hotkey to editor on the product path, 13 ms from selection to shown |
 | F50 | The check-only commands let the page ask the host to capture the screen and write files, in the runtime the product editor will use | 🟠 | Part 5 boundaries, S0.4b | Resolved: behind the stage0-checks feature, and the page's permissions are in one capability file |
-| F51 | The AVIF chain the plan named, libavif with dav1d, cannot be built on this machine without a C toolchain, and the pure-Rust AV1 ports do not compile on this Rust; AVIF decodes through WIC and so depends on an installed codec, which part 6c does not allow for a required format | 🟠 | §3.7, part 6a, part 6c, S0.5 | Open: Rotem's scope call, accept the codec dependency or add the toolchain |
+| F51 | The AVIF chain the plan named, libavif with dav1d, cannot be built on this machine without a C toolchain, and the pure-Rust AV1 ports do not compile on this Rust; AVIF decodes through WIC and so depends on an installed codec, which part 6c does not allow for a required format | 🟠 | §3.7, part 6a, part 6c, S0.5 | Open: Rotem's scope call, accept the codec dependency and first-frame-only animation (F53), or add the toolchain and build the named chain |
 | F52 | The first fit view of a 48-megapixel image waits 442 ms for pyramid level 1 in release | 🟡 | Part 11, S0.5, S1.3 | Open: a 2x2 box average would build the level in a fraction of the time; revisit if S1.12 shows files that large in daily use |
+| F53 | An animated AVIF through WIC is one frame: the frame-by-index rule in §3.5 is unmet for AVIF sequences on this route | 🟠 | §3.7, S0.5, F51 | Open: part of Rotem's AVIF call; the named libavif chain or a buildable AV1 decoder would close it |
+| F54 | The image crate does not read EXIF orientation out of a WebP, so a tagged WebP comes out as stored | 🟡 | §3.7, S0.5 | Open: §3.7 promises orientation for JPEG and HEIC only; recorded, not scheduled |
+| F55 | WIC's converter does not apply an embedded colour profile, so a tagged TIFF, HEIC or AVIF would have been shown and exported as if sRGB | 🟠 | §3.7 contract, S0.5 | Resolved: the frame's colour context is read and converted through the same sRGB step as the other providers |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the
 two things it compares and the failure that would turn it red (`project-os/QA.md` §12), and a
@@ -1814,3 +1858,9 @@ comparison between two outputs of the same code proves only that the code is det
 - [Image file type and format guide](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/Image_types) · what a Chromium-based view decodes on its own, which is where the TIFF and HEIC gaps come from.
 - [Canvas image sources](https://html.spec.whatwg.org/multipage/canvas.html#image-sources-for-2d-rendering-contexts) · why drawing an animated image element gives its default frame, which is what F24 is about.
 - [Chromium clipboard on Windows](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/ui/base/clipboard/clipboard_win.cc) · the implementation that can hand native bitmap data to a page as PNG, which is why the F28 claim was withdrawn.
+- [AOM AV1-AVIF test files](https://github.com/AOMediaCodec/av1-avif/tree/master/testFiles) · the AVIF samples S0.5 ran on: Link-U fox, Microsoft kids, bbb alpha and Ronda rotate90, Netflix image sequences.
+- [Nokia HEIF samples](https://github.com/nokiatech/heif/tree/gh-pages/content/images) and [libheif examples](https://github.com/strukturag/libheif/tree/master/examples) · the HEIC samples.
+- [EXIF orientation examples](https://github.com/recurser/exif-orientation-examples), [EXIF samples](https://github.com/ianare/exif-samples) and [Pillow's test images](https://github.com/python-pillow/Pillow/tree/main/Tests/images) · the rotated and profile-tagged JPEGs, the tagged WebP and TIFF.
+- [Example TIFFs](https://github.com/tlnagy/exampletiffs) · the multipage TIFFs.
+- [Google WebP gallery](https://developers.google.com/speed/webp/gallery) and [an animated WebP](https://mathiasbynens.be/demo/animated-webp) · the WebP samples.
+- [An Illustrator export](https://github.com/rogerpence/using-svgs-in-css), [a Figma export with an alpha mask](https://github.com/dnfield/flutter_svg/issues/988) and [one with a mask and a filter](https://github.com/gregberge/svgr/issues/336) · the real SVG exports compared against the web view.

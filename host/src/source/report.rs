@@ -235,6 +235,12 @@ pub fn run(dir: &Path) -> i32 {
 
     let mut lines: Vec<Line> = Vec::new();
     let mut failures = 0;
+    // Each line is printed the moment it is known, so a file that stalls names itself.
+    let say = |line: &Line| {
+        use std::io::Write;
+        println!("  {:<5} {:<36} {}", line.verdict, line.file, line.text);
+        let _ = std::io::stdout().flush();
+    };
     for path in before.keys() {
         let name = path
             .file_name()
@@ -309,11 +315,13 @@ pub fn run(dir: &Path) -> i32 {
                         "FAIL"
                     }
                 };
-                lines.push(Line {
+                let line = Line {
                     file: name,
                     verdict,
                     text: format!("{err} · {} ms", started.elapsed().as_millis()),
-                });
+                };
+                say(&line);
+                lines.push(line);
             }
         }
     }
@@ -323,6 +331,8 @@ pub fn run(dir: &Path) -> i32 {
     let unchanged = before == after;
     let nothing_new_in_data = data_before == data_after;
 
+    let mut summary = String::new();
+    summary.push('\n');
     let mut out = String::new();
     for line in &lines {
         out.push_str(&format!(
@@ -331,13 +341,13 @@ pub fn run(dir: &Path) -> i32 {
         ));
     }
     out.push('\n');
-    out.push_str(&format!(
+    summary.push_str(&format!(
         "  {}  every source file is byte for byte what it was, and no file appeared beside them ({} files before, {} after)\n",
         if unchanged { "pass " } else { "FAIL " },
         before.len(),
         after.len()
     ));
-    out.push_str(&format!(
+    summary.push_str(&format!(
         "  {}  nothing was written to Recon's own data folder ({} files before, {} after)\n",
         if nothing_new_in_data {
             "pass "
@@ -369,7 +379,8 @@ pub fn run(dir: &Path) -> i32 {
             format!("{failures} check(s) failed.")
         }
     ));
-    print!("{out}");
+    print!("{summary}");
+    out.push_str(&summary);
 
     let report_path = std::env::current_exe()
         .map(|exe| exe.with_file_name("s05-decode-report.txt"))

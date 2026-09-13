@@ -841,18 +841,23 @@ mod checks {
         if !dir.join("svg-mask-and-clip.svg").exists() {
             source::fixtures::make_svgs(&dir).map_err(|err| err.to_string())?;
         }
+        // Every SVG in the folder: the three generated ones, plus any real export dropped in
+        // beside them for the same comparison.
+        let mut names: Vec<String> = std::fs::read_dir(&dir)
+            .map_err(|err| err.to_string())?
+            .flatten()
+            .filter_map(|e| e.file_name().to_str().map(|s| s.to_string()))
+            .filter(|n| n.ends_with(".svg"))
+            .collect();
+        names.sort();
         let mut cases = Vec::new();
-        for name in [
-            "svg-text-labels.svg",
-            "svg-css-style-block.svg",
-            "svg-mask-and-clip.svg",
-        ] {
-            let path = dir.join(name);
+        for name in names {
+            let path = dir.join(&name);
             let svg = std::fs::read_to_string(&path).map_err(|err| err.to_string())?;
             let mut opened = source::open(&path).map_err(|err| err.to_string())?;
             let frame = opened.frame(0).map_err(|err| err.to_string())?;
             cases.push(SvgCase {
-                name: name.to_string(),
+                name,
                 svg,
                 width: frame.width,
                 height: frame.height,

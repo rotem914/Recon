@@ -17,14 +17,15 @@ use std::path::Path;
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{GENERIC_READ, WINCODEC_ERR_COMPONENTNOTFOUND};
 use windows::Win32::Graphics::Imaging::{
-    CLSID_WICImagingFactory, GUID_WICPixelFormat32bppRGBA, IWICBitmapDecoder, IWICImagingFactory,
-    WICBitmapDitherTypeNone, WICBitmapPaletteTypeCustom, WICDecodeMetadataCacheOnDemand,
+    CLSID_WICImagingFactory, GUID_WICPixelFormat32bppRGBA, IWICBitmapDecoder,
+    IWICBitmapFrameDecode, IWICColorContext, IWICImagingFactory, WICBitmapDitherTypeNone,
+    WICBitmapPaletteTypeCustom, WICColorContextProfile, WICDecodeMetadataCacheOnDemand,
 };
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
 };
 
-use super::{DecodedFrame, Format, FrameSource, Kind, Notes, OpenError, Opened};
+use super::{to_srgb, DecodedFrame, Format, FrameSource, Kind, Notes, OpenError, Opened};
 
 fn factory() -> Result<IWICImagingFactory, String> {
     unsafe {
@@ -85,8 +86,10 @@ pub fn open(path: &Path, format: Format, _bytes: Vec<u8>) -> Result<Opened, Open
         factory,
         decoder,
         format,
+        color: String::new(),
     };
     let first = source.frame(0)?;
+    let color = source.color.clone();
     let kind = match format {
         Format::Tiff if count > 1 => Kind::Pages { count },
         // An animated AVIF is an image sequence; WIC exposes it as frames too.
@@ -96,10 +99,10 @@ pub fn open(path: &Path, format: Format, _bytes: Vec<u8>) -> Result<Opened, Open
         _ => Kind::Still,
     };
     let notes = Notes {
-        // WIC's HEIF decoder applies the file's rotation itself; whether it does is one of
-        // the things the report checks on a real file rather than assumes.
+        // WIC's HEIF decoder applies the file's rotation itself: measured on a rotated AVIF
+        // from the AOM test set, which came out upright and portrait (S0.5).
         orientation_applied: None,
-        color: "as WIC converts it: sRGB for tagged files, untagged otherwise".into(),
+        color,
         alpha: "alpha preserved through 32bppRGBA".into(),
         provider: "Windows Imaging Component",
         remarks: vec![format!("{count} frame(s) in the container")],
@@ -119,6 +122,42 @@ struct Wic {
     factory: IWICImagingFactory,
     decoder: IWICBitmapDecoder,
     format: Format,
+    /// The colour note of the last frame decoded, for the evidence line.
+    color: String,
+}
+
+/// The embedded ICC profile of a frame, if it carries one. WIC's converter does not colour
+/// manage on its own, so without this a Display P3 photo from a phone would be shown and
+/// exported with its numbers taken as sRGB, which is the §3.7 contract broken quietly.
+unsafe fn embedded_profile(
+    factory: &IWICImagingFactory,
+    frame: &IWICBitmapFrameDecode,
+) -> Option<Vec<u8>> {
+    let mut count = 0u32;
+    unsafe { frame.GetColorContexts(&mut [], &mut count) }.ok()?;
+    if count == 0 {
+        return None;
+    }
+    let mut contexts: Vec<Option<IWICColorContext>> = Vec::with_capacity(count as usize);
+    for _ in 0..count {
+        contexts.push(Some(unsafe { factory.CreateColorContext() }.ok()?));
+    }
+    let mut actual = 0u32;
+    unsafe { frame.GetColorContexts(&mut contexts, &mut actual) }.ok()?;
+    for context in contexts.into_iter().flatten() {
+        if unsafe { context.GetType() }.ok()? != WICColorContextProfile {
+            continue;
+        }
+        let mut size = 0u32;
+        let _ = unsafe { context.GetProfileBytes(&mut [], &mut size) };
+        if size == 0 {
+            continue;
+        }
+        let mut bytes = vec![0u8; size as usize];
+        unsafe { context.GetProfileBytes(&mut bytes, &mut size) }.ok()?;
+        return Some(bytes);
+    }
+    None
 }
 
 // COM interfaces are apartment-bound in general, but WIC's factory and decoders are free
@@ -159,6 +198,9 @@ impl FrameSource for Wic {
             converter
                 .CopyPixels(std::ptr::null(), stride, &mut rgba)
                 .map_err(corrupt)?;
+            // sRGB once, here, like every other provider (§3.7).
+            let icc = embedded_profile(&self.factory, &frame);
+            self.color = to_srgb(&mut rgba, icc.as_deref());
             Ok(DecodedFrame {
                 width,
                 height,
