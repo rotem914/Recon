@@ -1754,11 +1754,12 @@ work rather than a feature count.
       the 3840x2160 display at 225%: overlay usable within 88 ms, editor usable within 275 ms,
       each previous capture retained in under 40 ms (part 11). The save half of Escape and of
       a new capture is S1.8's; until then the notes live in the page's memory.
-- [ ] S1.2 File opening and activation: the file association, Open With, drag and drop and
+- [x] S1.2 File opening and activation: the file association, Open With, drag and drop and
       `Ctrl+O`, both when Recon is already running and when it starts because a file was
       activated, one window rather than a second instance, plus the type registration and
       the link into the Windows default-apps settings. Model: Fable 5.1, it is the entry point.
-      **Built 2026-09-14, waiting on Rotem's hand for the last three.** Every way in reaches
+      **Built 2026-09-14, closed the same day by Rotem's hand: the registration run, a
+      double-click in Explorer opening the image in Recon, a drop replacing it.** Every way in reaches
       the one window: a bare path on the command line, which is what Explorer, "Open with"
       and a file association hand over, opens at startup (29 ms to the editor shown); a
       second instance hands its path to the running one and exits, 49 ms, the running window
@@ -2133,7 +2134,7 @@ was rated when it was raised.
 | F74 | On a scaled display the canvas and the notes sat at a whole CSS offset, a fraction of a physical pixel, so the screen was resampled and 12.5% of a note's pixels differed from the copy | 🟠 | Part 5, S0.6 check 3, S1.1 | Fixed at S1.1: the offset lands on a physical pixel |
 | F75 | On a scaled display the screen draws a note through a fractional transform and 6.6% of its pixels antialias differently from the copy, with the wrap and the box identical | 🟡 | S0.6 check 3, S1.1 | Recorded: the antialiasing clause; the live check's bar is 8% on a scaled display, 3% at 100% |
 | F76 | The content security policy refuses the S0.3 bench's local socket route, so `--bench` needs the policy off to run its third column | 🟡 | S0.3, S1.1 | Open: a closed step's tool; run it with the policy set to null if it is ever needed again |
-| F77 | Registration runs only by the user's hand: the code is tested as data, and whether Explorer's double-click and "Open with" reach Recon on this machine is unverified until Rotem runs it | 🟠 | S1.2, §3.1 | Open: the ask in the S1.2 record |
+| F77 | Registration runs only by the user's hand: the code is tested as data, and whether Explorer's double-click and "Open with" reach Recon on this machine is unverified until Rotem runs it | 🟠 | S1.2, §3.1 | Closed 2026-09-14: Rotem ran the registration, double-clicked an image in Explorer and it opened in Recon, then dropped another on the window and it replaced the first |
 | F78 | Several files dropped at once open the first only; the folder they came from is S1.4's navigation context | 🟡 | S1.2, S1.4 | Open: S1.4 |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the
