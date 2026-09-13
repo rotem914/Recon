@@ -250,6 +250,12 @@ Keep it to an index entry, not an essay. Someone reading it later needs to know 
 
 ## 16. Delivery summary
 
+**A plan's steps run back to back.** Rotem said on 2026-09-13, at the start of Stage 1, to
+keep going through the plan and stop only for a question he has to answer or a problem. So
+a finished step is delivered and the next one begins in the same turn, without a GO per
+step; the reply still names the step and its model (Conversations rule 19), and a step
+whose pickup finds a decision that is his stops there, with the question.
+
 Close with a short summary:
 
 - what changed,

@@ -188,6 +188,24 @@
   let regionRequest = 0;
   let lastRegion = null;
 
+  // The notes of every document this page has held, by the host's document number, so a
+  // new capture never overwrites the previous one's work (§3.3): the current document's
+  // notes are stashed here when another arrives, and S1.9 brings them back.
+  const documents = new Map();
+
+  const stashCurrent = () => {
+    if (!model.image.document_id) return;
+    if (model.editing) commitEditing();
+    documents.set(model.image.document_id, {
+      callouts: model.callouts,
+      nextNumber: model.nextNumber,
+      margin: { ...model.margin },
+      textSize: model.textSize,
+    });
+  };
+
+  const emptyStateText = (hotkey) => (hotkey ? `Press ${hotkey} to capture` : 'no capture yet');
+
   const paintRegion = async () => {
     const vp = viewport();
     if (!model.image.width || vp.w < 2 || vp.h < 2) return;
@@ -232,12 +250,18 @@
     const comp = compositionSize();
     const compW = (comp.w * model.zoom) / dpr();
     const compH = (comp.h * model.zoom) / dpr();
+    // The offset lands on a PHYSICAL pixel, so it may be a fraction of a CSS pixel. On a
+    // 225% display a whole CSS pixel is 2.25 physical ones, and a picture or a note placed
+    // at a whole CSS offset sits between physical pixels and is resampled: the live editor
+    // and the copy then differed on 12% of the text's pixels while agreeing at 100%
+    // (S1.1, F74).
+    const snap = (css) => Math.round(css * dpr()) / dpr();
     model.offset.x = compW <= vp.w
-      ? Math.round((vp.w - compW) / 2 + (model.margin.left * model.zoom) / dpr())
-      : Math.max(0, Math.round((vp.w - cssW) / 2));
+      ? snap((vp.w - compW) / 2 + (model.margin.left * model.zoom) / dpr())
+      : Math.max(0, snap((vp.w - cssW) / 2));
     model.offset.y = compH <= vp.h
-      ? Math.round((vp.h - compH) / 2 + (model.margin.top * model.zoom) / dpr())
-      : Math.max(0, Math.round((vp.h - cssH) / 2));
+      ? snap((vp.h - compH) / 2 + (model.margin.top * model.zoom) / dpr())
+      : Math.max(0, snap((vp.h - cssH) / 2));
     canvas.style.left = `${model.offset.x}px`;
     canvas.style.top = `${model.offset.y}px`;
     const hasMargin = comp.w !== model.image.width || comp.h !== model.image.height;
@@ -576,7 +600,11 @@
     }
     if (event.key === 'Escape') {
       if (model.editing) { commitEditing(); event.preventDefault(); return; }
-      if (model.selected) { model.selected = null; layoutScene(); event.preventDefault(); }
+      if (model.selected) { model.selected = null; layoutScene(); event.preventDefault(); return; }
+      // The idle editor: hide, and the focus goes back to where the capture began (§3.1).
+      // Pending changes are in memory until S1.8 gives them a store.
+      invoke('editor_hide').catch((err) => console.error('hide', err));
+      event.preventDefault();
       return;
     }
     if (model.editing) return; // typing owns every other key
@@ -656,19 +684,23 @@
   // ---------------------------------------------------------------- startup and the checks
 
   const loadImage = async (info) => {
-    // Stepping a frame keeps the view and the notes: it is the same picture at another
-    // moment, and a note placed on frame 2 is meant to stay while frame 3 is looked at.
-    const sameFile = model.image.file && info.file === model.image.file
+    // The same document again, another frame of it or the same one told twice: the view
+    // and the notes stay. A note placed on frame 2 is meant to stay while frame 3 is looked
+    // at, and a capture the host announced and the checks loaded is one document.
+    const sameDocument = model.image.document_id && info.document_id === model.image.document_id
       && info.width === model.image.width && info.height === model.image.height;
-    if (sameFile) {
+    if (sameDocument) {
       model.image = info;
       await paintRegion();
       return;
     }
+    stashCurrent();
     model.image = info;
-    model.margin = { left: 0, top: 0, right: 0, bottom: 0 };
-    model.callouts = [];
-    model.nextNumber = 1;
+    const known = documents.get(info.document_id);
+    model.margin = known ? { ...known.margin } : { left: 0, top: 0, right: 0, bottom: 0 };
+    model.callouts = known ? known.callouts : [];
+    model.nextNumber = known ? known.nextNumber : 1;
+    if (known) model.textSize = known.textSize;
     model.selected = null;
     model.editing = null;
     model.fitZoom = computeFit();
@@ -805,6 +837,8 @@
     resolveDirection,
     exportLayer,
     copyComposed,
+    documents,
+    emptyStateText,
     setMargin,
     marginString,
     setPlain,
@@ -846,7 +880,9 @@
         const info = await invoke('editor_load_probe', { width: 3840, height: 2160 });
         await loadImage(info);
       } catch (noProbe) {
-        hud.textContent = 'no capture yet';
+        const hotkey = await invoke('editor_hotkey').catch(() => '');
+        hud.textContent = emptyStateText(hotkey);
+        return;
       }
     }
     drawHud();

@@ -19,7 +19,10 @@
 //! second kind lets the page ask the host to touch the screen and the disk, which is part
 //! 5's boundary broken, so a product build does not compile them (review T7).
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
+
+use image::ImageEncoder;
 use std::time::Instant;
 
 use tauri::{AppHandle, Emitter, Manager, UriSchemeResponder, WebviewUrl, WebviewWindowBuilder};
@@ -127,6 +130,110 @@ pub fn state() -> &'static Editor {
     STATE.get_or_init(Editor::new)
 }
 
+// ---------------------------------------------------------------- the documents
+
+/// The document on screen, by number. Every capture and every opened file gets the next
+/// one, so the page can tell a new document from a new frame of the same one, and keep or
+/// stash its notes accordingly (S1.1).
+static CURRENT_ID: AtomicU64 = AtomicU64::new(0);
+static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+
+fn next_document_id() -> u64 {
+    let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
+    CURRENT_ID.store(id, Ordering::SeqCst);
+    id
+}
+
+pub fn current_document_id() -> u64 {
+    CURRENT_ID.load(Ordering::SeqCst)
+}
+
+/// A previous capture, kept when the next one arrives. "Taking a new capture saves the
+/// current document and adds another; it never overwrites the previous one" (§3.3). The
+/// store that keeps it on disk is S1.8; until then it is kept here, PNG-encoded so thirty
+/// captures cost about a hundred megabytes rather than a gigabyte, and capped, so a day of
+/// use cannot grow without bound (§3.8). The page keeps the notes of each document by the
+/// same number. An opened file is not retained: an external file is never taken (§3.8).
+#[cfg_attr(not(feature = "stage0-checks"), allow(dead_code))]
+pub struct Retained {
+    pub id: u64,
+    pub width: u32,
+    pub height: u32,
+    pub png: Vec<u8>,
+}
+
+static HISTORY: Mutex<Vec<Retained>> = Mutex::new(Vec::new());
+
+/// How many previous captures are kept in memory until S1.8 moves them to disk.
+const RETAINED_LIMIT: usize = 50;
+
+/// Encodes the image on its own thread and files it under its document number, so the
+/// capture path pays nothing for it.
+fn retain(image: Arc<Image>, id: u64) {
+    std::thread::spawn(move || {
+        let started = Instant::now();
+        let mut png = Vec::new();
+        let encoded = image::codecs::png::PngEncoder::new(&mut png).write_image(
+            &image.frame.rgba,
+            image.frame.width(),
+            image.frame.height(),
+            image::ExtendedColorType::Rgba8,
+        );
+        if let Err(err) = encoded {
+            println!("document {id} NOT retained: the PNG did not encode: {err}");
+            return;
+        }
+        let Ok(mut history) = HISTORY.lock() else {
+            return;
+        };
+        history.push(Retained {
+            id,
+            width: image.frame.width(),
+            height: image.frame.height(),
+            png,
+        });
+        let mut dropped = None;
+        while history.len() > RETAINED_LIMIT {
+            dropped = Some(history.remove(0).id);
+        }
+        let held: usize = history.iter().map(|r| r.png.len()).sum();
+        println!(
+            "document {id} retained: {}x{} in {} ms, {} kept, {:.1} MB{}",
+            image.frame.width(),
+            image.frame.height(),
+            started.elapsed().as_millis(),
+            history.len(),
+            held as f64 / (1024.0 * 1024.0),
+            match dropped {
+                Some(old) => format!(", the oldest ({old}) dropped at the cap of {RETAINED_LIMIT}"),
+                None => String::new(),
+            }
+        );
+    });
+}
+
+/// The retained captures, for the checks and, at S1.9, for navigation.
+#[cfg(feature = "stage0-checks")]
+pub fn history_summary() -> Vec<(u64, u32, u32, usize)> {
+    HISTORY
+        .lock()
+        .map(|h| {
+            h.iter()
+                .map(|r| (r.id, r.width, r.height, r.png.len()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The hotkey's label, for the page's empty state.
+static HOTKEY_LABEL: Mutex<String> = Mutex::new(String::new());
+
+pub fn set_hotkey(label: String) {
+    if let Ok(mut slot) = HOTKEY_LABEL.lock() {
+        *slot = label;
+    }
+}
+
 /// The live image's pixels, for S0.7's memory sample: the frame, and the pyramid levels built
 /// from it so far. A document behind a file is not counted; an animation keeps its decoded
 /// frames there.
@@ -196,8 +303,26 @@ pub fn present(frame: Frame) -> Result<u128, String> {
     present_frame(frame)
 }
 
+/// Hides the editor and returns the focus to the application the capture began in (§3.1).
+pub fn hide(app: &AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("editor")
+        .ok_or("there is no editor window")?;
+    window.hide().map_err(|err| err.to_string())?;
+    let returned = crate::focus::return_to_target();
+    crate::log(&format!("editor hidden; {}", returned.line()));
+    Ok(())
+}
+
 fn present_frame(frame: Frame) -> Result<u128, String> {
     let app = app()?;
+    // The previous capture is kept, never overwritten (§3.3), whatever replaces it.
+    if let Some(previous) = state().image() {
+        if previous.frame.source == "capture" {
+            retain(previous, current_document_id());
+        }
+    }
+    next_document_id();
     state().set_frame(frame);
     let info = editor_image_info()?;
     app.emit("capture-ready", &info)
@@ -281,6 +406,10 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_log,
         editor_frame,
         editor_mark,
+        editor_hide,
+        editor_hotkey,
+        checks::editor_history,
+        checks::editor_capture_probe,
         checks::editor_load_probe,
         checks::editor_load_screen,
         checks::editor_look_at_window,
@@ -310,6 +439,8 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_frame,
         editor_copy,
         editor_mark,
+        editor_hide,
+        editor_hotkey,
     ]);
     builder.register_asynchronous_uri_scheme_protocol("region", |_ctx, request, responder| {
         let query = request.uri().query().unwrap_or_default().to_string();
@@ -429,6 +560,9 @@ pub struct ImageInfo {
     /// The frame or page on screen, and how many there are. 0 of 1 for a capture.
     pub index: u32,
     pub count: u32,
+    /// The document's number: a new capture or file gets the next one, a frame of the same
+    /// file keeps it (S1.1).
+    pub document_id: u64,
 }
 
 #[tauri::command]
@@ -465,12 +599,25 @@ pub fn editor_image_info() -> Result<ImageInfo, String> {
         kind,
         index,
         count,
+        document_id: current_document_id(),
     })
 }
 
 #[tauri::command]
 pub fn editor_show(app: AppHandle) -> Result<u128, String> {
     show(&app)
+}
+
+/// Escape in the idle editor hides it and returns the focus (§3.6, §3.1).
+#[tauri::command]
+pub fn editor_hide(app: AppHandle) -> Result<(), String> {
+    hide(&app)
+}
+
+/// The capture hotkey as configured, for the page's empty state.
+#[tauri::command]
+pub fn editor_hotkey() -> String {
+    HOTKEY_LABEL.lock().map(|s| s.clone()).unwrap_or_default()
 }
 
 /// What the window really is, in both coordinate systems.
@@ -510,6 +657,10 @@ pub fn editor_window_metrics(app: AppHandle) -> Result<WindowMetrics, String> {
 
 // ---------------------------------------------------------------- the region service
 
+/// The one origin the region scheme answers: the editor page's own. Any other page inside
+/// the web view gets no pixels (S1.1, decided with the content security policy).
+const APP_ORIGIN: &str = "http://tauri.localhost";
+
 /// One request waiting to be served. Only the newest survives.
 struct Pending {
     query: String,
@@ -547,7 +698,7 @@ fn serve_region(query: String, responder: UriSchemeResponder) {
         old.responder.respond(
             tauri::http::Response::builder()
                 .status(409)
-                .header("Access-Control-Allow-Origin", "*")
+                .header("Access-Control-Allow-Origin", APP_ORIGIN)
                 .body(b"superseded by a newer request".to_vec())
                 .expect("an error response"),
         );
@@ -575,14 +726,14 @@ fn region_worker() {
             Ok((bytes, _, _)) => pending.responder.respond(
                 tauri::http::Response::builder()
                     .header("Content-Type", "application/octet-stream")
-                    .header("Access-Control-Allow-Origin", "*")
+                    .header("Access-Control-Allow-Origin", APP_ORIGIN)
                     .body(bytes)
                     .expect("a response with a body"),
             ),
             Err(err) => pending.responder.respond(
                 tauri::http::Response::builder()
                     .status(400)
-                    .header("Access-Control-Allow-Origin", "*")
+                    .header("Access-Control-Allow-Origin", APP_ORIGIN)
                     .body(err.into_bytes())
                     .expect("an error response"),
             ),
@@ -1103,6 +1254,8 @@ mod checks {
         let mut opened = source::open(&path).map_err(|err| err.to_string())?;
         let decoded = opened.frame(0).map_err(|err| err.to_string())?;
         let format = opened.format.name();
+        // A fixture opened is a new document, as a file opened through the product is.
+        next_document_id();
         state().set_document(Some(Document { opened, index: 0 }));
         state().set_frame(frame_of(decoded, format));
         editor_image_info()
@@ -1517,6 +1670,25 @@ mod checks {
         format!("{y:04}-{m:02}-{d:02}")
     }
 
+    /// The retained captures, for the S1.1 check.
+    #[tauri::command]
+    pub fn editor_history() -> Vec<(u64, u32, u32, usize)> {
+        history_summary()
+    }
+
+    /// A probe through the real capture path: a new document, the previous capture
+    /// retained, the page told, the window shown. What a hotkey does, minus the screen.
+    #[tauri::command]
+    pub fn editor_capture_probe(width: u32, height: u32) -> Result<ImageInfo, String> {
+        if width == 0 || height == 0 || width > 8192 || height > 8192 {
+            return Err(format!("{width}x{height} is not a probe size"));
+        }
+        let mut frame = detail_probe_frame(width, height);
+        frame.source = "capture";
+        present(frame)?;
+        editor_image_info()
+    }
+
     /// Loads the synthetic probe as the current image, for the detail check.
     #[tauri::command]
     pub fn editor_load_probe(width: u32, height: u32) -> Result<ImageInfo, String> {
@@ -1526,6 +1698,7 @@ mod checks {
         if width == 0 || height == 0 || width > 8192 || height > 8192 {
             return Err(format!("{width}x{height} is not a probe size"));
         }
+        next_document_id();
         state().set_frame(detail_probe_frame(width, height));
         editor_image_info()
     }
@@ -1536,6 +1709,7 @@ mod checks {
         let frame = screen::WholeVirtualScreen
             .freeze()
             .map_err(|err| err.to_string())?;
+        next_document_id();
         state().set_frame(frame);
         editor_image_info()
     }

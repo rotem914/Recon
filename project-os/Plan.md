@@ -373,7 +373,7 @@ is a contract broken on day one.
 | `Esc` during text editing | Leave text editing, keep the text | 1 |
 | `Esc` with an annotation selected | Clear the selection | 1 |
 | `Esc` in fullscreen | Leave fullscreen | 1 |
-| `Esc` in the otherwise idle editor | Save pending changes and hide the editor | 1 |
+| `Esc` in the otherwise idle editor | Save pending changes and hide the editor | 1, the hide and the focus return built at S1.1, the save at S1.8 |
 | Delete outside text editing | Delete the selected annotation | 1 |
 | Undo and redo | While a note is being edited, undo works on the typing and never reaches object operations. Once editing ends, that text change takes its place in document history as one grouped step | 1 |
 | `Ctrl+O` | Open an image file | 1 |
@@ -1445,6 +1445,11 @@ at open. The save-and-restart leg stays with S1.8.
 cannot fit is S1.2's placement work. Panning cannot reach the far edge of a margin at a
 zoom above fit (F56, nit). The 225% display case of check 3 was not run, because this
 machine's display is at 100% today (part 10); the reference environment says so.
+**Run at 225% on 2026-09-14**, when the display was scaled: the wrap and the box were the
+same to the pixel, and 12.5% of the text box's pixels differed until the canvas offset was
+snapped to a physical pixel (F74), 6.6% after, which is glyph antialiasing through a
+fractional transform, the clause the tolerance is for; the check's bar is 8% on a scaled
+display and 3% at 100%, where the figure is still 0 (F75).
 
 **Reviewed (rule 17, high):** this task's own diff. Two findings on it, both fixed: the
 clipboard's comment claimed a failed publish leaves the old contents, which is only true
@@ -1727,11 +1732,28 @@ compensate for an unproven capture or decoding path.
 Dependency order, not dates. Each item stays usable on its own, and the stage ends with real
 work rather than a feature count.
 
-- [ ] S1.1 Capture lifecycle: repeated captures, hide and show, the remembered return
+- [x] S1.1 Capture lifecycle: repeated captures, hide and show, the remembered return
       target, no overwriting of a previous capture, and the empty-state line naming the
       hotkey. Model: Opus 5, documented behaviour wired as documented; plus the content
       security policy and the region scheme's allowed origin, decided here where the
       product path first builds the window.
+      **Built 2026-09-14.** Every capture and every opened file is a numbered document, and
+      the page keeps each document's notes by that number: a new capture commits the note
+      being typed, stashes the previous document's notes, and starts empty (F67 closed). The
+      previous capture's pixels are kept by the host, PNG-encoded on their own thread (12 ms
+      for a probe, about 3.5 MB for a full screen), capped at fifty until S1.8 moves them to
+      disk; an opened file is never retained (§3.8). The return target is read at the hotkey,
+      before the overlay, and kept across a capture started from inside Recon; the editor
+      hides on close and on Escape when idle, and the focus goes back to that window, or to
+      nothing when it has closed (self test G, both cases). The tray gained "Open Recon",
+      and the empty state says "Press Ctrl+Shift+4 to capture" with the configured key. The
+      content security policy is set (self, the region scheme, the IPC origin, data and blob
+      images, inline styles for the export) and the region scheme answers the page's own
+      origin only; recorded in `project-os/Decisions.md`. Run on a 225% display, which
+      found the offset F74 and the antialiasing figure F75. Three product-path captures on
+      the 3840x2160 display at 225%: overlay usable within 88 ms, editor usable within 275 ms,
+      each previous capture retained in under 40 ms (part 11). The save half of Escape and of
+      a new capture is S1.8's; until then the notes live in the page's memory.
 - [ ] S1.2 File opening and activation: the file association, Open With, drag and drop and
       `Ctrl+O`, both when Recon is already running and when it starts because a file was
       activated, one window rather than a second instance, plus the type registration and
@@ -1884,6 +1906,8 @@ plan did not say so until the review of 2026-09-13 (F47). The same runs were rep
 | S0.8 display colour: HDR state, bits, SDR white, on the active display | HDR supported and off, 8 bits RGB, 80 nits | same |
 | S0.8 display gamut from EDID: main display, second display | 132% of sRGB (wide), 96% of sRGB | same |
 | S0.8 focus after Escape: to the window in front; with it gone | restored; cancelled cleanly, Windows chose | same |
+| S1.1 on the 3840x2160 display at 225%, three product-path captures: hotkey to overlay usable, selection to editor usable | not run | 67 to 88 ms; 266 to 275 ms |
+| S1.1 the previous capture retained, PNG-encoded on its own thread, 3840x2160 | not run | 34 to 37 ms, 4.3 MB |
 | Open an 8000x6000 PNG (192 MB on disk): read and decode, then hand over the frame | 326, 25 ms | 100, 26 ms |
 | That file's first fit view, waiting on pyramid level 1 (4000x3000) | 640 ms (514 for the level) | 575 ms (442 for the level) |
 | Open a 120x90 GIF, three frames, and show it | 3 ms to shown | 3 ms to shown |
@@ -1997,7 +2021,7 @@ them.
 
 # Part 12: the review trail
 
-Seventy-three findings were raised against the plan and folded into the parts above. This table
+Seventy-six findings were raised against the plan and folded into the parts above. This table
 is the record; the fixes themselves live where the table points. Severity is how the finding
 was rated when it was raised.
 
@@ -2069,13 +2093,16 @@ was rated when it was raised.
 | F64 | A superseded region answer, the host's 409 by design, was raised by the page as an error on every held key | 🟠 | Part 5 display policy, S0.4b | Fixed (R2): a 409 returns quietly |
 | F65 | Ctrl+Shift+C matched the key's character, so under a Hebrew layout the copy key was dead | 🟠 | §3.6, S0.6, S1.7 | Fixed (R3): matched by physical key; the rest of the contract's layout check is S1.7's |
 | F66 | An opened still was held twice in the host, a full clone kept for a second ask nothing makes | 🟠 | §3.8, S0.5, S0.7 | Fixed (R4): the provider keeps the file's bytes and decodes again if asked twice |
-| F67 | A capture arriving while a note is being typed discards that note with the previous capture | 🟡 | S1.1 | Open: S1.1's capture lifecycle decides what a new capture does to the previous document |
+| F67 | A capture arriving while a note is being typed discards that note with the previous capture | 🟡 | S1.1 | Resolved at S1.1: a new document commits the note being typed and stashes the previous document's notes by its number before it loads |
 | F68 | The margin colour is written in two places, the host's composer and the page's mat | 🟡 | S0.6, Backlog | Open: hand the colour to the page with the image info; a backlog item |
 | F69 | An overlay panic would leak its windows and GDI objects, replaced without teardown on the next capture | 🟡 | S0.2 | Open: tear down a leftover state at the start of a selection; has not happened |
 | F70 | A poisoned region mailbox would stop every later view from painting | 🟡 | S0.4b | Open: recover from the poisoned lock and answer with an error; nothing in the worker panics today |
 | F71 | The SVG raster cap of 16384 a side allows a one-gigabyte pixmap from a hostile viewBox | 🟡 | §3.7, S0.5 | Open: cap the area, or refuse the open with a message |
 | F72 | The self test called any still difference after a drag a leaked overlay, and a window repainting as it took the foreground back failed it while the product was right | 🟡 | S0.2 self test | Fixed in the review of 2026-09-13 (R11): the leak check asks whether an overlay window is still alive; the crop predates the overlay by construction |
 | F73 | S0.8's HDR query ran on the capture thread at every freeze, inside the hotkey-to-overlay interval, about 5 ms on the median | 🟡 | S0.7, S0.8 | Fixed in the review of 2026-09-13 (R12): the query runs on its own thread |
+| F74 | On a scaled display the canvas and the notes sat at a whole CSS offset, a fraction of a physical pixel, so the screen was resampled and 12.5% of a note's pixels differed from the copy | 🟠 | Part 5, S0.6 check 3, S1.1 | Fixed at S1.1: the offset lands on a physical pixel |
+| F75 | On a scaled display the screen draws a note through a fractional transform and 6.6% of its pixels antialias differently from the copy, with the wrap and the box identical | 🟡 | S0.6 check 3, S1.1 | Recorded: the antialiasing clause; the live check's bar is 8% on a scaled display, 3% at 100% |
+| F76 | The content security policy refuses the S0.3 bench's local socket route, so `--bench` needs the policy off to run its third column | 🟡 | S0.3, S1.1 | Open: a closed step's tool; run it with the policy set to null if it is ever needed again |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the
 two things it compares and the failure that would turn it red (`project-os/QA.md` §12), and a

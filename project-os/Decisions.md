@@ -77,6 +77,8 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-13 · The clipboard is published by the host in three formats, PNG first.
 - 2026-09-13 · Stage 0 verdict: the candidate stack is adopted, every component kept.
 - 2026-09-13 · A capture stays sRGB on a wide-gamut display; the trigger moves to a managed desktop.
+- 2026-09-14 · The web view's security posture: a strict policy, and the region scheme answers the page's origin only.
+- 2026-09-14 · Previous captures are kept in memory, encoded and capped, until the store exists.
 
 ---
 
@@ -788,3 +790,70 @@ Nothing changes in the pipeline. The revisit trigger changes: a desktop that Win
 manages, with automatic colour management or HDR on, stops handing plain sRGB numbers to
 GDI, and `host/src/platform.rs` reads that state per display. When that state is seen on
 the machine, or a client's colours are questioned, this entry is the one to supersede.
+
+---
+
+## 2026-09-14 · The web view's security posture: a strict policy, and the region scheme answers the page's origin only
+
+### Context
+
+Stage 0 ran with no content security policy and with the region scheme, which serves the
+screen's pixels, answering any origin (review T12). Fine while the only page is Recon's own
+and nothing remote loads; not the setting an open-source release ships with. S1.1 is where
+the product path first builds the window, so the plan put the decision here.
+
+### Options
+
+1. Leave both open and rely on the page never loading anything remote.
+2. A policy that names what the page uses and nothing else, and a region scheme that
+   answers the page's own origin only.
+3. A policy plus a nonce per load and a token on every region request.
+
+### Decision
+
+Option 2, by the assistant at S1.1. The policy allows the page's own origin for scripts
+and styles, inline styles (the export writes computed styles inline), images from data and
+blob URLs (the export layer travels as a data URL), and connections to the region scheme
+and Tauri's IPC origin; objects, frames, form posts and other bases are refused. The region
+scheme's CORS header names the page's origin. Option 3 buys nothing while the page is the
+only code in the web view and costs a token on the hot path.
+
+### Consequences
+
+Every editor check passes under the policy, on a 100% and a 225% display. The S0.3 bench's
+local socket route is refused by it (F76); that step is closed and the bench runs with the
+policy off if it is ever needed. Anything the page loads in future, a web font or a remote
+resource, must be added to the policy deliberately, which is the point. Revisit if a second
+page or remote content ever enters the web view.
+
+---
+
+## 2026-09-14 · Previous captures are kept in memory, encoded and capped, until the store exists
+
+### Context
+
+§3.3 says a new capture never overwrites the previous one, and the store that keeps
+documents on disk is S1.8. Stage 0 simply dropped the previous capture. S1.1 had to keep it
+somewhere, and thirty raw captures a day would be a gigabyte of memory, which §3.8 forbids.
+
+### Options
+
+1. Keep dropping the previous capture until S1.8.
+2. Keep every previous capture raw in memory.
+3. Keep previous captures PNG-encoded, on a thread off the capture path, capped in number.
+4. Bring S1.8's disk store forward.
+
+### Decision
+
+Option 3, by the assistant at S1.1, as a stopgap this entry names as one. A full-screen
+capture encodes to about 3.5 MB in 50 ms in release, on its own thread; fifty of them is
+under 200 MB, and the fifty-first drops the oldest with a log line. The page keeps each
+document's notes by the host's document number. Option 4 would have pulled the schema and
+the save discipline of S1.8 into a step about the lifecycle.
+
+### Consequences
+
+Nothing captured in a session is overwritten by the next capture, and S1.9's navigation has
+something to navigate. What is lost: a capture past the cap, and everything at quit, until
+S1.8. That entry supersedes this one when the store lands; the cap and the in-memory list go
+with it. An opened file is never retained here, because an external file is never taken.

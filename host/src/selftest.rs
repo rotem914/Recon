@@ -155,6 +155,17 @@ pub fn run() -> i32 {
     }
 
     println!();
+    println!("=== G. the return target: back to where the capture began, and nothing when it is gone ===");
+    quiet();
+    match return_test() {
+        Ok(()) => {}
+        Err(reason) => {
+            println!("return FAILED: {reason}");
+            failures += 1;
+        }
+    }
+
+    println!();
     if failures == 0 {
         println!("RESULT: every check that this machine can run passed.");
     } else {
@@ -578,6 +589,60 @@ fn focus_test(frame: &Frame) -> Result<(), String> {
     println!(
         "  with that window gone, escape still cancelled cleanly, and the foreground is {}",
         crate::platform::foreground_owner().line()
+    );
+    Ok(())
+}
+
+/// S1.1's return target: remembered while one window is in front, another window takes
+/// the foreground, and the return brings the first back; then the first closes, and the
+/// return activates nothing.
+fn return_test() -> Result<(), String> {
+    let (mut a, ha) = open_stand_in()?;
+    let remembered =
+        crate::focus::remember_foreground().ok_or("the stand-in was not remembered")?;
+    if remembered.0 as isize != ha.0 as isize {
+        return Err("the remembered window is not the one in front".into());
+    }
+    let (mut b, hb) = open_stand_in()?;
+    let returned = crate::focus::return_to_target();
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    let now = unsafe { GetForegroundWindow() };
+    if returned != crate::focus::Returned::Restored || now.0 as isize != ha.0 as isize {
+        let _ = a.kill();
+        let _ = b.kill();
+        return Err(format!(
+            "after the return the foreground is {} and the result was {returned:?}",
+            crate::platform::window_owner(now).line()
+        ));
+    }
+    println!(
+        "  the return brought back {}",
+        crate::platform::window_owner(ha).line()
+    );
+
+    // The remembered window closes; the return must activate nothing.
+    let _ = unsafe { PostMessageW(Some(ha), WM_CLOSE, WPARAM(0), LPARAM(0)) };
+    std::thread::sleep(std::time::Duration::from_millis(600));
+    let _ = a.kill();
+    let _ = unsafe { windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow(hb) };
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let before = unsafe { GetForegroundWindow() };
+    let returned = crate::focus::return_to_target();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let after = unsafe { GetForegroundWindow() };
+    let _ = b.kill();
+    if returned != crate::focus::Returned::Gone {
+        return Err(format!("with the window gone the return said {returned:?}"));
+    }
+    if before.0 as isize != after.0 as isize {
+        return Err(format!(
+            "with the window gone the return moved the foreground to {}",
+            crate::platform::window_owner(after).line()
+        ));
+    }
+    println!(
+        "  with that window gone the return activated nothing; the foreground stayed on {}",
+        crate::platform::window_owner(after).line()
     );
     Ok(())
 }

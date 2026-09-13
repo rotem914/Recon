@@ -585,8 +585,14 @@ export async function runChecks(editor, invoke) {
       check(`${name}: the same wrap on screen and in the output`, sameWrap,
         `screen lines ${JSON.stringify(live.live_lines)}, output lines ${JSON.stringify(live.export_lines)}`);
       const where = live.bbox ? ` in the box ${live.bbox.join(',')}` : '';
-      check(`${name}: the text box on screen matches the output within tolerance`, live.percent <= 3,
-        `${live.differing} of ${live.width * live.height} pixels differ, ${live.percent.toFixed(2)}%${where}; ${r.covered} pixels in the layer`);
+      // At 100% the two are identical, 0 pixels. On a scaled display the screen draws the
+      // note through a fractional CSS transform and its glyphs antialias differently from
+      // the 1:1 raster of the export: 6.6% of the text box's pixels at 225%, with the wrap
+      // and the box the same to the pixel (S1.1, F75). That is the antialiasing clause of
+      // S0.6, inside tolerance; a wrap or box change fails above, at any tolerance.
+      const bar = Math.abs(ratio - 1) < 0.01 ? 3 : 8;
+      check(`${name}: the text box on screen matches the output within tolerance`, live.percent <= bar,
+        `${live.differing} of ${live.width * live.height} pixels differ, ${live.percent.toFixed(2)}% at ratio ${ratio.toFixed(2)} (bar ${bar}%)${where}; ${r.covered} pixels in the layer`);
       editor.commitEditing();
     }
   }
@@ -636,6 +642,42 @@ export async function runChecks(editor, invoke) {
     check('the clipboard PNG is the composed image, byte for byte', back.png_matches && back.width === copy.width && back.height === copy.height,
       `${back.width}x${back.height}, ${back.png_bytes} bytes; composed ${copy.compose_ms} ms, encoded ${copy.published.encode_ms} ms, published ${copy.published.publish_ms} ms`);
     say('the clipboard is left holding this image, for the paste into Claude and ChatGPT');
+  }
+
+  // ---------------------------------------------------------------- 16. S1.1: the capture lifecycle
+  say('');
+  say('S1.1: a new capture keeps the previous one, the page keeps its notes, the empty state names the hotkey');
+  {
+    const hotkey = await invoke('editor_hotkey');
+    check('the empty state names the configured hotkey', typeof hotkey === 'string' && hotkey.length > 0 && editor.emptyStateText(hotkey).includes(hotkey),
+      JSON.stringify(editor.emptyStateText(hotkey)));
+
+    const first = await invoke('editor_capture_probe', { width: 640, height: 400 });
+    await editor.loadImage(first);
+    const note = editor.createCallout({ x: 100, y: 100 });
+    note.text = 'a note on the first capture';
+    editor.layoutScene();
+    // The host announces the same capture too; told twice, the document keeps its note.
+    await editor.loadImage(await invoke('editor_image_info'));
+    check('the same document told twice keeps its notes', model.callouts.length === 1 && model.image.document_id === first.document_id);
+
+    const second = await invoke('editor_capture_probe', { width: 320, height: 200 });
+    await editor.loadImage(second);
+    check('a new capture is a new document, starting empty', second.document_id !== first.document_id && model.callouts.length === 0 && model.nextNumber === 1,
+      `documents ${first.document_id} then ${second.document_id}`);
+    const stashed = editor.documents.get(first.document_id);
+    check('the previous document\'s notes are kept', !!stashed && stashed.callouts.length === 1 && stashed.callouts[0].text === 'a note on the first capture');
+
+    let history = [];
+    for (let i = 0; i < 40 && !history.some((r) => r[0] === first.document_id); i += 1) {
+      await sleep(50);
+      history = await invoke('editor_history');
+    }
+    const kept = history.find((r) => r[0] === first.document_id);
+    check('the previous capture is retained by the host, encoded', !!kept && kept[1] === 640 && kept[2] === 400 && kept[3] > 0,
+      kept ? `${kept[1]}x${kept[2]}, ${kept[3]} bytes` : 'not in the history');
+    model.callouts = [];
+    editor.layoutScene();
   }
 
   say('');

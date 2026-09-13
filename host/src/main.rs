@@ -19,6 +19,7 @@ mod clipboard;
 mod compose;
 mod config;
 mod editor;
+mod focus;
 mod marks;
 #[cfg(feature = "stage0-checks")]
 mod measure;
@@ -38,7 +39,7 @@ use overlay::Outcome;
 use tauri::image::Image;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
-use tauri::{RunEvent, WindowEvent};
+use tauri::{Manager, RunEvent, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 /// Held while a selection is on screen, so a second hotkey press is ignored rather than
@@ -105,6 +106,15 @@ fn begin_capture() {
         return;
     };
     marks::begin(received);
+    // The application the user is in right now is where the focus goes back to when the
+    // editor hides (§3.1). Read here, before the overlay takes the foreground.
+    match focus::remember_foreground() {
+        Some(hwnd) => log(&format!(
+            "return target: {}",
+            platform::window_owner(hwnd).line()
+        )),
+        None => log("return target: unchanged, the capture began inside Recon"),
+    }
 
     std::thread::spawn(move || {
         // Moved into the thread so it is released when this closure ends, whether that is a
@@ -246,6 +256,7 @@ fn editor_run(demo: bool) -> i32 {
             editor::request_checks();
         }
         editor::set_app(app.handle().clone());
+        editor::set_hotkey(config::load().hotkey);
         tauri::WebviewWindowBuilder::new(
             app,
             "editor",
@@ -425,8 +436,10 @@ fn main() {
                 MenuItemBuilder::with_id("hotkey", format!("Capture: {hotkey_label}"))
                     .enabled(false)
                     .build(app)?;
+            let open_item = MenuItemBuilder::with_id("open", "Open Recon").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Quit Recon").build(app)?;
             let menu = MenuBuilder::new(app)
+                .item(&open_item)
                 .item(&hotkey_item)
                 .separator()
                 .item(&quit_item)
@@ -443,6 +456,13 @@ fn main() {
                     if event.id() == "quit" {
                         log("quit chosen in the tray menu");
                         app.exit(0);
+                    } else if event.id() == "open" {
+                        // The editor as it is: the most recent document, or the empty state
+                        // naming the hotkey (§3.1).
+                        match editor::show(app) {
+                            Ok(ms) => log(&format!("editor opened from the tray in {ms} ms")),
+                            Err(err) => log(&format!("EDITOR NOT SHOWN from the tray: {err}")),
+                        }
                     }
                 })
                 .build(app)?;
@@ -450,6 +470,7 @@ fn main() {
 
             // ---- the editor, created hidden so a capture only has to show it ----
             editor::set_app(app.handle().clone());
+            editor::set_hotkey(hotkey_label.clone());
             let created = std::time::Instant::now();
             editor::create_hidden(app.handle())?;
             log(&format!(
@@ -520,8 +541,10 @@ fn main() {
             // work in it must survive. Quit is the tray's, and it is explicit.
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                let _ = window.hide();
-                log("editor hidden on close");
+                match editor::hide(window.app_handle()) {
+                    Ok(()) => {}
+                    Err(err) => log(&format!("editor NOT hidden on close: {err}")),
+                }
             }
         })
         .build(tauri::generate_context!())
