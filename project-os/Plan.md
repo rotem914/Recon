@@ -434,7 +434,7 @@ rather than quietly dropped.
 | **GIF** | Decode and play the animation, transparency included. Frame access by index, so annotation takes a still of the frame actually on screen. |
 | **TIFF** | Decode, pages exposed as page navigation with the count visible. Annotation operates on the displayed page. |
 | **HEIC / HEIF** | Decode, orientation applied. Annotate directly. Depends on codecs installed on the machine, so a missing codec is reported as a missing codec with the way to install it, never as a corrupt file. |
-| **AVIF** | Decode, transparency preserved. An animated AVIF follows the animation rule, frame access included. |
+| **AVIF** | Decode, transparency preserved. An animated AVIF follows the animation rule, frame access included. Through the Windows imaging stack for now, so it depends on the AV1 Video Extension being installed, reported as a missing codec when it is not (F51). |
 | **SVG** | Render for viewing at any size. Annotation rasterizes once at the displayed size in physical device pixels, shows and stores those dimensions, and preserves the original vector file. |
 
 An unsupported or unreadable file says so plainly, names the format, and leaves the file
@@ -917,7 +917,7 @@ Explorer closely enough to feel predictable is checked in S1.4, not assumed here
 | Paste destinations | Claude and ChatGPT. Both read the clipboard the way a web application does. PNG is the implementation choice, not a proven requirement: a Chromium-based reader can convert native bitmap data into PNG for the page, so nothing here claims a bitmap-only clipboard would fail. What decides acceptance is the paste actually working in those two surfaces, recorded with the surface and its version. |
 | Reference environment | Rotem's main machine at its current display scale. The environment, the font details and the web view runtime version are recorded with the reference images and in the S0.8 report. |
 | The stack | A Rust host owning the pixels, a WebView2 editor laying out the text, packaged with Tauri v2. Argued in part 5 from the decode surface, from the bidirectional editing model, and from this project's own browser-driven QA gate. Recorded in `project-os/Decisions.md`. |
-| Decoding | One native route for all nine formats. The web view decodes nothing, and the decoded original never crosses into it at full resolution. This flips the earlier two-provider recommendation, because a preserved image born in the renderer cannot survive a premultiplied canvas byte for byte. Recorded in `project-os/Decisions.md`. |
+| Decoding | One native route for all nine formats. The web view decodes nothing, and the decoded original never crosses into it at full resolution. This flips the earlier two-provider recommendation, because a preserved image born in the renderer cannot survive a premultiplied canvas byte for byte. Recorded in `project-os/Decisions.md`. Built at S0.5 as three providers behind one interface: the `image` crate, `resvg`, and WIC for TIFF, HEIC and, pending F51, AVIF. |
 | TIFF and HEIC | Both through WIC in the host: TIFF with its pages, HEIC through whatever codec the machine has, with the named missing-codec message rather than a corrupt-file one. |
 | The annotation text layer | DOM in image-space pixels with `unicode-bidi: plaintext`, zoom as a CSS transform so layout precedes it, and export through a serialized `foreignObject` with fonts and styles inlined. Recorded in `project-os/Decisions.md`. |
 | Note text size | 20 image pixels by default, stored per note, stepped with `Ctrl +` and `Ctrl -`, and the size last used becomes the next note's default. A note scales with the image and there is no minimum on-screen size. Rotem's call on F46, recorded in `project-os/Decisions.md`. |
@@ -1215,6 +1215,49 @@ animation, orientation, colour and SVG tests is a carried gate in S0.6; the save
 leg is a carried gate in S1.8. Neither is ticked here on partial evidence. And S0.6's export
 spike runs before this step's format work, because it is a day against a week and it decides
 the composer.
+
+**Built 2026-09-13, and open on two inputs.** The image source exists: `host/src/source`,
+path in, decoded frame and metadata out, one interface, three providers behind it. The
+`image` crate for PNG, JPEG, BMP, GIF and WebP; `resvg` for SVG; the Windows Imaging Component
+for TIFF, HEIC and AVIF. The editor shows an opened file on the same canvas a capture uses
+(`--open <file>`, and `[` `]` step frames or pages), and a file's frame or page is asked for by
+index and comes back as itself.
+
+The evidence, from `--decode-report` on the generated fixtures, one line per file, in debug and
+release: PNG with a swapped-primaries profile came out converted (stored red reads as green,
+so the profile was honoured and not just noticed); the transparent half stayed transparent;
+a JPEG tagged orientation 6 came out 200x300 with the red corner at the top right and the
+note saying 6 was applied; BMP as written; GIF three frames red, green, blue, 80 ms each,
+frame 3 refused; a hand-wrapped animated WebP the same, and a lossless still with its alpha;
+a three-page TIFF through WIC, page three blue; an 8000x6000 PNG opened in 100 ms and
+handed over in 26 ms in release (326 and 25 in debug); three SVGs rendered, and rendered
+the same as this web view within 0.66% of pixels on text, 0.01% on a CSS style block and
+0.08% on a mask with a clip, measured in the editor checks by drawing the same file in
+Chromium. A text file was refused by name of what it is. And the invariant: every one of
+the twelve files hashed the same before and after being opened, viewed and stepped
+through, nothing appeared beside them, and nothing appeared in Recon's data folder.
+
+**What has no evidence yet, and why the step stays open.** HEIC and AVIF have no fixture
+this toolchain can generate, so their rows are pending a real file each: a HEIC from a
+phone, an AVIF saved from a browser. The decoder for both is in place, and this machine
+has the HEIF, HEVC and AV1 extensions installed, so the expected result is a decode; the
+expected result is not evidence. The SVG content test ran on hand-written files shaped
+like a Figma mask export and an Illustrator style block; a real export of each is worth
+one more line. Also worth a real file: a phone JPEG with both an orientation and a
+profile, and a real animated WebP.
+
+**The AVIF chain is not the one the plan named, and that is Rotem's call (F51).** libavif
+with dav1d needs a C toolchain (cmake, nasm, meson) this machine does not have, and the
+three pure-Rust AV1 ports on crates.io do not compile on Rust 1.98. AVIF therefore goes
+through WIC here, which means it depends on the AV1 Video Extension being installed, the
+same way HEIC depends on its extension. Part 6c lists AVIF as required with no degraded
+state; the options are to accept the codec dependency for AVIF with the named-codec
+message, or to add the C toolchain and build the chain the plan named.
+
+**Two carried gates, restated.** The export leg of the animation, orientation, colour and
+SVG tests runs at S0.6; the save-and-restart leg at S1.8. And one number for the record:
+the first fit view of the 48-megapixel PNG waits 442 ms for pyramid level 1 in release,
+which is F52.
 
 One decode route, in the host, for all nine formats (part 6a). The web view decodes nothing.
 
@@ -1584,6 +1627,11 @@ plan did not say so until the review of 2026-09-13 (F47). The same runs were rep
 | Export spike, 5120x1440 layer: serialize and rasterize in the web view | 3 ms | 3 ms |
 | Export spike: web view PNG encode of that layer, 193 KB | 41 ms | 38 ms |
 | Export spike: host decode, composite, encode to file | 50, 51, 269 ms | 7, 6, 14 ms |
+| Open an 8000x6000 PNG (192 MB on disk): read and decode, then hand over the frame | 326, 25 ms | 100, 26 ms |
+| That file's first fit view, waiting on pyramid level 1 (4000x3000) | 640 ms (514 for the level) | 575 ms (442 for the level) |
+| Open a 120x90 GIF, three frames, and show it | 3 ms to shown | 3 ms to shown |
+| First SVG open, which loads the system fonts once | 165 ms | 17 ms |
+| Every other fixture: open and first frame | 0 to 8 ms | 0 to 8 ms |
 
 The fit view's debug number is the same as its release number because the resample now
 runs in `host/pixels`, which is optimised in every profile; the 1.1 s recorded below was the
@@ -1687,7 +1735,7 @@ them.
 
 # Part 12: the review trail
 
-Fifty findings were raised against the plan and folded into the parts above. This table
+Fifty-two findings were raised against the plan and folded into the parts above. This table
 is the record; the fixes themselves live where the table points. Severity is how the finding
 was rated when it was raised.
 
@@ -1743,6 +1791,8 @@ was rated when it was raised.
 | F48 | S0.5 could not close as written: three of its gates need the export and the store, which are later steps | 🟠 | S0.5, S0.6, S1.8 | Resolved: the legs are carried gates in S0.6 and S1.8, and the export spike runs first |
 | F49 | The four Stage 0 pieces had never run as one thing, so the second latency interval had nothing to measure | 🟠 | S0.4b | Resolved: hotkey to editor on the product path, 13 ms from selection to shown |
 | F50 | The check-only commands let the page ask the host to capture the screen and write files, in the runtime the product editor will use | 🟠 | Part 5 boundaries, S0.4b | Resolved: behind the stage0-checks feature, and the page's permissions are in one capability file |
+| F51 | The AVIF chain the plan named, libavif with dav1d, cannot be built on this machine without a C toolchain, and the pure-Rust AV1 ports do not compile on this Rust; AVIF decodes through WIC and so depends on an installed codec, which part 6c does not allow for a required format | 🟠 | §3.7, part 6a, part 6c, S0.5 | Open: Rotem's scope call, accept the codec dependency or add the toolchain |
+| F52 | The first fit view of a 48-megapixel image waits 442 ms for pyramid level 1 in release | 🟡 | Part 11, S0.5, S1.3 | Open: a 2x2 box average would build the level in a fraction of the time; revisit if S1.12 shows files that large in daily use |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the
 two things it compares and the failure that would turn it red (`project-os/QA.md` §12), and a

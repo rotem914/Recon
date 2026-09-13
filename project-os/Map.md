@@ -27,7 +27,7 @@ at build time). A recommended candidate under Stage 0, per `project-os/Plan.md` 
 | Setting | Value |
 |---|---|
 | Project root | this repository, wherever this copy of it lives |
-| Runs locally at | no server: `host/target/debug/recon-host.exe`. Built with `--features stage0-checks` it also answers `--editor-check`, `--editor-demo`, `--capture-demo`, `--selftest` and `--bench`; `--release` for any number that will be quoted |
+| Runs locally at | no server: `host/target/debug/recon-host.exe`, and `--open <file>` opens a file into it. Built with `--features stage0-checks` it also answers `--editor-check`, `--editor-demo`, `--capture-demo`, `--open-demo <file>`, `--make-fixtures <dir>`, `--decode-report <dir>`, `--selftest` and `--bench`; `--release` for any number that will be quoted |
 | Checks | in `host/`: `cargo fmt --check`, then `cargo clippy --all-targets --all-features -- -D warnings`, then `cargo build`, then `cargo test --workspace --all-features` |
 ## Tree
 
@@ -52,11 +52,18 @@ Recon/
 │       ├── selftest.rs             # --selftest and --capture-demo: S0.2's evidence, feature-gated
 │       ├── bench.rs                 # --bench: S0.3's boundary measurement, feature-gated
 │       ├── editor.rs                # the editor window, the image and its pyramid, the one region worker
-│       └── capture/
-│           ├── mod.rs              # the capture interface and the frame it produces
-│           ├── coords.rs           # the ONE desktop-to-image conversion, with its tests
-│           ├── display.rs          # DPI awareness and the live display layout
-│           └── screen.rs           # the chosen path: one copy of the whole virtual screen
+│       ├── capture/
+│       │   ├── mod.rs              # the capture interface and the frame it produces
+│       │   ├── coords.rs           # the ONE desktop-to-image conversion, with its tests
+│       │   ├── display.rs          # DPI awareness and the live display layout
+│       │   └── screen.rs           # the chosen path: one copy of the whole virtual screen
+│       └── source/
+│           ├── mod.rs              # the image source: sniff, open, the decoded-image contract, sRGB once
+│           ├── raster.rs           # PNG, JPEG, BMP, GIF, WebP through the image crate; orientation once
+│           ├── svg.rs              # SVG through resvg, rasterized at a chosen scale
+│           ├── wic.rs              # TIFF, HEIC, AVIF through the Windows Imaging Component
+│           ├── fixtures.rs         # --make-fixtures: the marked test files, feature-gated
+│           └── report.rs           # --decode-report: one evidence line per file, and the hash check
 ├── editor/                         # the web view surface, a placeholder until S0.4
 │   ├── index.html                  # the editor: the scene, the callout, the text layer
 │   ├── editor-checks.js            # --editor-check: S0.4's evidence, not product code
@@ -114,4 +121,5 @@ anything.
 | The host | `host/*` | Tray, hotkey, freeze, overlay, the region service and the editor window today; decode, the store and the clipboard later. It never renders an annotation. Check-only code is behind the `stage0-checks` feature. |
 | The pixel crate | `host/pixels/*` | Crop and resample, non-generic on purpose so the work is compiled optimised even in a debug build. Knows nothing about screens, windows or files. |
 | The one conversion | `host/src/capture/coords.rs` | The only place allowed to subtract a frame origin. Part 5 names the four coordinate spaces; this file is the edge between two of them. |
+| The image source | `host/src/source/*` | Path in, decoded frame out, for all nine formats. Only ever reads a file (rule 11); the decode report hashes every file before and after to prove it. Orientation and the colour profile are applied here, once. |
 | The editor | `editor/*` | The scene, the callout and the text layer. Laid out in image pixels; one CSS transform does the zoom. Embedded into the binary at build time, so an edit here needs a rebuild. |

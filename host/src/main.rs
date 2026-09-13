@@ -20,6 +20,7 @@ mod editor;
 mod overlay;
 #[cfg(feature = "stage0-checks")]
 mod selftest;
+mod source;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -235,10 +236,28 @@ fn editor_run(demo: bool) -> i32 {
     }
 }
 
+/// The value after a flag, as in `--open C:\\pictures\\a.png` or `--open=...`.
+fn arg_value(flag: &str) -> Option<String> {
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        if let Some(value) = arg.strip_prefix(&format!("{flag}=")) {
+            return Some(value.to_string());
+        }
+        if arg == flag {
+            return args.next();
+        }
+    }
+    None
+}
+
 /// Whether this run should fire a capture on its own, drive the overlay with synthesized
 /// input, and screenshot the editor that results. The product path, minus the keypress.
 #[cfg(feature = "stage0-checks")]
 static CAPTURE_DEMO: AtomicBool = AtomicBool::new(false);
+
+/// A file to open, screenshot, step through and screenshot again, then exit.
+#[cfg(feature = "stage0-checks")]
+static OPEN_DEMO: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
 fn main() {
     // Before anything else, and before any window or device context exists.
@@ -266,7 +285,29 @@ fn main() {
         if std::env::args().any(|a| a == "--capture-demo") {
             CAPTURE_DEMO.store(true, Ordering::SeqCst);
         }
+        if let Some(path) = arg_value("--open-demo") {
+            *OPEN_DEMO.lock().expect("the open-demo slot") = Some(path);
+        }
+        if let Some(dir) = arg_value("--make-fixtures") {
+            println!("dpi at startup  : {awareness}");
+            let code = match source::fixtures::make(std::path::Path::new(&dir)) {
+                Ok(()) => 0,
+                Err(err) => {
+                    println!("fixtures FAILED: {err}");
+                    1
+                }
+            };
+            std::process::exit(code);
+        }
+        if let Some(dir) = arg_value("--decode-report") {
+            println!("dpi at startup  : {awareness}");
+            std::process::exit(source::report::run(std::path::Path::new(&dir)));
+        }
     }
+
+    // A file to open into the editor at startup, which is how S0.5 shows an opened file on
+    // the same canvas a capture uses. The product's own file activation is S1.2.
+    let open_at_start = arg_value("--open");
 
     let cfg = config::load();
 
@@ -352,10 +393,28 @@ fn main() {
 
             log("ready: waiting on the hotkey or the tray");
 
+            if let Some(path) = open_at_start.clone() {
+                std::thread::spawn(move || {
+                    let started = std::time::Instant::now();
+                    match editor::open_path(std::path::Path::new(&path)) {
+                        Ok(show_ms) => log(&format!(
+                            "opened {path}: editor shown {} ms after the open began, the show itself {show_ms} ms",
+                            started.elapsed().as_millis()
+                        )),
+                        Err(err) => log(&format!("OPEN FAILED for {path}: {err}")),
+                    }
+                });
+            }
+
             #[cfg(feature = "stage0-checks")]
             if CAPTURE_DEMO.load(Ordering::SeqCst) {
                 let handle = app.handle().clone();
                 std::thread::spawn(move || selftest::capture_demo(handle, begin_capture));
+            }
+            #[cfg(feature = "stage0-checks")]
+            if let Some(path) = OPEN_DEMO.lock().ok().and_then(|slot| slot.clone()) {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || selftest::open_demo(handle, path));
             }
             Ok(())
         })

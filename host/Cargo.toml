@@ -12,7 +12,7 @@ members = ["pixels"]
 # The diagnostic runs and the commands they need: --selftest, --bench, --editor-check,
 # --editor-demo, --capture-demo. A product build has none of them, so no command lets the
 # page freeze the screen or write a file (part 5's boundary, review T7).
-stage0-checks = []
+stage0-checks = ["dep:tiff"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -32,10 +32,19 @@ windows = { version = "0.61", features = [
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_System_LibraryLoader",
     "Win32_System_Console",
+    "Win32_Graphics_Imaging",
+    "Win32_System_Com",
 ] }
 
-# Only to write the evidence PNG for a Stage 0 run; the composer is not this crate yet.
-image = { version = "0.25", default-features = false, features = ["png"] }
+# The one decode route (part 6a): PNG, JPEG, BMP, GIF and WebP here, SVG through resvg,
+# TIFF, HEIC and AVIF through the Windows imaging stack (windows crate, above). qcms
+# converts an embedded colour profile to sRGB once, at decode. PNG encoding is also how a
+# Stage 0 run leaves evidence on disk.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "gif", "webp"] }
+qcms = "0.3"
+resvg = "0.48"
+# Only the fixture generator writes TIFF; the product reads it through WIC.
+tiff = { version = "0.9", optional = true }
 
 # The per-pixel work on the interactive path, optimised in every profile (see below).
 recon-pixels = { path = "pixels" }
@@ -55,4 +64,33 @@ opt-level = 3
 opt-level = 3
 
 [profile.dev.package.png]
+opt-level = 3
+
+# The decoders and the SVG renderer, for the same reason: a debug-profile decode of a
+# large file would be a number about the profile, not about the format.
+[profile.dev.package.zune-jpeg]
+opt-level = 3
+
+[profile.dev.package.gif]
+opt-level = 3
+
+[profile.dev.package.image-webp]
+opt-level = 3
+
+[profile.dev.package.fdeflate]
+opt-level = 3
+
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+
+[profile.dev.package.resvg]
+opt-level = 3
+
+[profile.dev.package.usvg]
+opt-level = 3
+
+[profile.dev.package.tiny-skia]
+opt-level = 3
+
+[profile.dev.package.qcms]
 opt-level = 3

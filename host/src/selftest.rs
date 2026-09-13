@@ -531,6 +531,46 @@ pub fn capture_demo(app: tauri::AppHandle, begin: fn()) {
     app.exit(0);
 }
 
+/// Opens a file into the product's editor, screenshots it, steps to its last frame or
+/// page and screenshots again, then exits. Run with --open-demo <file>.
+pub fn open_demo(app: tauri::AppHandle, path: String) {
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    let started = Instant::now();
+    match crate::editor::open_path(std::path::Path::new(&path)) {
+        Ok(show_ms) => println!(
+            "open demo: shown {} ms after the open began, the show itself {show_ms} ms",
+            started.elapsed().as_millis()
+        ),
+        Err(err) => {
+            println!("open demo: OPEN FAILED: {err}");
+            app.exit(1);
+            return;
+        }
+    }
+    std::thread::sleep(std::time::Duration::from_millis(1800));
+    match crate::editor::shoot_window(&app, "s05-open-first.png") {
+        Ok(p) => println!("open demo: first frame at {p}"),
+        Err(err) => println!("open demo: no screenshot, {err}"),
+    }
+    match crate::editor::editor_image_info() {
+        Ok(info) if info.count > 1 => {
+            let last = info.count - 1;
+            match crate::editor::editor_frame(last) {
+                Ok(info) => println!("open demo: stepped to {} of {}", info.index + 1, info.count),
+                Err(err) => println!("open demo: STEP FAILED: {err}"),
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1200));
+            match crate::editor::shoot_window(&app, "s05-open-last.png") {
+                Ok(p) => println!("open demo: last frame at {p}"),
+                Err(err) => println!("open demo: no screenshot, {err}"),
+            }
+        }
+        Ok(_) => println!("open demo: one frame, nothing to step to"),
+        Err(err) => println!("open demo: no image info: {err}"),
+    }
+    app.exit(0);
+}
+
 fn move_to(x: i32, y: i32) {
     unsafe {
         let _ = SetCursorPos(x, y);

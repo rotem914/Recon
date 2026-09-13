@@ -384,8 +384,12 @@
     const zoomText = Math.abs(model.zoom - model.fitZoom) < 0.0005
       ? `fit (${(model.zoom * 100).toFixed(0)}%)`
       : `${(model.zoom * 100).toFixed(0)}%`;
+    const where = model.image.file
+      ? `${model.image.file}  ${model.image.kind}` +
+        (model.image.count > 1 ? `  ${model.image.index + 1} of ${model.image.count}  [ ] to step` : '')
+      : model.image.source;
     hud.textContent =
-      `${model.image.width}x${model.image.height}  ${model.image.source}\n` +
+      `${model.image.width}x${model.image.height}  ${where}\n` +
       `zoom ${zoomText}   pan ${Math.round(model.pan.x)},${Math.round(model.pan.y)}   ` +
       `callouts ${model.callouts.length}   text ${sizeShown}px   dpr ${dpr()}\n` +
       `0 fit  1 actual size  +/- zoom  Ctrl +/- text size  arrows pan  click to add  Esc commit  Del remove`;
@@ -537,6 +541,15 @@
     }
     if (event.key === 'Enter' && model.selected) { startEditing(model.selected); event.preventDefault(); return; }
 
+    // Frames of an animation or pages of a file, by index, which is §3.7's contract made
+    // visible: the frame on screen is the one asked for, never a default first frame.
+    if ((event.key === ']' || event.key === '[') && model.image.count > 1) {
+      const next = event.key === ']'
+        ? Math.min(model.image.count - 1, model.image.index + 1)
+        : Math.max(0, model.image.index - 1);
+      if (next !== model.image.index) invoke('editor_frame', { index: next }).catch((err) => console.error('frame', err));
+      return;
+    }
     const step = 120;
     if (event.key === '0') { setZoom(model.fitZoom); return; }
     if (event.key === '1') { setZoom(1); return; }
@@ -584,6 +597,15 @@
   // ---------------------------------------------------------------- startup and the checks
 
   const loadImage = async (info) => {
+    // Stepping a frame keeps the view and the notes: it is the same picture at another
+    // moment, and a note placed on frame 2 is meant to stay while frame 3 is looked at.
+    const sameFile = model.image.file && info.file === model.image.file
+      && info.width === model.image.width && info.height === model.image.height;
+    if (sameFile) {
+      model.image = info;
+      await paintRegion();
+      return;
+    }
     model.image = info;
     model.callouts = [];
     model.nextNumber = 1;

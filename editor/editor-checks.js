@@ -368,6 +368,32 @@ export async function runChecks(editor, invoke) {
     editor.layoutScene();
   }
 
+  // ---------------------------------------------------------------- 10. SVG against the browser
+  say('');
+  say('SVG: resvg against this web view, on the three shapes of trouble (S0.5)');
+  {
+    const cases = await invoke('editor_svg_cases');
+    for (const c of cases) {
+      const img = new Image();
+      const loaded = new Promise((resolve, reject) => { img.onload = resolve; img.onerror = () => reject(new Error('the svg did not load')); });
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(c.svg);
+      await loaded;
+      const canvas = document.createElement('canvas');
+      canvas.width = c.width;
+      canvas.height = c.height;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      const pixels = new Uint8Array(ctx.getImageData(0, 0, c.width, c.height).data.buffer);
+      const verdict = await invoke('editor_svg_compare', pixels, { headers: { name: c.name } });
+      const where = verdict.bbox ? ` in the box ${verdict.bbox.join(',')}` : '';
+      // Text is the one case where a different font choice legitimately moves pixels, so
+      // its bar is looser; shapes, fills and masks have no such excuse.
+      const bar = c.name.includes('text') ? 6 : 1.5;
+      check(`${c.name}: resvg and the web view agree`, verdict.percent <= bar,
+        `${verdict.differing} of ${verdict.pixels} pixels differ, ${verdict.percent.toFixed(2)}%${where}`);
+    }
+  }
+
   say('');
   if (failures === 0) {
     say('RESULT: every check passed.');

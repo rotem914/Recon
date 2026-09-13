@@ -24,8 +24,9 @@ use std::time::Instant;
 
 use tauri::{AppHandle, Emitter, Manager, UriSchemeResponder, WebviewUrl, WebviewWindowBuilder};
 
-use crate::capture::coords::ImageRect;
+use crate::capture::coords::{FrameGeometry, ImageRect};
 use crate::capture::Frame;
+use crate::source::{self, Kind, Opened};
 
 // ---------------------------------------------------------------- the image, and its levels
 
@@ -81,21 +82,37 @@ impl Image {
     }
 }
 
+/// An opened file behind the current image: where it came from, and the frame or page
+/// on screen, so the page can step through the rest by index (§3.7's addressable frame).
+pub struct Document {
+    pub opened: Opened,
+    pub index: u32,
+}
+
 /// What the editor currently holds. One image, because Stage 0 is one image.
 pub struct Editor {
     image: Mutex<Option<Arc<Image>>>,
+    /// Set when the image came from a file; a capture leaves it empty.
+    document: Mutex<Option<Document>>,
 }
 
 impl Editor {
     fn new() -> Self {
         Self {
             image: Mutex::new(None),
+            document: Mutex::new(None),
         }
     }
 
     pub fn set_frame(&self, frame: Frame) {
         if let Ok(mut slot) = self.image.lock() {
             *slot = Some(Arc::new(Image::new(frame)));
+        }
+    }
+
+    fn set_document(&self, document: Option<Document>) {
+        if let Ok(mut slot) = self.document.lock() {
+            *slot = document;
         }
     }
 
@@ -156,12 +173,80 @@ pub fn show(app: &AppHandle) -> Result<u128, String> {
 /// review (F49): the page is told the image changed, loads it through the region service,
 /// and the window is shown. Returns how long the show took.
 pub fn present(frame: Frame) -> Result<u128, String> {
+    state().set_document(None);
+    present_frame(frame)
+}
+
+fn present_frame(frame: Frame) -> Result<u128, String> {
     let app = app()?;
     state().set_frame(frame);
     let info = editor_image_info()?;
     app.emit("capture-ready", &info)
         .map_err(|err| err.to_string())?;
     show(app)
+}
+
+/// Opens a file through the one image source and shows its first frame or page on the
+/// same canvas a capture uses. The file is read once and never written (rule 11).
+pub fn open_path(path: &std::path::Path) -> Result<u128, String> {
+    let started = Instant::now();
+    let mut opened = source::open(path).map_err(|err| err.to_string())?;
+    let open_ms = started.elapsed().as_millis();
+    let decoded = opened.frame(0).map_err(|err| err.to_string())?;
+    println!(
+        "opened {}: {} {}x{}, {:?}, open {} ms, frame 0 {} ms, {}, {}",
+        path.display(),
+        opened.format.name(),
+        opened.width,
+        opened.height,
+        opened.kind,
+        open_ms,
+        started.elapsed().as_millis() - open_ms,
+        opened.notes.color,
+        opened.notes.alpha
+    );
+    let name = opened.format.name();
+    state().set_document(Some(Document { opened, index: 0 }));
+    present_frame(frame_of(decoded, name))
+}
+
+fn frame_of(decoded: source::DecodedFrame, name: &'static str) -> Frame {
+    Frame {
+        geometry: FrameGeometry {
+            origin_x: 0,
+            origin_y: 0,
+            width: decoded.width,
+            height: decoded.height,
+        },
+        rgba: decoded.rgba,
+        source: name,
+    }
+}
+
+/// The page asks for another frame or page of the opened file, by index.
+#[tauri::command]
+pub fn editor_frame(index: u32) -> Result<ImageInfo, String> {
+    let (decoded, name) = {
+        let mut slot = state()
+            .document
+            .lock()
+            .map_err(|_| "the document is poisoned")?;
+        let document = slot
+            .as_mut()
+            .ok_or("the image on screen did not come from a file")?;
+        let decoded = document
+            .opened
+            .frame(index)
+            .map_err(|err| err.to_string())?;
+        document.index = index;
+        (decoded, document.opened.format.name())
+    };
+    state().set_frame(frame_of(decoded, name));
+    let info = editor_image_info()?;
+    app()?
+        .emit("capture-ready", &info)
+        .map_err(|err| err.to_string())?;
+    Ok(info)
 }
 
 /// Registers everything the editor needs on a builder: the commands, and the region scheme.
@@ -175,6 +260,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_show,
         editor_window_metrics,
         editor_log,
+        editor_frame,
         checks::editor_load_probe,
         checks::editor_load_screen,
         checks::editor_look_at_window,
@@ -185,6 +271,8 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         checks::editor_shoot_window,
         checks::editor_export_layer,
         checks::editor_exit,
+        checks::editor_svg_cases,
+        checks::editor_svg_compare,
     ]);
     #[cfg(not(feature = "stage0-checks"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
@@ -192,6 +280,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_show,
         editor_window_metrics,
         editor_log,
+        editor_frame,
     ]);
     builder.register_asynchronous_uri_scheme_protocol("region", |_ctx, request, responder| {
         let query = request.uri().query().unwrap_or_default().to_string();
@@ -216,15 +305,49 @@ pub struct ImageInfo {
     pub width: u32,
     pub height: u32,
     pub source: String,
+    /// The file's name when the image came from one, empty for a capture.
+    pub file: String,
+    /// "still", "animation", "pages" or "vector".
+    pub kind: String,
+    /// The frame or page on screen, and how many there are. 0 of 1 for a capture.
+    pub index: u32,
+    pub count: u32,
 }
 
 #[tauri::command]
 pub fn editor_image_info() -> Result<ImageInfo, String> {
     let image = state().image().ok_or("no image is loaded")?;
+    let (file, kind, index, count) = match state().document.lock() {
+        Ok(slot) => match slot.as_ref() {
+            Some(document) => (
+                document
+                    .opened
+                    .path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default(),
+                match document.opened.kind {
+                    Kind::Still => "still",
+                    Kind::Animation { .. } => "animation",
+                    Kind::Pages { .. } => "pages",
+                    Kind::Vector { .. } => "vector",
+                }
+                .to_string(),
+                document.index,
+                document.opened.kind.count(),
+            ),
+            None => (String::new(), "still".to_string(), 0, 1),
+        },
+        Err(_) => (String::new(), "still".to_string(), 0, 1),
+    };
     Ok(ImageInfo {
         width: image.frame.width(),
         height: image.frame.height(),
         source: image.frame.source.to_string(),
+        file,
+        kind,
+        index,
+        count,
     })
 }
 
@@ -693,6 +816,116 @@ mod checks {
     #[tauri::command]
     pub fn editor_exit(app: AppHandle, code: i32) {
         app.exit(code);
+    }
+
+    /// One SVG fixture for the page to render on its own: the source text and the size
+    /// resvg rendered it at.
+    #[derive(serde::Serialize)]
+    pub struct SvgCase {
+        pub name: String,
+        pub svg: String,
+        pub width: u32,
+        pub height: u32,
+    }
+
+    fn svg_fixture_dir() -> std::path::PathBuf {
+        std::env::current_exe()
+            .map(|exe| exe.with_file_name("s05-svg-cases"))
+            .unwrap_or_else(|_| "s05-svg-cases".into())
+    }
+
+    /// The three SVG fixtures, generated beside the executable if they are not there.
+    #[tauri::command]
+    pub fn editor_svg_cases() -> Result<Vec<SvgCase>, String> {
+        let dir = svg_fixture_dir();
+        if !dir.join("svg-mask-and-clip.svg").exists() {
+            source::fixtures::make_svgs(&dir).map_err(|err| err.to_string())?;
+        }
+        let mut cases = Vec::new();
+        for name in [
+            "svg-text-labels.svg",
+            "svg-css-style-block.svg",
+            "svg-mask-and-clip.svg",
+        ] {
+            let path = dir.join(name);
+            let svg = std::fs::read_to_string(&path).map_err(|err| err.to_string())?;
+            let mut opened = source::open(&path).map_err(|err| err.to_string())?;
+            let frame = opened.frame(0).map_err(|err| err.to_string())?;
+            cases.push(SvgCase {
+                name: name.to_string(),
+                svg,
+                width: frame.width,
+                height: frame.height,
+            });
+        }
+        Ok(cases)
+    }
+
+    /// The page's rendering of one case, compared pixel by pixel against resvg's. Reports
+    /// how many pixels differ by more than a tolerance, and where the worst region is, so a
+    /// dropped element shows up as a block of differences rather than a percentage.
+    #[derive(serde::Serialize)]
+    pub struct SvgVerdict {
+        pub name: String,
+        pub pixels: usize,
+        pub differing: usize,
+        pub percent: f64,
+        /// The bounding box of the differing pixels, if any: left, top, right, bottom.
+        pub bbox: Option<[u32; 4]>,
+    }
+
+    #[tauri::command]
+    pub fn editor_svg_compare(request: tauri::ipc::Request<'_>) -> Result<SvgVerdict, String> {
+        // A raw body carries no JSON arguments, so the case name travels as a header.
+        let name = request
+            .headers()
+            .get("name")
+            .and_then(|v| v.to_str().ok())
+            .ok_or("no case name header")?
+            .to_string();
+        let bytes = match request.body() {
+            tauri::ipc::InvokeBody::Raw(bytes) => bytes.clone(),
+            tauri::ipc::InvokeBody::Json(_) => return Err("the pixels arrived as JSON".into()),
+        };
+        let path = svg_fixture_dir().join(&name);
+        let mut opened = source::open(&path).map_err(|err| err.to_string())?;
+        let ours = opened.frame(0).map_err(|err| err.to_string())?;
+        let count = (ours.width * ours.height) as usize;
+        if bytes.len() != count * 4 {
+            return Err(format!(
+                "the page sent {} bytes for {}x{}",
+                bytes.len(),
+                ours.width,
+                ours.height
+            ));
+        }
+        let mut differing = 0usize;
+        let mut bbox: Option<[u32; 4]> = None;
+        for i in 0..count {
+            let a = &ours.rgba[i * 4..i * 4 + 4];
+            let b = &bytes[i * 4..i * 4 + 4];
+            // Both are straight alpha; compare premultiplied so a transparent pixel's
+            // colour noise does not count, and allow antialiasing at edges.
+            let pa = |p: &[u8], c: usize| (p[c] as u32 * p[3] as u32) / 255;
+            let differs =
+                (0..3).any(|c| pa(a, c).abs_diff(pa(b, c)) > 48) || a[3].abs_diff(b[3]) > 48;
+            if differs {
+                differing += 1;
+                let x = (i as u32) % ours.width;
+                let y = (i as u32) / ours.width;
+                bbox = Some(match bbox {
+                    None => [x, y, x, y],
+                    Some([l, t, r, b]) => [l.min(x), t.min(y), r.max(x), b.max(y)],
+                });
+            }
+        }
+        Ok(SvgVerdict {
+            name,
+            pixels: count,
+            differing,
+            percent: differing as f64 * 100.0 / count.max(1) as f64,
+            bbox,
+        })
     }
 
     /// What the export spike found, for the S0.6 record.
