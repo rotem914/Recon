@@ -11,7 +11,8 @@ lost quietly.
 Every check that could run ran on this tree before and after the fixes: fmt, clippy with
 `-D warnings` on every target and feature, both builds, 40 unit tests, the 74 editor checks,
 the decode report on the 28 real files (every file hashed the same, nothing written), the
-self test with the machine idle, and a five-run measurement in release.
+self test with the machine idle, and a five-run measurement in release (5 of 6 attempts
+clean, overlay usable at most 80.1 ms, editor usable at most 135.0 ms, floor 167 MB).
 
 Counts: 1 blocking, 3 important, 8 nits. Introduced by Stage 0: all of them; nothing here
 predates this repository. Fixed in this pass: R1 to R5, R11 and R12. Reported and left: R6
