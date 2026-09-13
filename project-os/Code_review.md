@@ -130,8 +130,10 @@ Name, in one sentence, the worst thing this project's code can do. Write it belo
 Then treat that class as **always blocking**, even when the screen looks fine —
 that is what calibrates the bar for everything else.
 
-> **Fill this in.** *Example to replace: "The worst thing this app's code can do
-> is silently lose or corrupt work a user already saved."*
+The worst thing Recon's code can do is silently alter or lose what the user believes
+is kept: a source pixel that changed on its way to the file, a note whose text or line
+break vanished on commit, or an external original touched by being viewed (rule 11).
+Always blocking, however the screen looks.
 
 ## Universal review dimensions
 
@@ -165,9 +167,9 @@ project actually is. For each one, the question to ask:
 
 ## Always-check list — this project's own
 
-**Empty on purpose.** This is the section that makes a review worth running, and
-it has to come from Recon, not from a catalogue. Seed it with the
-bootstrap recipe below, then let the calibration loop grow it.
+Seeded on 2026-09-13 from the first four Stage 0 steps and the review of them. It has to
+come from Recon, not from a catalogue: re-run the bootstrap recipe below when the code has
+moved, and let the calibration loop grow it.
 
 One row per finding-class: a short title, a severity, something concrete enough to
 search for, and a pointer to where the reasoning lives. Never restate the record —
@@ -176,11 +178,46 @@ one is worth trusting. Group the rows under the dimensions above.
 
 ### Data & persistence integrity
 
-> *Example row — delete this one when you write your first real one.*
->
-> - 🔴 **Every write is atomic** — a save writes to a temporary file and then swaps
->   it into place. A direct in-place write can leave a half-written file if the
->   process dies mid-save. (Source: `project-os/Decisions.md`, the storage entry.)
+- 🔴 **The preserved source never round-trips a canvas.** A premultiplied canvas
+  cannot return a straight-alpha pixel unchanged, so any path that draws the original
+  into a canvas and reads it back breaks exact equality. (Source: `project-os/Decisions.md`,
+  one native decode route.)
+- 🔴 **An external file is only ever read.** No write, rename, re-encode or copy into
+  Recon's storage on any viewing path. (Source: `CLAUDE.md` rule 11.)
+- 🔴 **Text leaves an editable element intact.** Read committed text in a way that keeps
+  line breaks; `textContent` on a contenteditable drops them. (Source:
+  `notes/2026-09-13-review.md`, T6.)
+
+### State & concurrency
+
+- 🟠 **A late answer is dropped, not painted.** Any request for a view that the user
+  has since left must be discarded by ticket on the page and superseded in the host.
+  (Source: `project-os/Plan.md` part 5 display policy; `notes/2026-09-13-review.md`, T8.)
+- 🟠 **A guard releases on drop.** A flag that is set on entry and cleared on exit stays
+  set after a panic; use an RAII guard. (Source: `host/src/main.rs`, `Selecting`.)
+
+### Contract & schema
+
+- 🟠 **Dimensions travel in the body, not in headers.** A cross-origin fetch cannot read
+  a custom header unless it is exposed, and the page then reads zeroes. (Source:
+  `host/src/editor.rs`, `with_size_prefix`.)
+
+### Process & environment
+
+- 🔴 **DPI awareness is declared before any window or device context exists.** An unaware
+  process is handed virtualised coordinates that look plausible and are wrong. (Source:
+  `host/src/capture/display.rs`, `make_per_monitor_aware`.)
+- 🟠 **The page's `devicePixelRatio` is not trusted.** It reported 1 on a 225% display;
+  the ratio is measured against the host's window metrics. (Source: `editor/index.html`,
+  `measureRatio`.)
+- 🟠 **A figure carries its build profile.** A timing from `target/debug` is not the
+  product's number; say which profile, and re-measure in release before a design rests on
+  it. (Source: `notes/2026-09-13-review.md`, T3.)
+- 🟠 **Check-only commands are not in the product build.** A command that lets the page
+  capture the screen or write a file lives behind a cargo feature. (Source:
+  `notes/2026-09-13-review.md`, T7.)
+- 🟠 **An editor page edit needs a rebuild.** The editor is embedded at build time, so a
+  check run without `cargo build` runs the old page. (Source: `project-os/History.md`, S0.4.)
 
 ## Bootstrap recipe — fill the list from this project's own memory
 

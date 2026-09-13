@@ -59,8 +59,10 @@ corrupt their work, it is blocking** — no matter how good the page looks.
 Name, in one sentence, the worst visual or interaction defect this project
 produces. Write it below, and make that class always blocking.
 
-> **Fill this in.** *Example to replace: "The dangerous defects here are state, not
-> pixels — an edit that reports success while nothing was written."*
+The dangerous defects here are the ones no assertion notices: a picture in the wrong
+place, text that cannot be read, a note whose typed content is not what comes back. Every
+visible change gets looked at, in a screenshot of the real window, after its checks pass.
+Blocking: anything that loses or alters what the user typed or captured.
 
 ## The pass method
 
@@ -145,8 +147,8 @@ app, not something to read. Add or drop dimensions to fit the product.
 
 ## Always-look-for list — this project's own
 
-**Empty on purpose.** This is where the pass earns its keep, and it has to come
-from Recon's real defects. Seed it with the bootstrap recipe below, then
+Seeded on 2026-09-13 from the defects the first four Stage 0 steps produced. It has to come
+from Recon's real defects: re-run the bootstrap recipe below when the app has moved, and
 let the calibration loop grow it.
 
 One row per defect-class: a short check, a severity, the **action that exercises
@@ -154,11 +156,26 @@ it**, and a pointer to the record. Group the rows under the dimensions above.
 
 ### Persistence & reload
 
-> *Example row — delete this one when you write your first real one.*
->
-> - 🔴 **A save reaches storage** — edit a field, save, reload the page, then open
->   the stored record directly. The screen saying "Saved" is not evidence.
->   (Source: `project-os/History.md`, the save-path entry.)
+- 🔴 **What you type is what comes back.** Type a two-line note with Enter between the
+  lines, press Esc, read the bubble: two lines. (Source: `notes/2026-09-13-review.md`, T6.)
+
+### Layout, overflow & content stress
+
+- 🟠 **The image sits where a viewer would put it.** Open something smaller than the window
+  and look: centred, not top-left. Twenty-six passing assertions missed this once.
+  (Source: `project-os/History.md`, F45.)
+- 🟠 **A note is readable at the zoom the user is at.** Look at the fit view of a wide
+  capture; if the text is unreadable, that is the finding, whatever the checks say.
+  (Source: `project-os/Plan.md`, F46.)
+
+### States & interaction
+
+- 🔴 **The first frame is current.** After the hidden editor is shown, the screen itself,
+  not the page, holds what the page painted; sample it 40 ms and 300 ms after the show.
+  (Source: `host/src/editor.rs`, `editor_show_and_look`.)
+- 🟠 **A check that cannot fail is not a check.** Before trusting a green run, ask what
+  would have turned each line red; three S0.4 checks were green while measuring the
+  wrong thing. (Source: `project-os/QA.md` §12.)
 
 ## Bootstrap recipe — fill the list from this project's own memory
 

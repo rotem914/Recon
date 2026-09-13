@@ -8,8 +8,8 @@ Status: consolidated on 2026-09-10. Approved for the Stage 0 experiment.
 The stack in part 5 is a **recommended candidate, not a settled decision**: Stage 0 has
 permission to reject it, and part 8 says on what evidence. The decode route and the format
 decisions inside that candidate are settled (part 6a).
-Not built: nothing here exists yet, and no timing or memory figure in this document came
-from running anything.
+Built so far: S0.1 to S0.4, four islands that have not yet run as one thing. Every timing
+in part 11 came from a debug build until part 11 says otherwise.
 
 Owner: Rotem. Personal tool, intended for an open-source release.
 
@@ -1149,9 +1149,40 @@ instead of asserting, because the number is what the decision is about: a 20-pix
 is unreadable at 25%, and a 40-pixel one is comfortable.
 
 ----
+**[ ] S0.4b · One thing, end to end, and the numbers made real**
+
+Model: Fable 5.1. It changes the product path and it decides what part 11 means.
+
+Added on 2026-09-13 from the review in `notes/2026-09-13-review.md`, and it runs before
+S0.5. The four steps above are islands: the hotkey path ends by writing a PNG to disk, and
+the editor is built only by its own diagnostic runtime. This step joins them and then
+re-measures everything on the build the product would ship.
+
+Delivers: the editor created hidden at startup on the product path, a capture handed to it
+after the selection and shown at fit; the fit view served from a pyramid built once per
+image, so opening a 4K image is not a one-second wait (F43); the check-only and demo-only
+commands behind a cargo feature so the shipping binary has no command that lets the page
+capture the screen or write a file; a region worker that serves only the newest request;
+and every figure in part 11 re-measured with `--release` and recorded beside its debug
+number.
+
+Evidence: hotkey, drag, and the editor opens with that region on the canvas. The fit view
+of the 3840x2160 probe under 50 ms in release. The 33 editor checks and the self test
+passing on both profiles. Part 11 carrying two columns.
+
+----
 **[ ] S0.5 · Open and decode an existing image**
 
-Model: Opus 5. Format behavior, and a decision gate for the product surface.
+Model: Fable 5.1. Format behavior, and a decision gate for the product surface.
+
+**What closes here, and what is carried.** Three of the gates below run through an internal
+save, a restart and an export, which are S1.8 and S0.6 and do not exist when this step runs.
+So S0.5 closes on: decode, display, the frame or page reaching the model by index, the
+byte-for-byte external-file check, and the per-format evidence line. The export leg of the
+animation, orientation, colour and SVG tests is a carried gate in S0.6; the save-and-restart
+leg is a carried gate in S1.8. Neither is ticked here on partial evidence. And S0.6's export
+spike runs before this step's format work, because it is a day against a week and it decides
+the composer.
 
 One decode route, in the host, for all nine formats (part 6a). The web view decodes nothing.
 
@@ -1208,7 +1239,17 @@ required one.
 ----
 **[ ] S0.6 · Output fidelity and the clipboard**
 
-Model: Opus 5. Fidelity, and the one place work can be lost.
+Model: Fable 5.1. Fidelity, and the one place work can be lost.
+
+**The export spike comes first, before S0.5.** Serialize the demo scene with fonts inlined,
+draw it, read it back, encode it, send it to the host, composite it over the capture at the
+margin offset, write the file, and record the WebView2 version beside the result. One
+composited PNG whose source area equals the capture byte for byte. If reading back throws,
+part 8's in-process composer row fires now, before nine formats are wired to a route that
+does not exist.
+
+**Carried from S0.5:** the export leg of the animation frame, orientation, colour and SVG
+raster size tests. The frame or page chosen at S0.5 is what the export shows.
 
 Delivers: the composer used for both display and export, and a native clipboard operation
 publishing several image formats.
@@ -1265,7 +1306,7 @@ beside each result.
 ----
 **[ ] S0.7 · Instrumentation and the thirty-run measurement**
 
-Model: Sonnet 5. Mechanical, known shape.
+Model: Opus 5. Mechanical, known shape. Release build only.
 
 Delivers: six marks per run and two reported intervals, a CSV per run set, and a memory
 sample that separates the live document from retained history.
@@ -1297,7 +1338,7 @@ release discipline that produced it.
 ----
 **[ ] S0.8 · The limits, and the go or no-go report**
 
-Model: Opus 5. Judgment on evidence.
+Model: Fable 5.1. Judgment on evidence.
 
 Delivers: what the platform actually did on this machine, and one short report.
 
@@ -1353,44 +1394,49 @@ work rather than a feature count.
 
 - [ ] S1.1 Capture lifecycle: repeated captures, hide and show, the remembered return
       target, no overwriting of a previous capture, and the empty-state line naming the
-      hotkey.
+      hotkey. Model: Opus 5, documented behaviour wired as documented; plus the content
+      security policy and the region scheme's allowed origin, decided here where the
+      product path first builds the window.
 - [ ] S1.2 File opening and activation: the file association, Open With, drag and drop and
       `Ctrl+O`, both when Recon is already running and when it starts because a file was
       activated, one window rather than a second instance, plus the type registration and
-      the link into the Windows default-apps settings. Model: Opus 5, it is the entry point.
+      the link into the Windows default-apps settings. Model: Fable 5.1, it is the entry point.
 - [ ] S1.3 The viewing surface: fit to window on open, actual size, zoom, pan, fullscreen,
-      and the filename and pixel dimensions on screen.
+      and the filename and pixel dimensions on screen. Model: Opus 5.
 - [ ] S1.4 Folder navigation: previous and next across the supported types in the opened
       file's folder, the defined numeric-aware order, the position indicator, and the named
-      active context so it can never be confused with Recon history.
+      active context so it can never be confused with Recon history. Model: Opus 5.
 - [ ] S1.5 The transition into annotation: viewing mode arms no tool and no click can create
       a callout, an explicit Annotate action switches modes, and leaving annotation keeps the
       work. Annotate creates a managed document with its preserved decoded image, or resumes
       the one that already exists for that source, never a second one. Opening a file that
       has a document shows the file with the route to its saved edit (§3.3).
-      Model: Opus 5, it is the boundary that protects the originals.
+      Model: Fable 5.1, it is the boundary that protects the originals.
 - [ ] S1.6 Callout completion: the deterministic candidate positions, the neutral margin when
       a bubble cannot fit, and stable numbering with gaps, identical in the editor and in
-      every output. Model: Opus 5.
+      every output. Model: Fable 5.1.
 - [ ] S1.7 The keyboard contract, routed by context, with the stage column honored, the
       viewing and navigation keys inert while a note is being edited, and undo and redo in
-      full against the acceptance sequence in §3.6.
+      full against the acceptance sequence in §3.6. Model: Opus 5, the contract is written.
 - [ ] S1.8 The document store: the schema from part 5, plus the source path and the page or
       frame for an annotated file, debounced autosave, forced saves on blur, navigation,
       opening another file, hide and quit, reopen after restart, and a visible failure that
-      never claims to have saved. Model: Opus 5, it touches stored work.
+      never claims to have saved. Model: Fable 5.1, it touches stored work.
+      **Carried from S0.5:** the save-and-restart leg of the animation frame, orientation,
+      colour and SVG raster size tests.
 - [ ] S1.9 History navigation: previous and next through documents, captures and annotated
       files alike, the position indicator, shortcuts to the first and last, and the context
-      activation rules in §3.4.
+      activation rules in §3.4. Model: Opus 5.
 - [ ] S1.10 Copy and Return, including every failure path: a failed clipboard, a failed save,
       a refused activation, a closed target application, and a user who moved on
-      mid-operation.
+      mid-operation. Model: Fable 5.1, every branch is a way to lose work.
 - [ ] S1.11 PNG Save As: a new file every time, a suggested name derived from the source and
       marked as annotated, no path by which an external original is the default target, and
       an available name offered when the chosen one exists. There is no overwrite path.
+      Model: Fable 5.1, it writes files next to originals.
 - [ ] S1.12 The trial: thirty captures of real client feedback and a week of using Recon as
       the everyday viewer, with the friction recorded in `project-os/History.md` and anything
-      deferred sent to `project-os/Backlog.md`.
+      deferred sent to `project-os/Backlog.md`. Model: Opus 5, it records.
 
 Stage 1 is the release that replaces both current tools. It ships without the thumbnail
 strip, without export options beyond PNG, and without Rogers.
@@ -1466,6 +1512,11 @@ success close work or take focus.
 ---
 
 # Part 11: the evidence status of every claim here
+
+**Every figure in this part was measured from a debug build** (the dev profile, with only
+the `image` and `png` crates optimised) until a line says otherwise. The freeze includes
+a per-pixel byte-order loop compiled without optimisation. S0.4b re-measures each one with
+`--release` and records both, and no design rests on a debug number before that.
 
 **Measured, on this machine, 2026-09-11:** the display is one 3840x2160 panel at 225%
 scaling, at the desktop origin. Freezing the whole virtual screen with the chosen path costs
@@ -1566,7 +1617,7 @@ them.
 
 # Part 12: the review trail
 
-Forty-six findings were raised against the plan and folded into the parts above. This table
+Fifty findings were raised against the plan and folded into the parts above. This table
 is the record; the fixes themselves live where the table points. Severity is how the finding
 was rated when it was raised.
 
@@ -1614,10 +1665,14 @@ was rated when it was raised.
 | F40 | The boundary figure the design was argued against was two to four times pessimistic, and it came from a discussion thread | 🟡 | Part 11's measured table, S0.3 | Resolved: measured here, and the plan quotes the measurement |
 | F41 | The host's PNG encoder takes 633 ms for a 1920x1080 image at default settings, and it sits on the Save As path | 🟠 | Part 11, S1.11 | Open: needs a faster setting or another encoder before S1.11 ships |
 | F42 | The plan said the annotation layer crosses back, without saying it crosses encoded, which is two orders of magnitude cheaper | 🟡 | Part 5 boundary rule, S0.3 | Resolved: encoded, and the numbers are in part 11 |
-| F43 | The fit-to-window view costs 1.1 s, because it resamples the whole image, and it is the first thing anyone sees when opening one | 🟠 | Part 11, S0.4, and S1.3's viewing surface | Open: the fit view needs a cheap downscale, not a good one |
+| F43 | The fit-to-window view costs 1.1 s, because it resamples the whole image, and it is the first thing anyone sees when opening one | 🟠 | Part 11, S0.4b, and S1.3's viewing surface | Open: a pyramid built once per image, at S0.4b |
 | F44 | The editor window is not DPI-scaled: the monitor is at 225% and the window reports 96 dpi, so the interface renders at a third of the size the display asks for | 🟠 | Part 11, S0.4's closing note | Open: the image path is correct, the interface is not, and the cause is not yet established |
 | F45 | An image smaller than the window sat in its top-left corner instead of the middle, which twenty-six passing assertions did not notice | 🟠 | S0.4, the editor's own paint path | Resolved: centred, and the callout layer carries the same offset |
 | F46 | A note is unreadable at fit zoom on a wide capture, because annotations live in image space and scale with the image | 🟡 | §3.5, S0.4, S1.6 | Resolved: no on-screen floor. The default note text is 20 image pixels and the size is the user's, which is Rotem's call |
+| F47 | Every figure in part 11 came from a debug build, and the plan did not say so, while decisions were being drawn from them | 🟠 | Part 11, S0.4b | Open: labelled now, re-measured in release at S0.4b |
+| F48 | S0.5 could not close as written: three of its gates need the export and the store, which are later steps | 🟠 | S0.5, S0.6, S1.8 | Resolved: the legs are carried gates in S0.6 and S1.8, and the export spike runs first |
+| F49 | The four Stage 0 pieces had never run as one thing, so the second latency interval had nothing to measure | 🟠 | S0.4b | Open: S0.4b wires them |
+| F50 | The check-only commands let the page ask the host to capture the screen and write files, in the runtime the product editor will use | 🟠 | Part 5 boundaries, S0.4b | Open: behind a cargo feature at S0.4b |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the
 two things it compares and the failure that would turn it red (`project-os/QA.md` §12), and a

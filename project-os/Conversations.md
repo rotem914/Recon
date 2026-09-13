@@ -544,6 +544,26 @@ Part 6c is rewritten, and the four naming leftovers are gone.
 It is attached, so you do not have to ask.
 ~~~
 
+### 19 · The next step names its model
+
+Whenever a reply proposes a next step, say which model it needs: Fable 5.1 or Opus 5.
+Fable for design, architecture, anything irreversible, anything that touches data or
+pixels the user believes are kept, and any step whose evidence decides a plan question.
+Opus for mechanical rounds: a rename, copy, a value, a documented API wired as documented,
+a measurement whose method is already written down.
+One clause on the Next line, never a paragraph.
+
+Rotem switches models between steps and pays for each, and he asked on 2026-09-13 to be
+told at every handoff rather than guessing. The plan carries the same label per step
+(`CLAUDE.md` rule 13); the reply is where he actually reads it.
+
+~~~
+----
+# Next
+
+S0.5, the nine formats: Fable, it is a decision gate.
+~~~
+
 ---
 
 Replies shaped by this file are for one reader's eye.

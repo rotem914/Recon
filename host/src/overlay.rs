@@ -99,7 +99,9 @@ pub fn select_region(frame: &Frame) -> Outcome {
         };
         STATE.with(|cell| *cell.borrow_mut() = Some(state));
 
-        // Foreground goes to the window under the pointer, so Escape has somewhere to land.
+        // Foreground goes to the first surface, so Escape has somewhere to land. Which
+        // surface does not matter: every window shares one thread and one STATE, and
+        // Escape ends the whole selection from any of them.
         STATE.with(|cell| {
             if let Some(state) = cell.borrow().as_ref() {
                 if let Some(first) = state.surfaces.first() {

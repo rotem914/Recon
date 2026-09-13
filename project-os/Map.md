@@ -20,13 +20,15 @@ lies costs more than no map.
 
 ## Stack
 
-Not chosen yet. This repository holds the ProjectOS docs and nothing else.
+A Rust host (`host/`, windows-rs for the screen, Tauri v2 for the tray, the hotkey and the
+window) and a WebView2 editor (`editor/`, plain HTML and JavaScript, embedded into the binary
+at build time). A recommended candidate under Stage 0, per `project-os/Plan.md` part 5.
 
 | Setting | Value |
 |---|---|
 | Project root | this repository, wherever this copy of it lives |
-| Runs locally at | nothing to run yet |
-| Checks | none yet, there is nothing to run |
+| Runs locally at | no server: `host/target/debug/recon-host.exe`, with `--editor-check`, `--editor-demo`, `--selftest` and `--bench` as the diagnostic runs |
+| Checks | in `host/`: `cargo fmt --check`, then `cargo clippy --all-targets -- -D warnings`, then `cargo build`; `cargo test` for the unit tests |
 ## Tree
 
 The real tree. The host is the first code in the project, from step S0.1.

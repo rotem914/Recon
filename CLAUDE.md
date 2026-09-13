@@ -6,11 +6,11 @@ rules that override the assistant's own defaults.
 
 ## What this project is
 
-Recon. The stack is not chosen yet: this repository is still empty.
-
-> **Setup step — replace this section.** Write two or three sentences saying what
-> the product does, who uses it, and what state it is in right now. Then delete
-> this quoted block. A vague description here produces vague work everywhere else.
+Recon is a Windows image viewer, screen capture and annotation tool: open or capture an
+image, add numbered callouts in Hebrew and English, and get the result to the clipboard or a
+file. Rotem uses it to replace Snagit and his everyday image viewer; it is meant for an
+open-source release later. State: Stage 0 of `project-os/Plan.md`, a Rust host with a WebView2
+editor, four of eight foundation steps closed on evidence, nothing usable end to end yet.
 
 ## Who you work for
 
@@ -271,7 +271,8 @@ such a plan loose at the root, the install moves it there and says so.
 project, each step carries a suggested model and three words on why: the
 most capable one for design, architecture, anything irreversible and anything
 that touches data; a faster, cheaper one for mechanical rounds, renames, copy
-and small fixes. The owner switches models between steps and pays for each,
+and small fixes. Here those are **Fable 5.1** and **Opus 5**, and every reply's
+Next step says which one it needs (`project-os/Conversations.md` rule 19). The owner switches models between steps and pays for each,
 so the plan is where that choice is easiest to make and hardest to guess. A
 suggestion, not a setting: the owner picks, and a step with no obvious fit
 says so rather than inventing one.
@@ -321,15 +322,11 @@ that specific element.
 
 ### 16. Never start the dev server
 
-> **Setup step — the install fills this, then deletes this block.** Ask the
-> owner in pile two: who starts the dev server, and where does it run? The
-> three honest answers, and what each one makes of this rule:
->
-> - *The owner runs it, at an address.* The rule below stands as written.
-> - *Nobody runs one; the owner works through the assistant's own app.* Then
->   the assistant's preview pane IS the owner's window, not a second instance,
->   and starting a server there is allowed. Rewrite the rule to say so.
-> - *There is no server at all.* The rule is dormant until there is one.
+**Dormant: this project has no dev server.** Recon is a desktop binary whose editor page
+is embedded at build time, so there is no address to drive and nothing to start. The
+browser-driven checks run the binary itself (`--editor-check`, `--editor-demo`,
+`--selftest`), which are one-shot commands and fine to run. Filled on 2026-09-13 from the
+project itself, Rotem's to veto. If a served page ever appears, the rule below wakes.
 
 Assume the owner already has one running at its local address, and drive that. Do not
 launch one, in the foreground or the background, at any point.
@@ -594,17 +591,9 @@ If a round left something genuinely unverified, say so in one line.
 
 Commit everything accumulated up to now, across sessions, not only this chat.
 
-> **Setup step — calibrate this flow at install, then delete this block.**
-> Ask the owner: which checks must pass before a commit, what must never be
-> staged beyond the defaults below, whether committing straight to the
-> current branch is allowed or each task gets its own branch. Who pushes is
-> not a question: the owner does, always (rule 22). Who COMMITS is not a
-> question either: you do, every time, and no answer in this batch changes
-> that. If the owner says they prefer to commit themselves, that is a clash
-> for the report, not a line you write into this flow.
-> Write the answers into the steps, replacing the bracketed parts.
-> Until they answer, this block STAYS and the bracketed parts stay bracketed.
-> A commit policy copied from another project is a decision nobody made.
+Calibrated 2026-09-13 from how the first twenty-four commits were made, Rotem's to
+veto: the three checks in the table above must pass; `host/target/`, `host/gen/`,
+`.tmp/` and `backups/` are never staged; every commit goes straight to `main`.
 
 1. If FAST MODE is on, end it and pay its catch-up in full, first.
 2. **Rotate the growing docs**, so the live files stay cheap to read. One
@@ -635,8 +624,8 @@ Commit everything accumulated up to now, across sessions, not only this chat.
    pass. A red check stops the commit; report it instead.
 5. Stage the intended files only. Never a blind add-everything, and never
    env files, secrets, or generated junk.
-6. Commit with a clear message covering the full scope, [on the current
-   branch / on a task branch, per the owner's answer].
+6. Commit with a clear message covering the full scope, on the current branch,
+   which is `main`.
 7. STOP after the commit. The owner pushes, every time (rule 22). Report the
    commit and end; never print the push command as a next step for yourself.
 
