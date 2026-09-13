@@ -1997,7 +1997,7 @@ them.
 
 # Part 12: the review trail
 
-Seventy-two findings were raised against the plan and folded into the parts above. This table
+Seventy-three findings were raised against the plan and folded into the parts above. This table
 is the record; the fixes themselves live where the table points. Severity is how the finding
 was rated when it was raised.
 
@@ -2075,6 +2075,7 @@ was rated when it was raised.
 | F70 | A poisoned region mailbox would stop every later view from painting | 🟡 | S0.4b | Open: recover from the poisoned lock and answer with an error; nothing in the worker panics today |
 | F71 | The SVG raster cap of 16384 a side allows a one-gigabyte pixmap from a hostile viewBox | 🟡 | §3.7, S0.5 | Open: cap the area, or refuse the open with a message |
 | F72 | The self test called any still difference after a drag a leaked overlay, and a window repainting as it took the foreground back failed it while the product was right | 🟡 | S0.2 self test | Fixed in the review of 2026-09-13 (R11): the leak check asks whether an overlay window is still alive; the crop predates the overlay by construction |
+| F73 | S0.8's HDR query ran on the capture thread at every freeze, inside the hotkey-to-overlay interval, about 5 ms on the median | 🟡 | S0.7, S0.8 | Fixed in the review of 2026-09-13 (R12): the query runs on its own thread |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the
 two things it compares and the failure that would turn it red (`project-os/QA.md` §12), and a

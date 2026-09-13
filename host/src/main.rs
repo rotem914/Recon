@@ -118,13 +118,17 @@ fn begin_capture() {
                 marks::mark(marks::FREEZE_DONE);
                 // v1 does not capture HDR: what GDI hands over from a display with HDR on
                 // is Windows' SDR rendering of it, so the fact is said, never silent (S0.8).
-                let hdr = platform::hdr_on();
-                if !hdr.is_empty() {
-                    log(&format!(
-                        "HDR is on for {}: the frozen pixels are the SDR view Windows gives GDI, which v1 keeps as is",
-                        hdr.join(", ")
-                    ));
-                }
+                // Asked on its own thread: the display query is a few milliseconds, and
+                // this thread is inside the hotkey-to-overlay interval (review R12).
+                std::thread::spawn(|| {
+                    let hdr = platform::hdr_on();
+                    if !hdr.is_empty() {
+                        log(&format!(
+                            "HDR is on for {}: the frozen pixels are the SDR view Windows gives GDI, which v1 keeps as is",
+                            hdr.join(", ")
+                        ));
+                    }
+                });
                 log(&format!(
                     "freeze: {}x{} at {},{} in {} ms via {}",
                     frame.width(),

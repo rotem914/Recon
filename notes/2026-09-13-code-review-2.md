@@ -13,9 +13,9 @@ Every check that could run ran on this tree before and after the fixes: fmt, cli
 the decode report on the 28 real files (every file hashed the same, nothing written), the
 self test with the machine idle, and a five-run measurement in release.
 
-Counts: 1 blocking, 3 important, 7 nits. Introduced by Stage 0: all of them; nothing here
-predates this repository. Fixed in this pass: R1 to R5 and R11. Reported and left: R6 to
-R10, each with its home.
+Counts: 1 blocking, 3 important, 8 nits. Introduced by Stage 0: all of them; nothing here
+predates this repository. Fixed in this pass: R1 to R5, R11 and R12. Reported and left: R6
+to R10, each with its home.
 
 ## Blocking
 
@@ -61,8 +61,9 @@ Problem: On the first ask the provider handed the frame over and kept a full clo
          image number, which counts the editor's copy only.
 Fix:     The provider keeps the file's bytes and decodes again on a second ask.
 Verify:  cargo test; the decode report on the 28 real files, every line passing. The S0.7
-         walk re-measured in release shows the host's private bytes lower during the walk;
-         that run was started with the machine in use and is reported below when it lands.
+         walk re-measured in release: the host's private bytes peak at 60.5 MB during the
+         walk against 92.9 MB before the fix, on the same 4608x1976 phone JPEG; the whole
+         process peaks at 304 MB against 361 MB.
 Status:  [x] done
 ```
 
@@ -132,6 +133,17 @@ Problem: After the drag it compared the crop from the frozen frame against the s
 Fix:     The leak check asks Windows whether an overlay window is still alive; the pixel
          comparison stays informative, and the pointer is moved off the rectangle first.
 Verify:  --selftest: "no overlay window is left on the desktop", every section passing.
+Status:  [x] done
+```
+
+```
+R12 · The HDR query sat inside the hotkey-to-overlay interval                🟡 fixed
+Where:   host/src/main.rs, begin_capture
+Problem: S0.8 put a DisplayConfig query at every freeze, on the capture thread, so it ran
+         inside the interval S0.7 measures. The five-run re-measurement in release put the
+         overlay-usable median at 79.6 ms against 74.0 ms at S0.7, which is that query.
+Fix:     The query runs on its own thread and logs its line when it has it.
+Verify:  a later thirty-run measurement; the target is 250 ms, so this was never a miss.
 Status:  [x] done
 ```
 
