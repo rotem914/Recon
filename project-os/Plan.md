@@ -1655,11 +1655,12 @@ version only. The codecs installed here: HEIF Image Extension 1.2.48, HEVC Video
 2.5.33, AV1 Video Extension 2.0.30, WebP Image Extension 1.2.31, Raw Image Extension 2.5.35.
 
 Elevation: this process runs unelevated. The hotkey against an elevated application in the
-foreground is NOT measured here, and it cannot be: a synthesized key press from an unelevated
-process is refused by Windows when an elevated window is in front, so a passing or failing
-synthetic test would say nothing. It needs a finger on a key, and the product now leaves the
-evidence in its log: the overlay's first line names the window that was in front and whether
-it is elevated. The procedure is in F62, and no product decision is attached to a guess.
+foreground cannot be measured by a synthesized key press, which Windows refuses when an
+elevated window is in front, so Rotem pressed it: with Task Manager in front, the release
+product logged the fire, the overlay came up, and a 396x334 selection reached the editor 2 ms
+after it. The hotkey works against an elevated foreground on this machine (F62, closed). That
+run's build predates the overlay's foreground line, so the window's elevation is Rotem's word
+and Task Manager's nature, not a log line; every later build logs it.
 
 **Documented behavior, not measured here.**
 
@@ -1676,7 +1677,7 @@ So the three answers part 6a asked for: the API minimum is Windows 10 (WebView2'
 225% scaling, which is what every Stage 0 figure was measured on; Windows 10 22H2 is expected
 to work and is untested. Packaging is Stage 1's.
 
-**Assumptions still open.** The elevated hotkey (F62). A capture on a display with HDR on
+**Assumptions still open.** A capture on a display with HDR on
 looks as Windows' SDR rendering looks, which is documented and not seen here. A desktop with
 two displays at different scales, covered by the conversion's unit tests and not by a machine.
 Whether a session logoff is refused by the host's exit guard (the NOT VERIFIED note in
@@ -1690,8 +1691,8 @@ the live editor mid-typing, keep. The decode route, `image`, `resvg` and WIC: tw
 files, keep, with AVIF on WIC as decided. The host composer and the Win32 clipboard: every
 untouched pixel exact and both destinations took the paste, keep. The cost row: 170 MB in the
 tray, nearly all the hidden web view (F59), is the one number that argues, and it argues for
-an idle policy, not for another stack. **Recommendation: go to Stage 1 on this stack, with
-F59, F60 and F62 as Rotem's three open calls.** Recorded in `project-os/Decisions.md`.
+an idle policy, not for another stack. **Recommendation: go to Stage 1 on this stack.** F60 and F62 were closed the same
+day; F59, the tray floor, stays open as a number Rotem judges. Recorded in `project-os/Decisions.md`.
 
 ---
 
@@ -2063,7 +2064,7 @@ was rated when it was raised.
 | F59 | The tray process's memory floor is about 170 MB, and 162 to 165 MB of it is the hidden editor's web view | 🟡 | S0.7, part 5, part 8 | Open: judged on its own, as S0.7 asks; part 8 has no row that fires on it. A web view destroyed when idle and recreated on the hotkey would lower it and cost the editor interval its warm start |
 | F60 | The main display is wide gamut (132% of sRGB by its EDID primaries), so the sRGB decision's own revisit trigger has fired: a capture taken there is treated as sRGB when it is not | 🟠 | §3.7, sRGB decision, S0.8 | Decided 2026-09-13 at Rotem's delegation: sRGB stays for v1, because the captured numbers are what the application drew and a display tag would oversaturate them everywhere else; the revisit trigger is now a colour-managed desktop (automatic colour management or HDR on), which the product detects. Recorded in Decisions |
 | F61 | HDR is detected and logged, and nothing tells the user that a capture on an HDR display is the SDR rendering | 🟡 | S0.8, S1 | Open: a one-line notice in the editor when the frozen display had HDR on; Stage 1 |
-| F62 | The hotkey against an elevated application in the foreground is not measured, and cannot be by a synthesized key | 🟠 | S0.8, S0.1 | Open: Rotem presses it once. Run the product, open Task Manager (elevated), click it, press the capture key; the log's first overlay line names the window and "elevated", or "HOTKEY FIRED" never appears. Either result is recorded here, and no decision rests on a guess |
+| F62 | The hotkey against an elevated application in the foreground is not measured, and cannot be by a synthesized key | 🟠 | S0.8, S0.1 | Measured 2026-09-13: Rotem pressed the key with Task Manager, an elevated window, in front; the release product logged "HOTKEY FIRED", the overlay came up, and a selection reached the editor. The hotkey works against an elevated foreground on this machine. Closed |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the
 two things it compares and the failure that would turn it red (`project-os/QA.md` §12), and a

@@ -747,10 +747,11 @@ clipboard. Nothing accuses a component.
 ### Consequences
 
 The 2026-09-10 entry that called the stack a candidate is superseded by this one; the
-architecture entries it pointed at stand. Three calls stay open and are Rotem's, none of
+architecture entries it pointed at stand. Three calls were open when this was written, none of
 them a stack question: the 170 MB tray floor (F59), the wide-gamut main display against
-the sRGB decision (F60), and the hotkey against an elevated application, which only a key
-press can measure (F62). Replacing Tauri later would mean re-implementing the tray, the
+the sRGB decision (F60, decided the same day: sRGB stays), and the hotkey against an
+elevated application, which only a key press could measure (F62, measured the same day:
+it fires). Replacing Tauri later would mean re-implementing the tray, the
 global shortcut, the file activation and the updater, as part 8 says; that is the cost
 this entry accepts. Revisit if Stage 1 use finds a cost the measurements did not.
 
