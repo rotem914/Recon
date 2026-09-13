@@ -183,6 +183,8 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         checks::editor_wants_checks,
         checks::editor_wants_demo,
         checks::editor_shoot_window,
+        checks::editor_export_layer,
+        checks::editor_exit,
     ]);
     #[cfg(not(feature = "stage0-checks"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
@@ -681,12 +683,116 @@ mod checks {
         Ok(shown)
     }
 
-    /// The page's way to end a demo run: a screenshot, then exit.
+    /// A screenshot of the window, for the demo run to leave behind.
     #[tauri::command]
     pub fn editor_shoot_window(app: AppHandle) -> Result<String, String> {
-        let shown = shoot_window(&app, "s04-editor.png")?;
-        app.exit(0);
-        Ok(shown)
+        shoot_window(&app, "s04-editor.png")
+    }
+
+    /// The page's way to end a run.
+    #[tauri::command]
+    pub fn editor_exit(app: AppHandle, code: i32) {
+        app.exit(code);
+    }
+
+    /// What the export spike found, for the S0.6 record.
+    #[derive(serde::Serialize)]
+    pub struct ExportReport {
+        pub webview_version: String,
+        pub layer_bytes: usize,
+        pub width: u32,
+        pub height: u32,
+        /// Pixels the annotation layer touched at all, alpha above zero.
+        pub covered: usize,
+        /// Pixels the layer left alone and that came out different from the source. The
+        /// whole point: this has to be zero, exactly.
+        pub source_mismatches: usize,
+        pub decode_ms: u128,
+        pub composite_ms: u128,
+        pub encode_ms: u128,
+        pub path: String,
+    }
+
+    /// The S0.6 export spike: the page sends the annotation layer as a PNG, the host
+    /// composites it over the untouched source at the origin (no margin yet), writes the
+    /// file, and compares every pixel the layer did not touch against the source.
+    ///
+    /// Straight-alpha "over": the layer arrives un-premultiplied from the canvas encoder,
+    /// and the source is opaque here, so the result is exact where alpha is 0 and a plain
+    /// blend elsewhere. The semi-transparent source case is S0.6's own check 1.
+    #[tauri::command]
+    pub fn editor_export_layer(request: tauri::ipc::Request<'_>) -> Result<ExportReport, String> {
+        let bytes = match request.body() {
+            tauri::ipc::InvokeBody::Raw(bytes) => bytes.clone(),
+            tauri::ipc::InvokeBody::Json(_) => {
+                return Err("the layer arrived as JSON, not as bytes".into())
+            }
+        };
+        let image = state().image().ok_or("no image is loaded")?;
+        let (w, h) = (image.frame.width(), image.frame.height());
+
+        let started = Instant::now();
+        let layer = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)
+            .map_err(|err| format!("the layer did not decode: {err}"))?
+            .into_rgba8();
+        let decode_ms = started.elapsed().as_millis();
+        if layer.width() != w || layer.height() != h {
+            return Err(format!(
+                "the layer is {}x{} and the image is {w}x{h}",
+                layer.width(),
+                layer.height()
+            ));
+        }
+
+        let started = Instant::now();
+        let src = &image.frame.rgba;
+        let lay = layer.as_raw();
+        let mut out = src.clone();
+        let mut covered = 0usize;
+        for i in 0..(w as usize * h as usize) {
+            let a = lay[i * 4 + 3] as u32;
+            if a == 0 {
+                continue;
+            }
+            covered += 1;
+            for c in 0..3 {
+                let s = src[i * 4 + c] as u32;
+                let l = lay[i * 4 + c] as u32;
+                out[i * 4 + c] = ((l * a + s * (255 - a) + 127) / 255) as u8;
+            }
+            out[i * 4 + 3] = 255;
+        }
+        let composite_ms = started.elapsed().as_millis();
+
+        let mut source_mismatches = 0usize;
+        for i in 0..(w as usize * h as usize) {
+            if lay[i * 4 + 3] == 0 && out[i * 4..i * 4 + 4] != src[i * 4..i * 4 + 4] {
+                source_mismatches += 1;
+            }
+        }
+
+        let started = Instant::now();
+        let path = std::env::current_exe()
+            .map(|exe| exe.with_file_name("s06-export.png"))
+            .unwrap_or_else(|_| "s06-export.png".into());
+        image::RgbaImage::from_raw(w, h, out)
+            .ok_or("the composite did not match its size")?
+            .save(&path)
+            .map_err(|err| err.to_string())?;
+        let encode_ms = started.elapsed().as_millis();
+
+        Ok(ExportReport {
+            webview_version: tauri::webview_version().unwrap_or_else(|_| "unknown".into()),
+            layer_bytes: bytes.len(),
+            width: w,
+            height: h,
+            covered,
+            source_mismatches,
+            decode_ms,
+            composite_ms,
+            encode_ms,
+            path: path.display().to_string(),
+        })
     }
 
     /// Loads the synthetic probe as the current image, for the detail check.

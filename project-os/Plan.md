@@ -1280,6 +1280,20 @@ composited PNG whose source area equals the capture byte for byte. If reading ba
 part 8's in-process composer row fires now, before nine formats are wired to a route that
 does not exist.
 
+**Spike run 2026-09-13, and the route holds.** On WebView2 152.0.4191.66, the demo scene
+(two notes, 20 and 40 px, English and Hebrew, on a 5120x1440 capture) serialized to 68 KB
+of SVG, rasterized in 3 ms, and the canvas read back cleanly: origin-clean is true on the
+shipping engine, and it stays a watch item per update. The web view encoded the layer in
+38 ms (193 KB); the host decoded it in 7 ms, composited it over the untouched capture in 6
+ms and wrote the file in 14 ms, in release. Every one of the 7.2 million pixels the layer
+did not touch is byte for byte the source, and 183,493 pixels carry the notes. Looked at:
+the exported file shows both notes at image scale with the same four line breaks as the
+window screenshot, the Hebrew note right-aligned with its number on the right. Not yet
+done here, and still S0.6's: the semi-transparent source case, the six reference images
+with a stated tolerance, the live-typing comparison, the margin, and the clipboard. The
+fonts are the system's, so nothing was inlined; a web font, if one is ever chosen, brings
+that remedy back.
+
 **Carried from S0.5:** the export leg of the animation frame, orientation, colour and SVG
 raster size tests. The frame or page chosen at S0.5 is what the export shows.
 
@@ -1567,6 +1581,9 @@ plan did not say so until the review of 2026-09-13 (F47). The same runs were rep
 | 31.6 MB layer out: message channel, local socket | 359, 181 ms | 290, 152 ms |
 | 162 KB encoded layer out | 3.5, 3.9 ms | 4.8, 2.6 ms |
 | Web view PNG encode of the 4K layer | 78 ms | 81 ms |
+| Export spike, 5120x1440 layer: serialize and rasterize in the web view | 3 ms | 3 ms |
+| Export spike: web view PNG encode of that layer, 193 KB | 41 ms | 38 ms |
+| Export spike: host decode, composite, encode to file | 50, 51, 269 ms | 7, 6, 14 ms |
 
 The fit view's debug number is the same as its release number because the resample now
 runs in `host/pixels`, which is optimised in every profile; the 1.1 s recorded below was the
@@ -1658,7 +1675,7 @@ providers. One route is the design because of exact equality, and that reason st
 own; the relative cost has not been measured and must not be quoted as if it had been.
 
 **Watch items rather than measurements:** whether the serialized export route stays
-origin-clean across web view updates; the four decode dependencies and their security watch;
+origin-clean across web view updates (it is, on 152.0.4191.66, measured 2026-09-13); the four decode dependencies and their security watch;
 the web view's own update cadence, which makes every reference image dependent on a recorded
 engine version; and any reliance on a browser flag, which the vendor does not support for
 production use and which therefore cannot be part of a gate.

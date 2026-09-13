@@ -595,6 +595,91 @@
     await paintRegion();
   };
 
+  // ---------------------------------------------------------------- the export layer
+  //
+  // Part 5: the text is DOM, and the export is that same DOM. The scene subtree is cloned,
+  // every style it was laid out with is written inline, the editing decorations are left
+  // out, and the clone goes into an SVG foreignObject at the image's own size. Drawn into a
+  // canvas and encoded, only that layer crosses back to the host, which composites it over
+  // the untouched source. Whether the canvas can be read back after drawing such an image
+  // is the unspecified behaviour S0.6 watches, and this is where it is measured.
+  const inlineStyles = (source, target) => {
+    const computed = getComputedStyle(source);
+    let css = '';
+    for (let i = 0; i < computed.length; i += 1) {
+      const name = computed[i];
+      css += `${name}:${computed.getPropertyValue(name)};`;
+    }
+    target.setAttribute('style', css);
+    target.removeAttribute('class');
+    target.removeAttribute('contenteditable');
+    target.removeAttribute('spellcheck');
+    const sourceChildren = source.children;
+    const targetChildren = target.children;
+    for (let i = 0; i < sourceChildren.length; i += 1) {
+      inlineStyles(sourceChildren[i], targetChildren[i]);
+    }
+  };
+
+  const exportLayer = async () => {
+    const { width, height } = model.image;
+    // Nothing selected and nothing being edited, so no decoration is in the export.
+    const keep = { selected: model.selected, editing: model.editing };
+    if (model.editing) commitEditing();
+    model.selected = null;
+    layoutScene();
+
+    const root = document.createElementNS('http://www.w3.org/1999/xhtml', 'div');
+    root.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+    root.setAttribute('style', `position:relative;width:${width}px;height:${height}px;margin:0;overflow:visible;`);
+    for (const child of scene.children) {
+      if (child.classList && child.classList.contains('anchor')) continue; // editing UI
+      const clone = child.cloneNode(true);
+      if (child.id === 'arrows') {
+        clone.removeAttribute('id');
+        clone.setAttribute('style', 'position:absolute;left:0;top:0;overflow:visible;');
+      } else {
+        inlineStyles(child, clone);
+      }
+      root.appendChild(clone);
+    }
+    const markup = new XMLSerializer().serializeToString(root);
+    const svg =
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">` +
+      `<foreignObject x="0" y="0" width="${width}" height="${height}">${markup}</foreignObject></svg>`;
+
+    const started = performance.now();
+    const image = new Image();
+    image.decoding = 'sync';
+    const loaded = new Promise((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error('the serialized layer did not load as an image'));
+    });
+    image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    await loaded;
+    const rasterMs = performance.now() - started;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    context.drawImage(image, 0, 0);
+    let blob;
+    let originClean = true;
+    try {
+      blob = await new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob gave nothing'))), 'image/png'));
+    } catch (err) {
+      originClean = false;
+      throw new Error(`the canvas could not be read back after drawing the layer: ${err.message}`);
+    }
+    const encodeMs = performance.now() - started - rasterMs;
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+
+    model.selected = keep.selected;
+    layoutScene();
+    return { bytes, svgChars: svg.length, rasterMs, encodeMs, originClean };
+  };
+
   window.reconEditor = {
     model,
     loadImage,
@@ -659,6 +744,23 @@
       drawHud();
       await new Promise((r) => setTimeout(r, 900));
       await invoke('editor_shoot_window');
+
+      // Then the export spike (S0.6): the same scene, serialized, rasterized, encoded,
+      // composited by the host over the untouched capture, and checked pixel by pixel.
+      try {
+        const layer = await exportLayer();
+        console.log(`export layer: ${layer.svgChars} chars of svg, rasterized in ${layer.rasterMs.toFixed(0)} ms, encoded in ${layer.encodeMs.toFixed(0)} ms, ${layer.bytes.length} bytes, origin-clean ${layer.originClean}`);
+        const sent = performance.now();
+        const report = await invoke('editor_export_layer', layer.bytes);
+        console.log(`export composited by the host in ${Math.round(performance.now() - sent)} ms round trip: ${JSON.stringify(report)}`);
+        const ok = report.source_mismatches === 0 && report.covered > 0;
+        console.log(ok ? 'EXPORT SPIKE: every untouched source pixel is exact, and the notes are in the file'
+                       : 'EXPORT SPIKE FAILED: see the report');
+        await invoke('editor_exit', { code: ok ? 0 : 1 });
+      } catch (err) {
+        console.error('EXPORT SPIKE FAILED', err && err.stack ? err.stack : String(err));
+        await invoke('editor_exit', { code: 1 });
+      }
       return;
     }
     if (await flag('editor_wants_checks')) {
