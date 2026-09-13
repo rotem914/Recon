@@ -70,9 +70,10 @@ pub fn virtual_screen() -> Result<FrameGeometry, CaptureError> {
 
 /// Copies an arbitrary desktop rectangle straight off the screen.
 ///
-/// Used by the self test to ask Windows for the same rectangle a crop claims to hold. Two
-/// answers that disagree mean the coordinate conversion is wrong, which is the one thing
-/// this step cannot afford to get away with.
+/// Used by the checks to ask Windows for the same rectangle a crop claims to hold, and to
+/// look at the editor's own window. Two answers that disagree mean the coordinate
+/// conversion is wrong, which is the one thing this step cannot afford to get away with.
+#[cfg_attr(not(feature = "stage0-checks"), allow(dead_code))]
 pub fn copy_rect(rect: super::coords::DesktopRect) -> Result<Vec<u8>, CaptureError> {
     let geometry = FrameGeometry {
         origin_x: rect.x,

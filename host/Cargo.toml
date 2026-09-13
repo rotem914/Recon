@@ -5,6 +5,15 @@ edition = "2021"
 description = "Recon host process: tray, global hotkey, capture, decode, store, clipboard."
 publish = false
 
+[workspace]
+members = ["pixels"]
+
+[features]
+# The diagnostic runs and the commands they need: --selftest, --bench, --editor-check,
+# --editor-demo, --capture-demo. A product build has none of them, so no command lets the
+# page freeze the screen or write a file (part 5's boundary, review T7).
+stage0-checks = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -28,13 +37,20 @@ windows = { version = "0.61", features = [
 # Only to write the evidence PNG for a Stage 0 run; the composer is not this crate yet.
 image = { version = "0.25", default-features = false, features = ["png"] }
 
+# The per-pixel work on the interactive path, optimised in every profile (see below).
+recon-pixels = { path = "pixels" }
+
 # S0.1 is a diagnostic build, so keep the debug profile honest and fast to iterate.
 [profile.dev]
 incremental = true
 
-# The resampler runs in debug during Stage 0, and an unoptimised image crate turns a
-# 40 ms downscale into most of a minute. Optimising just these two keeps the rest of the
-# crate debuggable while the pixels move at a realistic speed.
+# The per-pixel work runs in debug during Stage 0. A generic function is compiled in the
+# crate that calls it, so optimising the image crate alone did nothing for the resample
+# (that is why a fit view cost 1.1 s, F43): the calls live in recon-pixels, and that crate
+# is optimised here along with the encoders, while the rest stays debuggable.
+[profile.dev.package.recon-pixels]
+opt-level = 3
+
 [profile.dev.package.image]
 opt-level = 3
 

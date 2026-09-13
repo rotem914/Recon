@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The editor page may listen for the host's events and call the commands the host registers. Nothing else: no file system, no shell, no clipboard from the page.",
+  "windows": ["editor", "bench"],
+  "permissions": ["core:default"]
+}

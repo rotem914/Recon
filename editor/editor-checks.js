@@ -327,6 +327,47 @@ export async function runChecks(editor, invoke) {
     editor.layoutScene();
   }
 
+  // ---------------------------------------------------------------- 9. what is typed comes back
+  say('');
+  say('a typed line break survives the commit (review T6)');
+  {
+    model.callouts = [];
+    const note = editor.createCallout({ x: 300, y: 300 });
+    editor.layoutScene();
+    editor.startEditing(note);
+    const textEl = el(note).querySelector('.t');
+    // Real editing commands, so the engine builds whatever structure it would for a person.
+    document.execCommand('insertText', false, 'one');
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    document.execCommand('insertText', false, 'two');
+    editor.commitEditing();
+    check('Enter, typed for real, yields a two-line note', note.text === 'one\ntwo',
+      JSON.stringify(note.text));
+
+    // And the engine's own block structure, which is what a paste or an older document
+    // could hold: innerText has to read it as lines too.
+    const other = editor.createCallout({ x: 300, y: 600 });
+    editor.layoutScene();
+    editor.startEditing(other);
+    document.execCommand('insertText', false, 'first');
+    document.execCommand('insertParagraph');
+    document.execCommand('insertText', false, 'second');
+    editor.commitEditing();
+    check('an engine-made paragraph break is read as a line break', other.text === 'first\nsecond',
+      JSON.stringify(other.text));
+    // A block element reports one client rect however many lines it holds, so the
+    // evidence is height: a two-line note against a one-line one at the same size.
+    const single = editor.createCallout({ x: 900, y: 300 });
+    single.text = 'one';
+    editor.layoutScene();
+    const twoLines = el(note).querySelector('.t').offsetHeight;
+    const oneLine = el(single).querySelector('.t').offsetHeight;
+    check('the committed note is laid out on two lines', twoLines >= oneLine * 1.8,
+      `${twoLines}px against ${oneLine}px for one line`);
+    model.callouts = [];
+    editor.layoutScene();
+  }
+
   say('');
   if (failures === 0) {
     say('RESULT: every check passed.');

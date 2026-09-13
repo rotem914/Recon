@@ -72,6 +72,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-10 · Why the required format set is affordable, superseding one paragraph.
 - 2026-09-10 · The stack is a recommended candidate, not a settled decision.
 - 2026-09-11 · A note's text size is the user's, with no minimum on-screen size.
+- 2026-09-13 · The display proxy is served from a pyramid of halves, by one worker.
 
 ---
 
@@ -598,3 +599,41 @@ five pixels on screen, so the default alone does not make a note readable there.
 answer today is the size control and the zoom. Revisit if real use in S1.12 shows the size
 being raised on nearly every note, which would argue for a default derived from the
 image's own dimensions rather than an absolute one.
+
+---
+
+## 2026-09-13 · The display proxy is served from a pyramid of halves, by one worker
+
+### Context
+
+Part 5 leaves the display representation to measurement, with one policy: the visible
+region always carries the detail its zoom implies, and a stale answer is dropped. S0.4
+served every request by resampling the full image, and a fit view of a 4K image cost 1.1 s
+(F43). The review also found that every request spawned its own thread, so a held key did
+the work ten times over (T8).
+
+### Options
+
+1. Keep resampling the full image per request, and only fix the build profile.
+2. Tiles: cut the image into fixed tiles per zoom level and serve the visible ones.
+3. A pyramid of halves, built on demand, with one region worker that serves only the
+   newest request from the nearest level at or above the requested scale.
+
+### Decision
+
+Option 3. Chosen here, as the smallest change that meets the policy, and open to revisiting
+at S0.7. The profile fix rode along because it was the real cause of the second: a generic
+resample is compiled in the calling crate, so the per-pixel work moved to `host/pixels`,
+a crate optimised in every profile.
+
+### Consequences
+
+A fit view is 47 ms and a level is built once per image, 67 to 82 ms for level 1 of a 4K
+image, on the worker rather than on the capture path. Nothing is ever enlarged: the level
+chosen is always at or above the requested scale, and the 1:1 path is a plain crop, so the
+checkerboard check still holds. One worker means one resample in flight and no pile-up;
+a replaced request is answered as superseded and the page already drops it by ticket.
+Cost: memory for the levels, a third of the image again at most, held for the life of the
+image; and a first fit view that pays for level 1. Tiles would cap memory per view and
+allow partial repaints, which is what would make them worth it: revisit if S0.7's memory
+slope or a very large image (S0.5's stall test) argues for them.

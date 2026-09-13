@@ -1149,7 +1149,7 @@ instead of asserting, because the number is what the decision is about: a 20-pix
 is unreadable at 25%, and a 40-pixel one is comfortable.
 
 ----
-**[ ] S0.4b · One thing, end to end, and the numbers made real**
+**[x] S0.4b · One thing, end to end, and the numbers made real**
 
 Model: Fable 5.1. It changes the product path and it decides what part 11 means.
 
@@ -1169,6 +1169,38 @@ number.
 Evidence: hotkey, drag, and the editor opens with that region on the canvas. The fit view
 of the 3840x2160 probe under 50 ms in release. The 33 editor checks and the self test
 passing on both profiles. Part 11 carrying two columns.
+
+**Closed 2026-09-13.** Hotkey, drag, editor: the capture reaches the canvas, and on the
+product path. Run with `--capture-demo`, which fires the capture and drives the overlay with
+synthesized input, the editor is shown **13 ms** after the selection in release (44 ms in
+debug) and the page paints the capture 38 ms after hearing of it. The window itself is
+created hidden at startup in about 220 ms, before any hotkey can fire, and closing it hides
+it.
+
+**The fit view is 47 ms, not 1.1 s, and the second was never the resampler's.** A generic
+function is compiled in the crate that calls it, at that crate's optimisation level, so
+optimising the `image` crate in the dev profile did nothing for the resample. The per-pixel
+work now lives in `host/pixels`, a crate optimised in every profile, and the image gets a
+pyramid of halves built on demand by the one region worker: level 1 of the 3840x2160 probe
+takes 67 to 82 ms once, and every fit view after it 44 to 51 ms, in debug and release alike.
+The 1:1 path is untouched and still crisp: the checkerboard check passes on both profiles.
+
+**Every figure in part 11 now has a release column**, and two findings closed on it: the
+host's PNG encoder takes 12 ms in release, not 633 (F41), and the freeze is 41 to 50 ms, not
+145 (part 8's freeze row watches the release number from here on).
+
+**The product build has no command that touches the screen or the disk.** The eight
+check-only commands, the probe, the self test, the bench and the demo runs are behind the
+`stage0-checks` cargo feature; the product registers four commands: the image's size, show,
+the window metrics and the log. The page's `listen` needed a capability file, which is the
+one place the page's permissions are now written down.
+
+**What a check found while this was built.** The self test's overlay-in-output comparison
+was inconclusive on this desk because a video was playing under the test area; it now
+samples a candidate area twice and drags somewhere still, and the comparison is exact
+again. And 36 editor checks pass, three of them new: a typed Enter yields a two-line note,
+an engine-made paragraph break reads as a line break, and the committed note is laid out
+on two lines (54 px against 27 px for one).
 
 ----
 **[ ] S0.5 · Open and decode an existing image**
@@ -1513,10 +1545,32 @@ success close work or take focus.
 
 # Part 11: the evidence status of every claim here
 
-**Every figure in this part was measured from a debug build** (the dev profile, with only
-the `image` and `png` crates optimised) until a line says otherwise. The freeze includes
-a per-pixel byte-order loop compiled without optimisation. S0.4b re-measures each one with
-`--release` and records both, and no design rests on a debug number before that.
+**Every figure dated 2026-09-11 in this part was measured from a debug build**, and the
+plan did not say so until the review of 2026-09-13 (F47). The same runs were repeated with
+`--release` on 2026-09-13, on this machine's current arrangement, one 5120x1440 display at
+100%, and the two are recorded side by side here. A design rests on the release number.
+
+| Figure | Debug | Release |
+|---|---|---|
+| Freeze of the whole 5120x1440 screen | 143 to 145 ms | 41 to 50 ms |
+| Host PNG encode of a 1920x1080 image | 633 ms | 12 ms |
+| Editor window created hidden at startup | 223 ms | 216 ms |
+| Selection to editor shown, on the product path | 44 ms | 13 ms |
+| Capture painted after the page hears of it | 25 ms | 38 ms |
+| Fit view of the 3840x2160 probe, after its level exists | 49 to 51 ms | 44 to 51 ms |
+| Building pyramid level 1 of that probe, once | 80 to 82 ms | 67 to 74 ms |
+| 1:1 region, 1280x800, request to paint | 25 ms | 27 to 32 ms |
+| Whole 31.6 MB frame in: message channel, custom protocol, local socket | 290, 290, 140 ms | 194, 192, 47 ms |
+| 7.9 MB proxy in | 74, 82, 40 ms | 50, 49, 23 ms |
+| 2.2 MB encoded proxy in | 15.5, 15.4, 5.8 ms | 15, 16, 6 ms |
+| 3.5 MB folder-walk proxy in | 37, 37, 31 ms | 23, 24, 17 ms |
+| 31.6 MB layer out: message channel, local socket | 359, 181 ms | 290, 152 ms |
+| 162 KB encoded layer out | 3.5, 3.9 ms | 4.8, 2.6 ms |
+| Web view PNG encode of the 4K layer | 78 ms | 81 ms |
+
+The fit view's debug number is the same as its release number because the resample now
+runs in `host/pixels`, which is optimised in every profile; the 1.1 s recorded below was the
+generic resample compiled unoptimised in the host crate, not the algorithm.
 
 **Measured, on this machine, 2026-09-11:** the display is one 3840x2160 panel at 225%
 scaling, at the desktop origin. Freezing the whole virtual screen with the chosen path costs
@@ -1544,9 +1598,9 @@ same; about 4.4 ms per MB in and 5.7 ms out through a local socket. The web view
 
 **From S0.4, on the same machine:** showing the pre-created hidden window takes 12 to 22
 ms, and its first painted frame is already current. A 1:1 region costs 1 ms, because nothing
-is resampled. A fit-to-window region of the 3840x2160 probe costs **1.1 to 1.15 s**, which
-is the resampler and is F43: the fit view is the first thing anyone sees when they open an
-image, so a second of it is the viewer's core promise broken.
+is resampled. A fit-to-window region of the 3840x2160 probe cost **1.1 to 1.15 s** in that
+build, which was F43; S0.4b brought it to 47 ms with a pyramid and an optimised pixel crate,
+and the table above carries both.
 
 **A caution about every number above:** this machine's display arrangement changed three
 times during Stage 0, between 5120x1440 and 3840x2160 at 225%. Every measurement therefore
@@ -1558,10 +1612,9 @@ sizes are both 1280x800, and a band just outside that rectangle is not part of t
 So the image path is exactly right, one image pixel to one physical pixel at actual size,
 and the interface around it renders at a third of the size the display asks for.
 
-**One number that is a problem for later:** the host's own PNG encoder, at its default
-settings, took **633 ms** to encode a 1920x1080 image, while the web view encoded a larger
-one in 78 ms. That sits on the Save As path in S1.11, not on the capture path, and it needs a
-faster setting or a different encoder before it ships.
+**One number that looked like a problem and was the build profile:** the host's own PNG
+encoder took **633 ms** to encode a 1920x1080 image in debug, and takes **12 ms** in
+release. F41 is closed on that, and the encoder stays as it is.
 
 **Also found by running it:** the process is DPI-unaware unless it says otherwise, and an
 unaware process is told this display is 1707x960. Every coordinate, blit and comparison is
@@ -1663,16 +1716,16 @@ was rated when it was raised.
 | F38 | Revision leftovers: two decode providers in two places, a web view decoder question, F18 still marked open, and dav1d described as a whole-file library | 🟠 | Part 5, S0.5, part 11, this table | Resolved in place |
 | F39 | Readiness ended at input acceptance, so a blank or stale window could score as ready | 🟠 | S0.7 | Resolved: content and input, on one timing basis |
 | F40 | The boundary figure the design was argued against was two to four times pessimistic, and it came from a discussion thread | 🟡 | Part 11's measured table, S0.3 | Resolved: measured here, and the plan quotes the measurement |
-| F41 | The host's PNG encoder takes 633 ms for a 1920x1080 image at default settings, and it sits on the Save As path | 🟠 | Part 11, S1.11 | Open: needs a faster setting or another encoder before S1.11 ships |
+| F41 | The host's PNG encoder takes 633 ms for a 1920x1080 image at default settings, and it sits on the Save As path | 🟠 | Part 11, S1.11 | Resolved: 12 ms in a release build. The 633 was the debug profile |
 | F42 | The plan said the annotation layer crosses back, without saying it crosses encoded, which is two orders of magnitude cheaper | 🟡 | Part 5 boundary rule, S0.3 | Resolved: encoded, and the numbers are in part 11 |
-| F43 | The fit-to-window view costs 1.1 s, because it resamples the whole image, and it is the first thing anyone sees when opening one | 🟠 | Part 11, S0.4b, and S1.3's viewing surface | Open: a pyramid built once per image, at S0.4b |
+| F43 | The fit-to-window view costs 1.1 s, because it resamples the whole image, and it is the first thing anyone sees when opening one | 🟠 | Part 11, S0.4b, and S1.3's viewing surface | Resolved: 47 ms, from a pyramid of halves and a pixel crate optimised in every profile |
 | F44 | The editor window is not DPI-scaled: the monitor is at 225% and the window reports 96 dpi, so the interface renders at a third of the size the display asks for | 🟠 | Part 11, S0.4's closing note | Open: the image path is correct, the interface is not, and the cause is not yet established |
 | F45 | An image smaller than the window sat in its top-left corner instead of the middle, which twenty-six passing assertions did not notice | 🟠 | S0.4, the editor's own paint path | Resolved: centred, and the callout layer carries the same offset |
 | F46 | A note is unreadable at fit zoom on a wide capture, because annotations live in image space and scale with the image | 🟡 | §3.5, S0.4, S1.6 | Resolved: no on-screen floor. The default note text is 20 image pixels and the size is the user's, which is Rotem's call |
-| F47 | Every figure in part 11 came from a debug build, and the plan did not say so, while decisions were being drawn from them | 🟠 | Part 11, S0.4b | Open: labelled now, re-measured in release at S0.4b |
+| F47 | Every figure in part 11 came from a debug build, and the plan did not say so, while decisions were being drawn from them | 🟠 | Part 11, S0.4b | Resolved: part 11 carries debug and release side by side |
 | F48 | S0.5 could not close as written: three of its gates need the export and the store, which are later steps | 🟠 | S0.5, S0.6, S1.8 | Resolved: the legs are carried gates in S0.6 and S1.8, and the export spike runs first |
-| F49 | The four Stage 0 pieces had never run as one thing, so the second latency interval had nothing to measure | 🟠 | S0.4b | Open: S0.4b wires them |
-| F50 | The check-only commands let the page ask the host to capture the screen and write files, in the runtime the product editor will use | 🟠 | Part 5 boundaries, S0.4b | Open: behind a cargo feature at S0.4b |
+| F49 | The four Stage 0 pieces had never run as one thing, so the second latency interval had nothing to measure | 🟠 | S0.4b | Resolved: hotkey to editor on the product path, 13 ms from selection to shown |
+| F50 | The check-only commands let the page ask the host to capture the screen and write files, in the runtime the product editor will use | 🟠 | Part 5 boundaries, S0.4b | Resolved: behind the stage0-checks feature, and the page's permissions are in one capability file |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the
 two things it compares and the failure that would turn it red (`project-os/QA.md` §12), and a

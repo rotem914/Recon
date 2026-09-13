@@ -1,0 +1,9 @@
+[package]
+name = "recon-pixels"
+version = "0.0.1"
+edition = "2021"
+description = "Recon's per-pixel work, in a crate of its own so a debug build can still optimise it."
+publish = false
+
+[dependencies]
+image = { version = "0.25", default-features = false }

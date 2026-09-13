@@ -27,7 +27,7 @@ reading time.
 |---|---|
 | Project root | this repository, wherever this copy of it lives |
 | Local app | none yet, this project has no dev server |
-| Checks | in `host/`: `cargo fmt --check`, then `cargo clippy --all-targets -- -D warnings`, then `cargo build`. No tests yet. |
+| Checks | in `host/`: `cargo fmt --check`, then `cargo clippy --all-targets --all-features -- -D warnings`, then `cargo build`, then `cargo test --workspace --all-features`. The diagnostic runs need `cargo build --features stage0-checks`; the product build has none of them. |
 
 ## Read these before you work
 

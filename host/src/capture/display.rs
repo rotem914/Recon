@@ -20,7 +20,11 @@ use windows::Win32::UI::WindowsAndMessaging::MONITORINFOF_PRIMARY;
 use super::coords::DesktopRect;
 
 /// One display, in the only units that matter here: physical desktop pixels.
+///
+/// The scale and the primary flag are read by the self test's environment report, which a
+/// product build does not carry; the overlay needs only the rectangle.
 #[derive(Debug, Clone)]
+#[cfg_attr(not(feature = "stage0-checks"), allow(dead_code))]
 pub struct MonitorInfo {
     pub rect: DesktopRect,
     /// 100 for an unscaled display, 150 for 150%, and so on. Rounded from the effective DPI.

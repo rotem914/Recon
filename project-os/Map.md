@@ -27,8 +27,8 @@ at build time). A recommended candidate under Stage 0, per `project-os/Plan.md` 
 | Setting | Value |
 |---|---|
 | Project root | this repository, wherever this copy of it lives |
-| Runs locally at | no server: `host/target/debug/recon-host.exe`, with `--editor-check`, `--editor-demo`, `--selftest` and `--bench` as the diagnostic runs |
-| Checks | in `host/`: `cargo fmt --check`, then `cargo clippy --all-targets -- -D warnings`, then `cargo build`; `cargo test` for the unit tests |
+| Runs locally at | no server: `host/target/debug/recon-host.exe`. Built with `--features stage0-checks` it also answers `--editor-check`, `--editor-demo`, `--capture-demo`, `--selftest` and `--bench`; `--release` for any number that will be quoted |
+| Checks | in `host/`: `cargo fmt --check`, then `cargo clippy --all-targets --all-features -- -D warnings`, then `cargo build`, then `cargo test --workspace --all-features` |
 ## Tree
 
 The real tree. The host is the first code in the project, from step S0.1.
@@ -41,15 +41,17 @@ Recon/
 ├── host/                           # the Rust host process: native, owns the pixels
 │   ├── Cargo.toml
 │   ├── build.rs
-│   ├── tauri.conf.json             # zero windows on purpose: the host runs without one
+│   ├── tauri.conf.json             # zero windows in the config: the host creates its own, hidden
+│   ├── capabilities/default.json   # what the editor page may call: the host's commands and events
 │   ├── icons/                      # placeholder tray icon, the real one is a design task
+│   ├── pixels/                     # recon-pixels: crop and resample, optimised in every profile
 │   └── src/
-│       ├── main.rs                 # tray, hotkey, the capture flow, the selection guard
+│       ├── main.rs                 # tray, hotkey, capture to editor, the selection guard, the diagnostic flags
 │       ├── config.rs               # the hotkey, and where it was read from
 │       ├── overlay.rs              # the Win32 selection overlay, one window per display
-│       ├── selftest.rs             # --selftest: S0.2's evidence, without a human
-│       ├── bench.rs                 # --bench: S0.3's boundary measurement
-│       ├── editor.rs                # the editor window, and the region the page may see
+│       ├── selftest.rs             # --selftest and --capture-demo: S0.2's evidence, feature-gated
+│       ├── bench.rs                 # --bench: S0.3's boundary measurement, feature-gated
+│       ├── editor.rs                # the editor window, the image and its pyramid, the one region worker
 │       └── capture/
 │           ├── mod.rs              # the capture interface and the frame it produces
 │           ├── coords.rs           # the ONE desktop-to-image conversion, with its tests
@@ -109,6 +111,7 @@ anything.
 | Enforcement | `project-os/guards/*`, `project-os/hooks-settings.json`, `project-os/install-hooks.mjs` | Hooks are read at session start. Re-run the installer after editing the settings file. |
 | Outside servers | `project-os/mcp/*` | One folder per server, read before that server's first call. |
 | The plan | `project-os/Plan.md` | One file, and there is never a second: the product, the decisions, the architecture and the stages. Free-standing documents go in `notes/`, created when one is needed, never at the root. |
-| The host | `host/*` | Tray, hotkey, freeze, overlay and the region today; decode, the store and the clipboard later. It never renders an annotation. |
+| The host | `host/*` | Tray, hotkey, freeze, overlay, the region service and the editor window today; decode, the store and the clipboard later. It never renders an annotation. Check-only code is behind the `stage0-checks` feature. |
+| The pixel crate | `host/pixels/*` | Crop and resample, non-generic on purpose so the work is compiled optimised even in a debug build. Knows nothing about screens, windows or files. |
 | The one conversion | `host/src/capture/coords.rs` | The only place allowed to subtract a frame origin. Part 5 names the four coordinate spaces; this file is the edge between two of them. |
 | The editor | `editor/*` | The scene, the callout and the text layer. Laid out in image pixels; one CSS transform does the zoom. Embedded into the binary at build time, so an edit here needs a rebuild. |

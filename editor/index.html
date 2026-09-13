@@ -67,6 +67,9 @@
 <script>
 (() => {
   const invoke = window.__TAURI__.core.invoke;
+  // A command that only the stage0-checks build registers answers false in the product,
+  // where asking for it is an error rather than a no.
+  const flag = async (name) => { try { return await invoke(name); } catch { return false; } };
 
   // Everything this page says goes to the terminal as well. A web view that throws inside a
   // hidden window is otherwise completely silent, which cost one whole run.
@@ -408,7 +411,12 @@
     const callout = model.editing;
     if (!callout) return;
     const el = scene.querySelector(`[data-id="${callout.id}"] .t`);
-    callout.text = el ? el.textContent.replace(/ /g, ' ') : callout.text;
+    // innerText, not textContent: the engine keeps a typed line break as a block, and
+    // textContent joins blocks with nothing between them, so a two-line note came back as
+    // one line (review T6). innerText turns the blocks into newlines, which pre-wrap shows.
+    callout.text = el
+      ? el.innerText.replace(/\u00a0/g, ' ').replace(/\r\n?/g, '\n').replace(/\n+$/, '')
+      : callout.text;
     model.editing = null;
     if (el) el.blur();
     // An empty bubble is discarded when editing ends, so it never reaches the output.
@@ -483,6 +491,15 @@
     layoutScene();
   });
 
+  // Pasted text arrives as text. Rich HTML in a bubble would be markup the export never
+  // agreed to carry.
+  stage.addEventListener('paste', (event) => {
+    if (!model.editing) return;
+    event.preventDefault();
+    const text = (event.clipboardData || window.clipboardData).getData('text/plain');
+    if (text) document.execCommand('insertText', false, text.replace(/\r\n?/g, '\n'));
+  });
+
   const endDrag = () => { drag = null; };
   stage.addEventListener('pointerup', endDrag);
   stage.addEventListener('pointercancel', endDrag);
@@ -497,6 +514,13 @@
     }
     if (event.ctrlKey && !event.altKey && (event.key === '-' || event.key === '_')) {
       nudgeTextSize(-1);
+      event.preventDefault();
+      return;
+    }
+    if (event.key === 'Enter' && model.editing && !event.ctrlKey && !event.altKey) {
+      // A newline CHARACTER rather than the engine's block, so the bubble stays one text
+      // node and what is typed is exactly what is stored (§3.6: Enter inserts a newline).
+      document.execCommand('insertText', false, '\n');
       event.preventDefault();
       return;
     }
@@ -594,17 +618,29 @@
   const boot = async () => {
     console.log('page booted, asking the host for an image');
     await measureRatio();
+    // A capture can arrive at any moment after this page booted: the host hands the
+    // editor the pixels, tells the page, and shows the window (S0.4b).
+    await window.__TAURI__.event.listen('capture-ready', async (event) => {
+      const arrived = performance.now();
+      await loadImage(event.payload);
+      drawHud();
+      console.log(`capture shown ${Math.round(performance.now() - arrived)} ms after the page heard of it`);
+    });
     try {
       const info = await invoke('editor_image_info');
       await loadImage(info);
     } catch (err) {
-      // Nothing captured yet: the probe makes the window useful on its own, and the check
-      // needs it anyway.
-      const info = await invoke('editor_load_probe', { width: 3840, height: 2160 });
-      await loadImage(info);
+      // Nothing captured yet. In a checks build the probe makes the window useful on its
+      // own; in the product the window simply waits, hidden, for the first capture.
+      try {
+        const info = await invoke('editor_load_probe', { width: 3840, height: 2160 });
+        await loadImage(info);
+      } catch (noProbe) {
+        hud.textContent = 'no capture yet';
+      }
     }
     drawHud();
-    if (await invoke('editor_wants_demo')) {
+    if (await flag('editor_wants_demo')) {
       // A real capture rather than the probe, two notes with the two directions this
       // product exists for, and one of them re-anchored so the arrow is doing something.
       const shot = await invoke('editor_load_screen');
@@ -625,7 +661,7 @@
       await invoke('editor_shoot_window');
       return;
     }
-    if (await invoke('editor_wants_checks')) {
+    if (await flag('editor_wants_checks')) {
       console.log('running the S0.4 checks');
       const { runChecks } = await import('./editor-checks.js');
       await runChecks(window.reconEditor, invoke);

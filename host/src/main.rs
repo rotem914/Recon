@@ -1,35 +1,37 @@
-// Recon host, step S0.1: a tray entry, a configurable global hotkey, and a clean quit.
+// Recon host: a tray entry, a configurable global hotkey, the capture, and the editor.
 //
-// What this step exists to prove (project-os/Plan.md, part 7, S0.1):
-//   1. the hotkey fires while the process has never shown a window,
-//   2. a hotkey another application already holds is reported, not silently lost,
-//   3. quit leaves no process behind.
+// Stage 0 built this in four islands (project-os/Plan.md, part 7, S0.1 to S0.4) and S0.4b
+// joins them: the hotkey freezes the screen, the overlay picks a region, the one conversion
+// turns it into image space, and the editor, created hidden at startup, is handed the pixels
+// and shown. Every interesting moment is printed with a millisecond stamp, because the
+// evidence for each step is the log and S0.7's instrumentation needs the same habit.
 //
-// Nothing here captures anything. The freeze, the overlay and the region are S0.2, and
-// this file must not grow into them.
-//
-// Every interesting moment is printed with a millisecond stamp, because the evidence for
-// S0.1 is the log and because S0.7's instrumentation will need the same habit.
+// The `stage0-checks` cargo feature carries the diagnostic runs (--selftest, --bench,
+// --editor-check, --editor-demo, --capture-demo) and the commands they need. A product
+// build has none of them (review T7).
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[cfg(feature = "stage0-checks")]
 mod bench;
 mod capture;
 mod config;
 mod editor;
 mod overlay;
+#[cfg(feature = "stage0-checks")]
 mod selftest;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use capture::{desktop_to_image, CaptureSource};
+use capture::coords::FrameGeometry;
+use capture::{desktop_to_image, CaptureSource, Frame};
 use overlay::Outcome;
 
 use tauri::image::Image;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
-use tauri::RunEvent;
+use tauri::{RunEvent, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 /// Held while a selection is on screen, so a second hotkey press is ignored rather than
@@ -79,7 +81,7 @@ fn log(line: &str) {
     let _ = std::io::stdout().flush();
 }
 
-/// The hotkey path: freeze, choose a rectangle, convert once, crop.
+/// The hotkey path: freeze, choose a rectangle, convert once, crop, present.
 ///
 /// Runs on its own thread because the overlay owns a message pump of its own (part 5), and
 /// because the hotkey handler must return immediately: a handler that blocks is a hotkey
@@ -120,6 +122,7 @@ fn begin_capture() {
                             rect.y,
                             shown.elapsed().as_millis()
                         ));
+                        let selected_at = std::time::Instant::now();
                         // The one conversion, at the edge, exactly as part 5 requires.
                         match desktop_to_image(frame.geometry, rect) {
                             Ok(image_rect) => match frame.crop(image_rect) {
@@ -132,7 +135,28 @@ fn begin_capture() {
                                         image_rect.height,
                                         pixels.len()
                                     ));
-                                    write_capture(image_rect.width, image_rect.height, pixels);
+                                    #[cfg(feature = "stage0-checks")]
+                                    write_capture(image_rect.width, image_rect.height, &pixels);
+                                    // The capture becomes an image of its own. Its geometry
+                                    // keeps where it came from for the log only; nothing
+                                    // downstream reads a desktop coordinate (part 5).
+                                    let captured = Frame {
+                                        geometry: FrameGeometry {
+                                            origin_x: rect.x,
+                                            origin_y: rect.y,
+                                            width: image_rect.width,
+                                            height: image_rect.height,
+                                        },
+                                        rgba: pixels,
+                                        source: "capture",
+                                    };
+                                    match editor::present(captured) {
+                                        Ok(show_ms) => log(&format!(
+                                            "editor shown: {} ms from selection, the show itself {show_ms} ms",
+                                            selected_at.elapsed().as_millis()
+                                        )),
+                                        Err(err) => log(&format!("EDITOR NOT SHOWN: {err}")),
+                                    }
                                 }
                                 None => log("CROP REFUSED: the rectangle is not inside the frame"),
                             },
@@ -151,9 +175,10 @@ fn begin_capture() {
 }
 
 /// Writes the capture beside the executable so a Stage 0 run leaves something to look at.
-/// This is diagnostic output, not the store: the managed document arrives at S1.8, and
-/// nothing here writes anywhere near a file the user owns.
-fn write_capture(width: u32, height: u32, pixels: Vec<u8>) {
+/// Diagnostic output, never the store: the managed document arrives at S1.8, and nothing
+/// here writes anywhere near a file the user owns.
+#[cfg(feature = "stage0-checks")]
+fn write_capture(width: u32, height: u32, pixels: &[u8]) {
     let Ok(exe) = std::env::current_exe() else {
         log("capture not written: the executable path is unknown");
         return;
@@ -164,7 +189,7 @@ fn write_capture(width: u32, height: u32, pixels: Vec<u8>) {
         return;
     }
     let path = dir.join(format!("capture-{}.png", now_ms()));
-    match image::RgbaImage::from_raw(width, height, pixels) {
+    match image::RgbaImage::from_raw(width, height, pixels.to_vec()) {
         Some(buffer) => match buffer.save(&path) {
             Ok(()) => log(&format!("capture written: {}", path.display())),
             Err(err) => log(&format!("capture not written: {err}")),
@@ -173,80 +198,32 @@ fn write_capture(width: u32, height: u32, pixels: Vec<u8>) {
     }
 }
 
-/// Opens the editor with its own checks, which is S0.4's evidence.
+/// Opens the editor with its own checks, or with a demo scene, which is S0.4's evidence.
 ///
 /// The window is created hidden exactly as the product would, so the first-frame check is
 /// testing the real thing rather than a window made visible for the occasion.
-fn editor_check() -> i32 {
-    editor_run(false)
-}
-
-/// The same window, with a couple of example callouts on a real capture, and a screenshot.
-fn editor_demo() -> i32 {
-    editor_run(true)
-}
-
+#[cfg(feature = "stage0-checks")]
 fn editor_run(demo: bool) -> i32 {
-    let app = tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![
-            editor::editor_image_info,
-            editor::editor_load_probe,
-            editor::editor_load_screen,
-            editor::editor_show,
-            editor::editor_look_at_window,
-            editor::editor_show_and_look,
-            editor::editor_checks_done,
-            editor::editor_wants_checks,
-            editor::editor_window_metrics,
-            editor::editor_wants_demo,
-            editor::editor_shoot_window,
-            editor::editor_log,
-        ])
-        .register_asynchronous_uri_scheme_protocol("region", |_ctx, request, responder| {
-            let query = request.uri().query().unwrap_or_default().to_string();
-            std::thread::spawn(move || match editor::region_bytes(&query) {
-                Ok((bytes, width, height)) => responder.respond(
-                    tauri::http::Response::builder()
-                        .header("Content-Type", "application/octet-stream")
-                        .header("Access-Control-Allow-Origin", "*")
-                        .header(
-                            "Access-Control-Expose-Headers",
-                            "X-Region-Width, X-Region-Height",
-                        )
-                        .header("X-Region-Width", width.to_string())
-                        .header("X-Region-Height", height.to_string())
-                        .body(bytes)
-                        .expect("a response with a body"),
-                ),
-                Err(err) => responder.respond(
-                    tauri::http::Response::builder()
-                        .status(400)
-                        .header("Access-Control-Allow-Origin", "*")
-                        .body(err.into_bytes())
-                        .expect("an error response"),
-                ),
-            });
-        })
-        .setup(move |app| {
-            if demo {
-                editor::request_demo();
-            } else {
-                editor::request_checks();
-            }
-            tauri::WebviewWindowBuilder::new(
-                app,
-                "editor",
-                tauri::WebviewUrl::App("index.html".into()),
-            )
-            .title("Recon")
-            .inner_size(1280.0, 800.0)
-            .visible(demo)
-            .build()?;
-            Ok(())
-        })
-        .build(tauri::generate_context!());
+    let builder = editor::with_editor(tauri::Builder::default()).setup(move |app| {
+        if demo {
+            editor::request_demo();
+        } else {
+            editor::request_checks();
+        }
+        editor::set_app(app.handle().clone());
+        tauri::WebviewWindowBuilder::new(
+            app,
+            "editor",
+            tauri::WebviewUrl::App("index.html".into()),
+        )
+        .title("Recon")
+        .inner_size(1280.0, 800.0)
+        .visible(demo)
+        .build()?;
+        Ok(())
+    });
 
-    match app {
+    match builder.build(tauri::generate_context!()) {
         Ok(app) => {
             app.run(|_app, _event| {});
             0
@@ -258,29 +235,37 @@ fn editor_run(demo: bool) -> i32 {
     }
 }
 
+/// Whether this run should fire a capture on its own, drive the overlay with synthesized
+/// input, and screenshot the editor that results. The product path, minus the keypress.
+#[cfg(feature = "stage0-checks")]
+static CAPTURE_DEMO: AtomicBool = AtomicBool::new(false);
+
 fn main() {
     // Before anything else, and before any window or device context exists.
     let awareness = capture::display::make_per_monitor_aware();
 
-    if std::env::args().any(|a| a == "--editor-check") {
-        println!("dpi at startup  : {awareness}");
-        std::process::exit(editor_check());
-    }
-
-    if std::env::args().any(|a| a == "--editor-demo") {
-        println!("dpi at startup  : {awareness}");
-        std::process::exit(editor_demo());
-    }
-
-    if std::env::args().any(|a| a == "--bench") {
-        println!("dpi at startup  : {awareness}");
-        std::process::exit(bench::run());
-    }
-
-    if std::env::args().any(|a| a == "--selftest") {
-        println!("dpi at startup  : {awareness}");
-        let failures = selftest::run();
-        std::process::exit(if failures == 0 { 0 } else { 1 });
+    #[cfg(feature = "stage0-checks")]
+    {
+        if std::env::args().any(|a| a == "--editor-check") {
+            println!("dpi at startup  : {awareness}");
+            std::process::exit(editor_run(false));
+        }
+        if std::env::args().any(|a| a == "--editor-demo") {
+            println!("dpi at startup  : {awareness}");
+            std::process::exit(editor_run(true));
+        }
+        if std::env::args().any(|a| a == "--bench") {
+            println!("dpi at startup  : {awareness}");
+            std::process::exit(bench::run());
+        }
+        if std::env::args().any(|a| a == "--selftest") {
+            println!("dpi at startup  : {awareness}");
+            let failures = selftest::run();
+            std::process::exit(if failures == 0 { 0 } else { 1 });
+        }
+        if std::env::args().any(|a| a == "--capture-demo") {
+            CAPTURE_DEMO.store(true, Ordering::SeqCst);
+        }
     }
 
     let cfg = config::load();
@@ -292,20 +277,21 @@ fn main() {
 
     let hotkey_label = cfg.hotkey.clone();
 
-    tauri::Builder::default()
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|_app, shortcut, event| {
-                    if event.state == ShortcutState::Pressed {
-                        let n = FIRES.fetch_add(1, Ordering::SeqCst) + 1;
-                        log(&format!("HOTKEY FIRED: {shortcut} (fire {n})"));
-                        begin_capture();
-                    }
-                })
-                .build(),
-        )
+    let builder = tauri::Builder::default().plugin(
+        tauri_plugin_global_shortcut::Builder::new()
+            .with_handler(|_app, shortcut, event| {
+                if event.state == ShortcutState::Pressed {
+                    let n = FIRES.fetch_add(1, Ordering::SeqCst) + 1;
+                    log(&format!("HOTKEY FIRED: {shortcut} (fire {n})"));
+                    begin_capture();
+                }
+            })
+            .build(),
+    );
+
+    editor::with_editor(builder)
         .setup(move |app| {
-            // ---- the tray, which is the only user interface this step has ----
+            // ---- the tray ----
             let hotkey_item =
                 MenuItemBuilder::with_id("hotkey", format!("Capture: {hotkey_label}"))
                     .enabled(false)
@@ -333,6 +319,15 @@ fn main() {
                 .build(app)?;
             log("tray icon created");
 
+            // ---- the editor, created hidden so a capture only has to show it ----
+            editor::set_app(app.handle().clone());
+            let created = std::time::Instant::now();
+            editor::create_hidden(app.handle())?;
+            log(&format!(
+                "editor window created hidden in {} ms",
+                created.elapsed().as_millis()
+            ));
+
             // ---- the hotkey, and the two ways it can fail to arrive ----
             //
             // Neither failure may kill the process. A capture tool that exits because a
@@ -355,19 +350,34 @@ fn main() {
                 )),
             }
 
-            log("ready: no window created, waiting on the hotkey or the tray");
+            log("ready: waiting on the hotkey or the tray");
+
+            #[cfg(feature = "stage0-checks")]
+            if CAPTURE_DEMO.load(Ordering::SeqCst) {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || selftest::capture_demo(handle, begin_capture));
+            }
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Closing the editor hides it (§3.1): the window is expensive to create and the
+            // work in it must survive. Quit is the tray's, and it is explicit.
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+                log("editor hidden on close");
+            }
         })
         .build(tauri::generate_context!())
         .expect("the Recon host failed to build")
         .run(|_app, event| {
             if let RunEvent::ExitRequested { code, api, .. } = event {
-                // With no windows, the runtime would otherwise be free to exit on its own.
-                // NOT VERIFIED: whether a Windows session logoff arrives here with no code, in
-                // which case this would refuse it and hold up shutdown. S0.8 records platform
-                // limits; this one belongs in that list rather than in an assumption.
-                // An explicit quit carries a code; anything else is refused, so the only
-                // way out of this process is the tray, which is what S0.1 has to show.
+                // With no visible window, the runtime would otherwise be free to exit on its
+                // own. NOT VERIFIED: whether a Windows session logoff arrives here with no
+                // code, in which case this would refuse it and hold up shutdown. S0.8
+                // records platform limits; this one belongs in that list rather than in an
+                // assumption. An explicit quit carries a code; anything else is refused, so
+                // the only way out of this process is the tray.
                 if code.is_none() {
                     api.prevent_exit();
                 }

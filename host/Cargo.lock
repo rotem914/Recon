@@ -2494,12 +2494,20 @@ name = "recon-host"
 version = "0.0.1"
 dependencies = [
  "image",
+ "recon-pixels",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-global-shortcut",
  "windows",
+]
+
+[[package]]
+name = "recon-pixels"
+version = "0.0.1"
+dependencies = [
+ "image",
 ]
 
 [[package]]

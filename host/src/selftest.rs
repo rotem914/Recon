@@ -353,13 +353,29 @@ fn drag_test(frame: &Frame) -> Result<(), String> {
                 .count();
             if differing == 0 {
                 println!("  the captured pixels match the screen with the overlay gone, exactly");
-                Ok(())
-            } else {
-                Err(format!(
-                    "the captured pixels differ from the screen in {differing} of {} bytes, which is either a leaked overlay or a screen that moved",
-                    cropped.len()
-                ))
+                return Ok(());
             }
+            // The same guard compare_one has: a region that is still changing cannot indict
+            // the overlay. A video under the test area produced 37% of bytes moved once,
+            // and that was a video, not a leak.
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            let again = copy_rect(got).map_err(|e| e.to_string())?;
+            let moving = after
+                .iter()
+                .zip(again.iter())
+                .filter(|(a, b)| a != b)
+                .count();
+            if moving > 0 {
+                println!(
+                    "  inconclusive: the dragged region is live ({moving} of {} bytes moved between two samples), so the overlay-in-output check could not run here; drag somewhere still to run it",
+                    after.len()
+                );
+                return Ok(());
+            }
+            Err(format!(
+                "the captured pixels differ from the screen in {differing} of {} bytes, and the region is holding still, so that is a leaked overlay",
+                cropped.len()
+            ))
         }
         Outcome::Cancelled => Err("the drag came back as a cancellation".into()),
     }
@@ -430,23 +446,89 @@ where
         .map_err(|_| "the overlay thread panicked".to_string())
 }
 
-/// A place to drag that is on the primary display and not under the console window.
+/// A place to drag that is on the primary display, not under the console window, and
+/// holding still: a video under the test area makes the overlay-in-output comparison
+/// inconclusive, so a candidate is sampled twice and skipped if it moved.
 fn pick_test_area(frame: FrameGeometry) -> Option<DesktopRect> {
     let console = console_rect();
-    for offset in [0, 300, 600, 900, 1200, 1500, 1800] {
-        let candidate = DesktopRect {
-            x: frame.origin_x + 100 + offset,
-            y: frame.origin_y + 100,
-            width: 320,
-            height: 220,
-        };
-        if candidate.x + candidate.width as i32 <= frame.origin_x + frame.width as i32
-            && !overlaps(candidate, console)
-        {
-            return Some(candidate);
+    let mut fallback = None;
+    for row in [100, 600, 1000] {
+        for offset in [0, 300, 600, 900, 1200, 1500, 1800] {
+            let candidate = DesktopRect {
+                x: frame.origin_x + 100 + offset,
+                y: frame.origin_y + row,
+                width: 320,
+                height: 220,
+            };
+            let fits = candidate.x + candidate.width as i32 <= frame.origin_x + frame.width as i32
+                && candidate.y + candidate.height as i32 <= frame.origin_y + frame.height as i32;
+            if !fits || overlaps(candidate, console) {
+                continue;
+            }
+            if fallback.is_none() {
+                fallback = Some(candidate);
+            }
+            let Ok(first) = copy_rect(candidate) else {
+                continue;
+            };
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            let Ok(second) = copy_rect(candidate) else {
+                continue;
+            };
+            if first == second {
+                return Some(candidate);
+            }
         }
     }
-    None
+    if fallback.is_some() {
+        println!("  no still area found on the primary display; using a live one");
+    }
+    fallback
+}
+
+/// The product path, minus the keypress: fires the capture the hotkey would, drags a
+/// rectangle through the real overlay with synthesized input, waits for the editor to show
+/// and paint, screenshots it, and exits. Run with --capture-demo.
+pub fn capture_demo(app: tauri::AppHandle, begin: fn()) {
+    // The page needs to have booted, or the first capture lands before its listener.
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    let geometry = match virtual_screen() {
+        Ok(g) => g,
+        Err(err) => {
+            println!("capture demo: no virtual screen, {err}");
+            app.exit(1);
+            return;
+        }
+    };
+    let Some(target) = pick_test_area(geometry) else {
+        println!("capture demo: no room for a test drag");
+        app.exit(1);
+        return;
+    };
+    let expected = DesktopRect {
+        x: target.x + 40,
+        y: target.y + 30,
+        width: 900,
+        height: 560,
+    };
+    println!("capture demo: firing the capture, then dragging {expected:?}");
+    begin();
+    std::thread::sleep(std::time::Duration::from_millis(900));
+    move_to(expected.x, expected.y);
+    press_left();
+    move_to(expected.x + 200, expected.y + 120);
+    move_to(
+        expected.x + expected.width as i32,
+        expected.y + expected.height as i32,
+    );
+    release_left();
+    // The editor is shown by the capture thread; give it time to show and paint.
+    std::thread::sleep(std::time::Duration::from_millis(2500));
+    match crate::editor::shoot_window(&app, "s04b-capture-to-editor.png") {
+        Ok(path) => println!("capture demo: screenshot at {path}"),
+        Err(err) => println!("capture demo: no screenshot, {err}"),
+    }
+    app.exit(0);
 }
 
 fn move_to(x: i32, y: i32) {
