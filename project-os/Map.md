@@ -51,6 +51,8 @@ Recon/
 │       ├── marks.rs                # S0.7's marks on one clock: hotkey to overlay usable, selection to editor usable
 │       ├── platform.rs             # what the platform is: each display's HDR state, who owns the foreground window
 │       ├── focus.rs                # the return target: the application the capture began in, back in front on hide
+│       ├── registration.rs         # the file types in "Open with" and Default apps, under the user, never a default taken
+│       ├── dialog.rs               # Ctrl+O: Windows' own picker, owned by the editor, on its own thread
 │       ├── measure.rs              # --measure and --walk: the thirty-run measurement and memory sample, feature-gated
 │       ├── config.rs               # the hotkey, and where it was read from
 │       ├── overlay.rs              # the Win32 selection overlay, one window per display

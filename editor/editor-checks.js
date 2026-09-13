@@ -680,6 +680,22 @@ export async function runChecks(editor, invoke) {
     editor.layoutScene();
   }
 
+  // ---------------------------------------------------------------- 17. S1.2: Ctrl+O opens Windows' picker
+  say('');
+  say('S1.2: Ctrl+O opens the file picker, owned by the editor, and Escape closes it with nothing opened');
+  {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'o', code: 'KeyO', ctrlKey: true, bubbles: true, cancelable: true }));
+    await sleep(1500);
+    let outcome = await invoke('editor_dialog_outcome');
+    check('the picker is open, so Ctrl+O has no outcome yet', outcome === '', JSON.stringify(outcome));
+    await invoke('editor_press_escape');
+    for (let i = 0; i < 40 && !outcome; i += 1) {
+      await sleep(100);
+      outcome = await invoke('editor_dialog_outcome');
+    }
+    check('Escape closes the picker with nothing chosen', outcome === 'Ctrl+O: nothing chosen', JSON.stringify(outcome));
+  }
+
   say('');
   if (failures === 0) {
     say('RESULT: every check passed.');

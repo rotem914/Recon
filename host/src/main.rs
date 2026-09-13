@@ -18,6 +18,7 @@ mod capture;
 mod clipboard;
 mod compose;
 mod config;
+mod dialog;
 mod editor;
 mod focus;
 mod marks;
@@ -25,6 +26,7 @@ mod marks;
 mod measure;
 mod overlay;
 mod platform;
+mod registration;
 #[cfg(feature = "stage0-checks")]
 mod selftest;
 mod source;
@@ -281,7 +283,41 @@ fn editor_run(demo: bool) -> i32 {
     }
 }
 
+/// A file to open, from a list of arguments: the value after `--open`, or the first bare
+/// argument that names an existing file, which is how Explorer, "Open with" and a file
+/// association hand a file over (§3.1).
+fn file_argument(args: &[String]) -> Option<String> {
+    let mut it = args.iter();
+    while let Some(arg) = it.next() {
+        if let Some(value) = arg.strip_prefix("--open=") {
+            return Some(value.to_string());
+        }
+        if arg == "--open" {
+            return it.next().cloned();
+        }
+        if !arg.starts_with("--") && std::path::Path::new(arg).is_file() {
+            return Some(arg.clone());
+        }
+    }
+    None
+}
+
+/// Opens a file into the editor on its own thread and brings the window forward.
+fn open_file(path: String, how: &'static str) {
+    std::thread::spawn(move || {
+        let started = std::time::Instant::now();
+        match editor::open_path(std::path::Path::new(&path)) {
+            Ok(show_ms) => log(&format!(
+                "opened {path} ({how}): editor shown {} ms after the open began, the show itself {show_ms} ms",
+                started.elapsed().as_millis()
+            )),
+            Err(err) => log(&format!("OPEN FAILED for {path} ({how}): {err}")),
+        }
+    });
+}
+
 /// The value after a flag, as in `--open C:\\pictures\\a.png` or `--open=...`.
+#[cfg(feature = "stage0-checks")]
 fn arg_value(flag: &str) -> Option<String> {
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -401,9 +437,35 @@ fn main() {
         }
     }
 
-    // A file to open into the editor at startup, which is how S0.5 shows an opened file on
-    // the same canvas a capture uses. The product's own file activation is S1.2.
-    let open_at_start = arg_value("--open");
+    // Registration is the user's act, run by them (§3.1): it lists Recon in "Open with"
+    // and in Default apps, and takes no association.
+    if std::env::args().any(|a| a == "--register-types") {
+        match registration::register() {
+            Ok(n) => println!("registered: {n} entries under the current user, no default taken"),
+            Err(err) => {
+                println!("registration FAILED: {err}");
+                std::process::exit(1);
+            }
+        }
+        std::process::exit(0);
+    }
+    if std::env::args().any(|a| a == "--unregister-types") {
+        match registration::unregister() {
+            Ok(()) => {
+                println!("unregistered: Recon's entries removed, every type's default untouched")
+            }
+            Err(err) => {
+                println!("unregistration FAILED: {err}");
+                std::process::exit(1);
+            }
+        }
+        std::process::exit(0);
+    }
+
+    // A file to open at startup: `--open <path>`, or a bare path, which is how Explorer
+    // starts Recon for a file (§3.1).
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let open_at_start = file_argument(&args);
 
     let cfg = config::load();
 
@@ -417,7 +479,30 @@ fn main() {
 
     let hotkey_label = cfg.hotkey.clone();
 
-    let builder = tauri::Builder::default().plugin(
+    // First, so a second instance is answered before anything else is built: its
+    // arguments come here, the file opens in this window, and it exits (§3.1).
+    let builder =
+        tauri::Builder::default().plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            let args: Vec<String> = argv.into_iter().skip(1).collect();
+            match file_argument(&args) {
+                Some(path) => {
+                    log(&format!(
+                        "a second instance asked for {path}; opening it here"
+                    ));
+                    open_file(path, "second instance");
+                }
+                None => {
+                    log("a second instance started with nothing to open; showing the editor");
+                    match editor::show(app) {
+                        Ok(_) => {}
+                        Err(err) => {
+                            log(&format!("EDITOR NOT SHOWN for the second instance: {err}"))
+                        }
+                    }
+                }
+            }
+        }));
+    let builder = builder.plugin(
         tauri_plugin_global_shortcut::Builder::new()
             .with_handler(|_app, shortcut, event| {
                 if event.state == ShortcutState::Pressed {
@@ -437,10 +522,13 @@ fn main() {
                     .enabled(false)
                     .build(app)?;
             let open_item = MenuItemBuilder::with_id("open", "Open Recon").build(app)?;
+            let defaults_item =
+                MenuItemBuilder::with_id("defaults", "Default apps settings...").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Quit Recon").build(app)?;
             let menu = MenuBuilder::new(app)
                 .item(&open_item)
                 .item(&hotkey_item)
+                .item(&defaults_item)
                 .separator()
                 .item(&quit_item)
                 .build()?;
@@ -456,6 +544,12 @@ fn main() {
                     if event.id() == "quit" {
                         log("quit chosen in the tray menu");
                         app.exit(0);
+                    } else if event.id() == "defaults" {
+                        // Windows' own page, where the user makes Recon the default (§3.1).
+                        match registration::open_default_apps_settings() {
+                            Ok(()) => log("default apps settings opened"),
+                            Err(err) => log(&format!("default apps settings NOT opened: {err}")),
+                        }
                     } else if event.id() == "open" {
                         // The editor as it is: the most recent document, or the empty state
                         // naming the hotkey (§3.1).
@@ -507,16 +601,7 @@ fn main() {
             marks::startup(marks::READY);
 
             if let Some(path) = open_at_start.clone() {
-                std::thread::spawn(move || {
-                    let started = std::time::Instant::now();
-                    match editor::open_path(std::path::Path::new(&path)) {
-                        Ok(show_ms) => log(&format!(
-                            "opened {path}: editor shown {} ms after the open began, the show itself {show_ms} ms",
-                            started.elapsed().as_millis()
-                        )),
-                        Err(err) => log(&format!("OPEN FAILED for {path}: {err}")),
-                    }
-                });
+                open_file(path, "at startup");
             }
 
             #[cfg(feature = "stage0-checks")]
@@ -544,6 +629,16 @@ fn main() {
                 match editor::hide(window.app_handle()) {
                     Ok(()) => {}
                     Err(err) => log(&format!("editor NOT hidden on close: {err}")),
+                }
+            }
+            // A file dropped on the window opens (§3.1). Several: the first opens; the
+            // folder they came from is S1.4's navigation context.
+            if let WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                if let Some(first) = paths.first() {
+                    if paths.len() > 1 {
+                        log(&format!("{} files dropped; opening the first", paths.len()));
+                    }
+                    open_file(first.display().to_string(), "dropped on the window");
                 }
             }
         })

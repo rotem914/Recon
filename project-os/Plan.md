@@ -376,7 +376,7 @@ is a contract broken on day one.
 | `Esc` in the otherwise idle editor | Save pending changes and hide the editor | 1, the hide and the focus return built at S1.1, the save at S1.8 |
 | Delete outside text editing | Delete the selected annotation | 1 |
 | Undo and redo | While a note is being edited, undo works on the typing and never reaches object operations. Once editing ends, that text change takes its place in document history as one grouped step | 1 |
-| `Ctrl+O` | Open an image file | 1 |
+| `Ctrl+O` | Open an image file | 1, built at S1.2 |
 | Previous and next image, outside text editing | Walk the active navigation context, folder or Recon history, in the §3.4 order | 1 |
 | Fit to window · actual size · zoom in · zoom out | Viewing controls, no effect on export resolution | 1 |
 | Fullscreen | Enter fullscreen | 1 |
@@ -1758,6 +1758,20 @@ work rather than a feature count.
       `Ctrl+O`, both when Recon is already running and when it starts because a file was
       activated, one window rather than a second instance, plus the type registration and
       the link into the Windows default-apps settings. Model: Fable 5.1, it is the entry point.
+      **Built 2026-09-14, waiting on Rotem's hand for the last three.** Every way in reaches
+      the one window: a bare path on the command line, which is what Explorer, "Open with"
+      and a file association hand over, opens at startup (29 ms to the editor shown); a
+      second instance hands its path to the running one and exits, 49 ms, the running window
+      opening it in 32 ms; a file dropped on the window opens, several drop the first; and
+      `Ctrl+O` opens Windows' own picker, owned by the editor, filtered to the twelve
+      extensions, on a thread of its own. Registration is written as data first
+      (`host/src/registration.rs`, tested): Recon in every type's "Open with" list and in
+      Windows' Default apps through a Capabilities key, under the current user, and no
+      extension's default is ever written or re-taken; `--register-types` writes it,
+      `--unregister-types` removes exactly that, and the tray's "Default apps settings"
+      opens Windows' own page. What only a hand can do: run the registration on this
+      machine, then double-click and "Open with" in Explorer, and drop a file on the window.
+      Those three are the asks; the picker is machine-checked to open and to close on Escape.
 - [ ] S1.3 The viewing surface: fit to window on open, actual size, zoom, pan, fullscreen,
       and the filename and pixel dimensions on screen. Model: Opus 5.
 - [ ] S1.4 Folder navigation: previous and next across the supported types in the opened
@@ -2021,7 +2035,7 @@ them.
 
 # Part 12: the review trail
 
-Seventy-six findings were raised against the plan and folded into the parts above. This table
+Seventy-eight findings were raised against the plan and folded into the parts above. This table
 is the record; the fixes themselves live where the table points. Severity is how the finding
 was rated when it was raised.
 
@@ -2103,6 +2117,8 @@ was rated when it was raised.
 | F74 | On a scaled display the canvas and the notes sat at a whole CSS offset, a fraction of a physical pixel, so the screen was resampled and 12.5% of a note's pixels differed from the copy | 🟠 | Part 5, S0.6 check 3, S1.1 | Fixed at S1.1: the offset lands on a physical pixel |
 | F75 | On a scaled display the screen draws a note through a fractional transform and 6.6% of its pixels antialias differently from the copy, with the wrap and the box identical | 🟡 | S0.6 check 3, S1.1 | Recorded: the antialiasing clause; the live check's bar is 8% on a scaled display, 3% at 100% |
 | F76 | The content security policy refuses the S0.3 bench's local socket route, so `--bench` needs the policy off to run its third column | 🟡 | S0.3, S1.1 | Open: a closed step's tool; run it with the policy set to null if it is ever needed again |
+| F77 | Registration runs only by the user's hand: the code is tested as data, and whether Explorer's double-click and "Open with" reach Recon on this machine is unverified until Rotem runs it | 🟠 | S1.2, §3.1 | Open: the ask in the S1.2 record |
+| F78 | Several files dropped at once open the first only; the folder they came from is S1.4's navigation context | 🟡 | S1.2, S1.4 | Open: S1.4 |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the
 two things it compares and the failure that would turn it red (`project-os/QA.md` §12), and a

@@ -836,7 +836,7 @@ pub(crate) fn release_left() {
     std::thread::sleep(std::time::Duration::from_millis(60));
 }
 
-fn press_escape() {
+pub(crate) fn press_escape() {
     unsafe {
         keybd_event(VK_ESCAPE.0 as u8, 0, KEYBD_EVENT_FLAGS(0), 0);
         keybd_event(VK_ESCAPE.0 as u8, 0, KEYEVENTF_KEYUP, 0);

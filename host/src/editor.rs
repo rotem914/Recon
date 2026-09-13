@@ -408,7 +408,10 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_mark,
         editor_hide,
         editor_hotkey,
+        editor_open_dialog,
         checks::editor_history,
+        checks::editor_dialog_outcome,
+        checks::editor_press_escape,
         checks::editor_capture_probe,
         checks::editor_load_probe,
         checks::editor_load_screen,
@@ -441,6 +444,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_mark,
         editor_hide,
         editor_hotkey,
+        editor_open_dialog,
     ]);
     builder.register_asynchronous_uri_scheme_protocol("region", |_ctx, request, responder| {
         let query = request.uri().query().unwrap_or_default().to_string();
@@ -618,6 +622,40 @@ pub fn editor_hide(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn editor_hotkey() -> String {
     HOTKEY_LABEL.lock().map(|s| s.clone()).unwrap_or_default()
+}
+
+/// `Ctrl+O`: Windows' own picker, owned by the editor window, on a thread of its own; a
+/// chosen file opens like any other (§3.1). Returns at once.
+#[tauri::command]
+pub fn editor_open_dialog(app: AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("editor")
+        .ok_or("there is no editor window")?;
+    let owner = window.hwnd().map_err(|err| err.to_string())?.0 as isize;
+    set_dialog_outcome("");
+    std::thread::spawn(move || {
+        let owner = windows::Win32::Foundation::HWND(owner as *mut _);
+        let outcome = match crate::dialog::pick_image(Some(owner)) {
+            Ok(Some(path)) => match open_path(&path) {
+                Ok(_) => format!("opened {} (Ctrl+O)", path.display()),
+                Err(err) => format!("OPEN FAILED for {} (Ctrl+O): {err}", path.display()),
+            },
+            Ok(None) => "Ctrl+O: nothing chosen".to_string(),
+            Err(err) => format!("Ctrl+O: {err}"),
+        };
+        crate::log(&outcome);
+        set_dialog_outcome(&outcome);
+    });
+    Ok(())
+}
+
+/// What the last Ctrl+O did, for the checks: empty while the picker is open.
+static DIALOG_OUTCOME: Mutex<String> = Mutex::new(String::new());
+
+fn set_dialog_outcome(text: &str) {
+    if let Ok(mut slot) = DIALOG_OUTCOME.lock() {
+        *slot = text.to_string();
+    }
 }
 
 /// What the window really is, in both coordinate systems.
@@ -1674,6 +1712,18 @@ mod checks {
     #[tauri::command]
     pub fn editor_history() -> Vec<(u64, u32, u32, usize)> {
         history_summary()
+    }
+
+    /// What the last Ctrl+O did, for the S1.2 check.
+    #[tauri::command]
+    pub fn editor_dialog_outcome() -> String {
+        DIALOG_OUTCOME.lock().map(|s| s.clone()).unwrap_or_default()
+    }
+
+    /// Escape, pressed for real, so the picker under test closes the way a person closes it.
+    #[tauri::command]
+    pub fn editor_press_escape() {
+        crate::selftest::press_escape();
     }
 
     /// A probe through the real capture path: a new document, the previous capture

@@ -450,7 +450,7 @@
       `${model.image.width}x${model.image.height}  ${where}\n` +
       `zoom ${zoomText}   pan ${Math.round(model.pan.x)},${Math.round(model.pan.y)}   ` +
       `callouts ${model.callouts.length}   text ${sizeShown}px   dpr ${dpr()}\n` +
-      `0 fit  1 actual size  +/- zoom  Ctrl +/- text size  arrows pan  click to add  Esc commit  Del remove`;
+      `0 fit  1 actual size  +/- zoom  Ctrl +/- text size  arrows pan  click to add  Esc commit  Del remove  Ctrl+O open`;
   };
 
   // ---------------------------------------------------------------- editing
@@ -576,6 +576,13 @@
     // for that key is a Hebrew letter. The rest of the keyboard contract is S1.7.
     if (event.ctrlKey && event.shiftKey && !event.altKey && event.code === 'KeyC') {
       copyComposed().catch((err) => console.error('copy failed', err && err.stack ? err.stack : String(err)));
+      event.preventDefault();
+      return;
+    }
+    // Ctrl+O opens a file through Windows' own picker (§3.1); by physical key, like the
+    // copy above.
+    if (event.ctrlKey && !event.shiftKey && !event.altKey && event.code === 'KeyO') {
+      invoke('editor_open_dialog').catch((err) => console.error('open', err));
       event.preventDefault();
       return;
     }

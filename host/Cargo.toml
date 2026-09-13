@@ -20,6 +20,8 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-global-shortcut = "2"
+# One window, ever: a second activation hands its arguments to the running instance (§3.1).
+tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # The overlay and the freeze are hand-written Win32: part 5 keeps the web view off the
@@ -42,6 +44,9 @@ windows = { version = "0.61", features = [
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_Devices_Display",
     "Win32_Security",
+    "Win32_System_Registry",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
 ] }
 
 # The one decode route (part 6a): PNG, JPEG, BMP, GIF and WebP here, SVG through resvg,
