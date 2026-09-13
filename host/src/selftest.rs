@@ -17,13 +17,19 @@
 
 use std::time::Instant;
 
-use windows::Win32::Foundation::RECT;
+use windows::Win32::Foundation::{HWND, LPARAM, RECT, WPARAM};
 use windows::Win32::System::Console::GetConsoleWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     keybd_event, mouse_event, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, MOUSEEVENTF_LEFTDOWN,
     MOUSEEVENTF_LEFTUP, VK_ESCAPE,
 };
-use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, SetCursorPos};
+use windows::Win32::UI::WindowsAndMessaging::ShowWindow;
+use windows::Win32::UI::WindowsAndMessaging::{
+    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetForegroundWindow, GetMessageW,
+    GetWindowRect, IsWindow, PostMessageW, PostQuitMessage, RegisterClassExW, SetCursorPos,
+    TranslateMessage, CW_USEDEFAULT, MSG, SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_DESTROY,
+    WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
+};
 
 use crate::capture::coords::{DesktopRect, FrameGeometry};
 use crate::capture::display::{dpi_awareness, monitors};
@@ -106,6 +112,7 @@ pub fn run() -> i32 {
 
     println!();
     println!("=== C. a synthesized drag through the real overlay ===");
+    quiet();
     match drag_test(&frame) {
         Ok(()) => {}
         Err(reason) => {
@@ -116,6 +123,7 @@ pub fn run() -> i32 {
 
     println!();
     println!("=== D. escape cancels and captures nothing ===");
+    quiet();
     match cancel_test(&frame) {
         Ok(()) => {}
         Err(reason) => {
@@ -130,6 +138,17 @@ pub fn run() -> i32 {
         Ok(()) => {}
         Err(reason) => {
             println!("reentry FAILED: {reason}");
+            failures += 1;
+        }
+    }
+
+    println!();
+    println!("=== F. the foreground comes back after a cancel, and a window that closed meanwhile does no harm ===");
+    quiet();
+    match focus_test(&frame) {
+        Ok(()) => {}
+        Err(reason) => {
+            println!("focus FAILED: {reason}");
             failures += 1;
         }
     }
@@ -397,6 +416,149 @@ fn cancel_test(frame: &Frame) -> Result<(), String> {
         }
         Outcome::Selected(rect) => Err(format!("escape still produced a selection: {rect:?}")),
     }
+}
+
+/// A synthesized drag and a person's mouse cannot share a screen: wait for five seconds
+/// of quiet input before a section that sends input, and say so.
+fn quiet() {
+    if !crate::measure::wait_for_quiet(
+        std::time::Duration::from_secs(5),
+        std::time::Duration::from_secs(120),
+    ) {
+        println!("  (the keyboard or mouse stayed in use for two minutes; continuing anyway)");
+    }
+}
+
+/// The title of the stand-in window, a second process of this same executable.
+const STAND_IN: &str = "Recon stand-in";
+
+/// A plain window in a process of its own, for the focus test to stand in front of. The
+/// first version opened Notepad, and on Windows 11 that joined the owner's own Notepad
+/// window and closed it with the test; nothing here touches an application that is not ours.
+/// Run with --stand-in-window; exits when the window is closed.
+pub fn stand_in_window() -> i32 {
+    unsafe extern "system" fn proc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> windows::Win32::Foundation::LRESULT {
+        if msg == WM_DESTROY {
+            unsafe { PostQuitMessage(0) };
+            return windows::Win32::Foundation::LRESULT(0);
+        }
+        unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+    }
+    let title: Vec<u16> = STAND_IN.encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe {
+        let instance =
+            windows::Win32::System::LibraryLoader::GetModuleHandleW(None).unwrap_or_default();
+        let class = WNDCLASSEXW {
+            cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
+            lpfnWndProc: Some(proc),
+            hInstance: instance.into(),
+            lpszClassName: windows::core::PCWSTR(title.as_ptr()),
+            ..Default::default()
+        };
+        RegisterClassExW(&class);
+        let hwnd = CreateWindowExW(
+            WINDOW_EX_STYLE(0),
+            windows::core::PCWSTR(title.as_ptr()),
+            windows::core::PCWSTR(title.as_ptr()),
+            WS_OVERLAPPEDWINDOW,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            480,
+            320,
+            None,
+            None,
+            Some(instance.into()),
+            None,
+        );
+        let Ok(hwnd) = hwnd else {
+            return 1;
+        };
+        let _ = ShowWindow(hwnd, SW_SHOW);
+        let mut msg = MSG::default();
+        while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+            let _ = TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+    }
+    0
+}
+
+/// Starts the stand-in window in its own process and waits until it is in front.
+fn open_stand_in() -> Result<(std::process::Child, HWND), String> {
+    let exe = std::env::current_exe().map_err(|err| err.to_string())?;
+    let mut child = std::process::Command::new(exe)
+        .arg("--stand-in-window")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|err| format!("the stand-in did not start: {err}"))?;
+    let started = Instant::now();
+    while started.elapsed() < std::time::Duration::from_secs(8) {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let hwnd = unsafe { GetForegroundWindow() };
+        let owner = crate::platform::window_owner(hwnd);
+        if owner.exists && owner.pid == child.id() && owner.title == STAND_IN {
+            println!("  in front: {}", owner.line());
+            return Ok((child, hwnd));
+        }
+    }
+    let _ = child.kill();
+    Err("the stand-in window never came to the foreground".into())
+}
+
+/// S0.8's best-effort return of focus, against a window that is still there and against
+/// one that closed while the overlay was up. The product restores the foreground after the
+/// overlay ends; the second case is what happens when there is nothing to restore to.
+fn focus_test(frame: &Frame) -> Result<(), String> {
+    let (mut child, hwnd) = open_stand_in()?;
+    let outcome = with_overlay(frame, press_escape)?;
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    let now = unsafe { GetForegroundWindow() };
+    let result = if outcome == Outcome::Cancelled && now.0 as isize == hwnd.0 as isize {
+        println!(
+            "  after escape the foreground is back on {}",
+            crate::platform::window_owner(now).line()
+        );
+        Ok(())
+    } else {
+        Err(format!(
+            "after escape the foreground is {} rather than the window that was in front",
+            crate::platform::window_owner(now).line()
+        ))
+    };
+    let _ = unsafe { PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0)) };
+    std::thread::sleep(std::time::Duration::from_millis(600));
+    let _ = child.kill();
+    result?;
+
+    let (mut child, hwnd) = open_stand_in()?;
+    let target = hwnd.0 as isize;
+    let outcome = with_overlay(frame, move || {
+        // The application in front closes while the overlay is up.
+        let _ =
+            unsafe { PostMessageW(Some(HWND(target as *mut _)), WM_CLOSE, WPARAM(0), LPARAM(0)) };
+        std::thread::sleep(std::time::Duration::from_millis(600));
+        press_escape();
+    })?;
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    let _ = child.kill();
+    let gone = !unsafe { IsWindow(Some(HWND(target as *mut _))) }.as_bool();
+    if outcome != Outcome::Cancelled {
+        return Err(format!("escape with the window gone gave {outcome:?}"));
+    }
+    if !gone {
+        return Err("the stand-in window did not close, so the gone case was not tested".into());
+    }
+    println!(
+        "  with that window gone, escape still cancelled cleanly, and the foreground is {}",
+        crate::platform::foreground_owner().line()
+    );
+    Ok(())
 }
 
 /// The guard that makes a second hotkey press during a selection a no-op.

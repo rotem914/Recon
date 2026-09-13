@@ -207,7 +207,7 @@ fn last_input() -> u32 {
 
 /// Waits until nobody has touched the keyboard or mouse for `quiet`, giving up after
 /// `limit`. This harness sends nothing while it waits, so any change is a person.
-fn wait_for_quiet(quiet: Duration, limit: Duration) -> bool {
+pub(crate) fn wait_for_quiet(quiet: Duration, limit: Duration) -> bool {
     let started = Instant::now();
     let mut seen = last_input();
     let mut still_since = Instant::now();

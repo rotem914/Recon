@@ -70,11 +70,12 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-10 · One native decode route, and the original never enters the web view.
 - 2026-09-10 · The annotation text layer is DOM, and the export is that same DOM.
 - 2026-09-10 · _Why the required format set is affordable, superseding one paragraph._ (the libavif clause is superseded below; the membership stands)
-- 2026-09-10 · The stack is a recommended candidate, not a settled decision.
+- 2026-09-10 · _The stack is a recommended candidate, not a settled decision._ (superseded by the Stage 0 verdict below)
 - 2026-09-11 · A note's text size is the user's, with no minimum on-screen size.
 - 2026-09-13 · The display proxy is served from a pyramid of halves, by one worker.
 - 2026-09-13 · AVIF decodes through the Windows imaging stack, not a bundled libavif.
 - 2026-09-13 · The clipboard is published by the host in three formats, PNG first.
+- 2026-09-13 · Stage 0 verdict: the candidate stack is adopted, every component kept.
 
 ---
 
@@ -717,3 +718,37 @@ destinations took the paste as a PNG on 2026-09-13. The cost is one PNG encode p
 bitmap copies per copy, 51 plus 22 ms in release for a 5120x1440 capture, and a Win32
 module the product owns. Revisit if a destination turns out to need a fourth format, or if
 the encode time ever shows on the copy path in S1.12.
+
+---
+
+## 2026-09-13 · Stage 0 verdict: the candidate stack is adopted, every component kept
+
+### Context
+
+The stack was recorded on 2026-09-10 as a recommended candidate, not a decision, with Stage 0
+holding permission to reject it (part 8 of the plan). Eight steps ran, and S0.8 read every
+part 8 row against their evidence.
+
+### Options
+
+1. Adopt the candidate as measured.
+2. Replace one component the evidence accuses.
+3. Reopen the stack against part 5's comparison table.
+
+### Decision
+
+Option 1, recommended by the assistant at S0.8 and adopted by Rotem's word to start Stage 1.
+No part 8 row fired: the freeze is exact and 41 to 50 ms; the overlay is usable within 87 ms
+of the hotkey and the editor within 134 ms of the selection; the export is pixel-identical to
+the live editor mid-typing; twenty-eight real files decode; both paste destinations take the
+clipboard. Nothing accuses a component.
+
+### Consequences
+
+The 2026-09-10 entry that called the stack a candidate is superseded by this one; the
+architecture entries it pointed at stand. Three calls stay open and are Rotem's, none of
+them a stack question: the 170 MB tray floor (F59), the wide-gamut main display against
+the sRGB decision (F60), and the hotkey against an elevated application, which only a key
+press can measure (F62). Replacing Tauri later would mean re-implementing the tray, the
+global shortcut, the file activation and the updater, as part 8 says; that is the cost
+this entry accepts. Revisit if Stage 1 use finds a cost the measurements did not.

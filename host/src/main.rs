@@ -23,6 +23,7 @@ mod marks;
 #[cfg(feature = "stage0-checks")]
 mod measure;
 mod overlay;
+mod platform;
 #[cfg(feature = "stage0-checks")]
 mod selftest;
 mod source;
@@ -83,7 +84,7 @@ fn now_ms() -> u128 {
         .unwrap_or_default()
 }
 
-fn log(line: &str) {
+pub(crate) fn log(line: &str) {
     use std::io::Write;
     println!("{} | {}", now_ms(), line);
     // Flushed on every line: this log is the step's evidence, and a buffered tail that
@@ -115,6 +116,15 @@ fn begin_capture() {
         match source.freeze() {
             Ok(frame) => {
                 marks::mark(marks::FREEZE_DONE);
+                // v1 does not capture HDR: what GDI hands over from a display with HDR on
+                // is Windows' SDR rendering of it, so the fact is said, never silent (S0.8).
+                let hdr = platform::hdr_on();
+                if !hdr.is_empty() {
+                    log(&format!(
+                        "HDR is on for {}: the frozen pixels are the SDR view Windows gives GDI, which v1 keeps as is",
+                        hdr.join(", ")
+                    ));
+                }
                 log(&format!(
                     "freeze: {}x{} at {},{} in {} ms via {}",
                     frame.width(),
@@ -310,6 +320,40 @@ fn main() {
             println!("dpi at startup  : {awareness}");
             std::process::exit(bench::run());
         }
+        if std::env::args().any(|a| a == "--stand-in-window") {
+            std::process::exit(selftest::stand_in_window());
+        }
+        if std::env::args().any(|a| a == "--platform-report") {
+            println!("dpi at startup  : {awareness}");
+            println!(
+                "this process    : {}",
+                match platform::this_process_is_elevated() {
+                    Some(true) => "elevated",
+                    Some(false) => "not elevated",
+                    None => "elevation unknown",
+                }
+            );
+            println!(
+                "web view        : WebView2 {}",
+                tauri::webview_version().unwrap_or_else(|_| "unknown".into())
+            );
+            for m in capture::display::monitors() {
+                println!(
+                    "display         : {} at {},{} {}x{}, scale {}%{}",
+                    m.device,
+                    m.rect.x,
+                    m.rect.y,
+                    m.rect.width,
+                    m.rect.height,
+                    m.scale_percent,
+                    if m.primary { ", primary" } else { "" }
+                );
+            }
+            for d in platform::displays() {
+                println!("colour          : {}", d.line());
+            }
+            std::process::exit(0);
+        }
         if std::env::args().any(|a| a == "--selftest") {
             println!("dpi at startup  : {awareness}");
             let failures = selftest::run();
@@ -350,6 +394,9 @@ fn main() {
 
     log(&format!("recon-host, pid {}", std::process::id()));
     log(&format!("dpi awareness: {awareness}"));
+    for d in platform::displays() {
+        log(&format!("display colour: {}", d.line()));
+    }
     log(&format!("hotkey source: {}", cfg.source));
     log(&format!("hotkey wanted: {}", cfg.hotkey));
 

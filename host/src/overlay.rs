@@ -26,10 +26,10 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, VK_ESCAPE};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetForegroundWindow,
-    GetMessageW, LoadCursorW, PostMessageW, PostQuitMessage, RegisterClassExW, SetForegroundWindow,
-    ShowWindow, TranslateMessage, CS_HREDRAW, CS_VREDRAW, IDC_CROSS, MSG, SW_SHOW, WM_APP,
-    WM_DESTROY, WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_PAINT,
-    WNDCLASSEXW, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+    GetMessageW, IsWindow, LoadCursorW, PostMessageW, PostQuitMessage, RegisterClassExW,
+    SetForegroundWindow, ShowWindow, TranslateMessage, CS_HREDRAW, CS_VREDRAW, IDC_CROSS, MSG,
+    SW_SHOW, WM_APP, WM_DESTROY, WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP,
+    WM_MOUSEMOVE, WM_PAINT, WNDCLASSEXW, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
 
 use crate::capture::coords::DesktopRect;
@@ -92,6 +92,12 @@ thread_local! {
 /// message loop until the selection ends.
 pub fn select_region(frame: &Frame) -> Outcome {
     let prior_foreground = unsafe { GetForegroundWindow() };
+    // Who was in front, elevation included: the S0.8 record of the hotkey and the focus
+    // return against an elevated application is read from these lines.
+    crate::log(&format!(
+        "overlay: the foreground before it was {}",
+        crate::platform::window_owner(prior_foreground).line()
+    ));
     let list = monitors();
     if list.is_empty() {
         return Outcome::Cancelled;
@@ -139,8 +145,24 @@ pub fn select_region(frame: &Frame) -> Outcome {
         // Whatever happened, the window that was in front before the overlay appeared gets
         // the foreground back. On a cancellation that is the whole of "restores the previous
         // context"; after a selection it stops the desktop being left with nothing focused.
-        if !prior_foreground.is_invalid() {
-            let _ = SetForegroundWindow(prior_foreground);
+        if prior_foreground.is_invalid() {
+            crate::log("overlay: no foreground to restore");
+        } else if !IsWindow(Some(prior_foreground)).as_bool() {
+            crate::log(&format!(
+                "overlay: the window that was in front is gone, nothing restored; Windows left the foreground on {}",
+                crate::platform::foreground_owner().line()
+            ));
+        } else {
+            let restored = SetForegroundWindow(prior_foreground).as_bool();
+            crate::log(&format!(
+                "overlay: foreground {} to {}",
+                if restored {
+                    "restored"
+                } else {
+                    "NOT restored (refused)"
+                },
+                crate::platform::window_owner(prior_foreground).line()
+            ));
         }
         outcome
     }

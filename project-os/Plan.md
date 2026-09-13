@@ -910,7 +910,7 @@ Explorer closely enough to feel predictable is checked in S1.4, not assumed here
 | Undo | Specified as observable behavior, not a stack count, with the acceptance sequence in §3.6. |
 | Numbering | Stable numbers and gaps in every output. Renumbering rejected. Recorded in `project-os/Decisions.md`. |
 | Stage 1 navigation | A position indicator, plus shortcuts to the first and last (S1.4, S1.9). |
-| Windows support | The API's technical minimum, the versions Recon supports and tests, and runtime packaging are three separate answers, not one. Recorded in `project-os/Decisions.md`. |
+| Windows support | The API's technical minimum, the versions Recon supports and tests, and runtime packaging are three separate answers, not one. Recorded in `project-os/Decisions.md`. Answered at S0.8: the minimum is Windows 10 (WebView2's runtime; 1903 for the capture call); supported and tested is Windows 11 at 100% and 225%; Windows 10 22H2 expected, untested; packaging is Stage 1's. |
 | Elevated windows | Test first. No elevated mode on an unverified assumption (S0.8). |
 | Image viewing | A core capability, in one window with two entry behaviors. Recorded in `project-os/Decisions.md`. |
 | Initial capture path | One copy of the whole virtual screen: one synchronous call already spans every display and every negative coordinate, so the foundation risk is retired at the lowest cost. It sits behind the capture interface, which must leave a video source possible later while adding no video infrastructure now. A second path is earned only under part 8. |
@@ -1593,7 +1593,7 @@ Its editor median was 154 ms, and the harness now waits for quiet input and coun
 runs. That attempt is in the History row.
 
 ----
-**[ ] S0.8 · The limits, and the go or no-go report**
+**[x] S0.8 · The limits, and the go or no-go report**
 
 Model: Fable 5.1. Judgment on evidence.
 
@@ -1615,6 +1615,74 @@ desktop reaches it, and no product decision follows from it.
 
 The report separates measured facts, documented behavior and assumptions, and recommends
 keeping or replacing a named component rather than the whole stack.
+
+**The report, 2026-09-13.** Written from the evidence of S0.1 to S0.7 and the platform
+facts read on this machine that day: Windows 11 Home 25H2, build 26200, one active display.
+
+**Measured on this machine.**
+
+The display is a Samsung LS49AG95 at 5120x1440, 100% scale, on `\\.\DISPLAY1`. Windows
+reports HDR supported and OFF, 8 bits per channel, RGB, SDR white 80 nits. A Sony TV is
+connected but is not an active display path today. Detection is built (`host/src/platform.rs`):
+every display's state is logged at startup, and a freeze taken while any display has HDR on
+logs that the frozen pixels are the SDR view Windows gives GDI. That is "not supported in v1,
+detected rather than silently wrong"; the user-facing message for it is Stage 1 (F61).
+
+Colour gamut, from each monitor's own EDID primaries. The Samsung: red 0.691, 0.293; green
+0.273, 0.656; blue 0.148, 0.055. Its triangle is 132% of sRGB's area and 98% of DCI-P3's:
+a wide-gamut display. The Sony: red 0.625, 0.340; green 0.277, 0.594; blue 0.152, 0.070,
+96% of sRGB: an sRGB-class display. The record the sRGB decision named as its trigger now
+says the main display is wide, so that trigger has fired (F60), and it is Rotem's call.
+
+Return of focus, through the self test's section F, against a window in a process of its
+own. After an Escape the foreground goes back to the window that was in front, and the log
+names it with its process and elevation. With that window closed while the overlay was up,
+Escape still cancels cleanly, nothing is restored, and Windows chooses what is in front; no
+product decision rests on which window it chooses.
+
+The web view is WebView2 152.0.4191.66, recorded with the S0.6 references in
+`host/references/s06/environment.txt`; every reference image is meaningful against that
+version only. The codecs installed here: HEIF Image Extension 1.2.48, HEVC Video Extension
+2.5.33, AV1 Video Extension 2.0.30, WebP Image Extension 1.2.31, Raw Image Extension 2.5.35.
+
+Elevation: this process runs unelevated. The hotkey against an elevated application in the
+foreground is NOT measured here, and it cannot be: a synthesized key press from an unelevated
+process is refused by Windows when an elevated window is in front, so a passing or failing
+synthetic test would say nothing. It needs a finger on a key, and the product now leaves the
+evidence in its log: the overlay's first line names the window that was in front and whether
+it is elevated. The procedure is in F62, and no product decision is attached to a guess.
+
+**Documented behavior, not measured here.**
+
+WebView2's Evergreen runtime is documented for Windows 10 and Windows 11, is part of Windows 11,
+and is on the vast majority of Windows 10 devices; it takes the same updates as the Microsoft
+Edge Stable channel, which is why the runtime version is recorded beside every reference. Tauri
+v2 documents Windows 7 and later with WebView2 preinstalled from Windows 10 version 1803. The
+per-display capture call's own minimum is Windows 10 version 1903 (the decision of 2026-09-10).
+The HEIF and AV1 codecs are Microsoft Store extensions, present on this machine without being
+installed by anyone.
+
+So the three answers part 6a asked for: the API minimum is Windows 10 (WebView2's runtime, and
+1903 for the capture call); the versions Recon supports and tests are Windows 11, 100% and
+225% scaling, which is what every Stage 0 figure was measured on; Windows 10 22H2 is expected
+to work and is untested. Packaging is Stage 1's.
+
+**Assumptions still open.** The elevated hotkey (F62). A capture on a display with HDR on
+looks as Windows' SDR rendering looks, which is documented and not seen here. A desktop with
+two displays at different scales, covered by the conversion's unit tests and not by a machine.
+Whether a session logoff is refused by the host's exit guard (the NOT VERIFIED note in
+`host/src/main.rs`).
+
+**The verdict, component by component.** Every part 8 row was read against the evidence, and
+none fired. The GDI freeze: 41 to 50 ms for the whole 5120x1440 screen, exact against the
+screen, keep. The Win32 overlay: usable 87 ms after the hotkey at worst, keep. The Tauri and
+WebView2 editor: usable 134 ms after the selection at worst, its export pixel-identical to
+the live editor mid-typing, keep. The decode route, `image`, `resvg` and WIC: twenty-eight real
+files, keep, with AVIF on WIC as decided. The host composer and the Win32 clipboard: every
+untouched pixel exact and both destinations took the paste, keep. The cost row: 170 MB in the
+tray, nearly all the hidden web view (F59), is the one number that argues, and it argues for
+an idle policy, not for another stack. **Recommendation: go to Stage 1 on this stack, with
+F59, F60 and F62 as Rotem's three open calls.** Recorded in `project-os/Decisions.md`.
 
 ---
 
@@ -1803,6 +1871,9 @@ plan did not say so until the review of 2026-09-13 (F47). The same runs were rep
 | S0.7 process start to ready, and to the editor page booted | not run | 255 to 328, 276 to 374 ms |
 | S0.7 memory floor, tray and hidden editor, private bytes, host plus web view | not run | 168 to 172 MB (host 6 to 7) |
 | S0.7 memory after 30 captures, and after a 28-file walk | not run | 220 MB (35 MB the live document), 200 MB |
+| S0.8 display colour: HDR state, bits, SDR white, on the active display | HDR supported and off, 8 bits RGB, 80 nits | same |
+| S0.8 display gamut from EDID: main display, second display | 132% of sRGB (wide), 96% of sRGB | same |
+| S0.8 focus after Escape: to the window in front; with it gone | restored; cancelled cleanly, Windows chose | same |
 | Open an 8000x6000 PNG (192 MB on disk): read and decode, then hand over the frame | 326, 25 ms | 100, 26 ms |
 | That file's first fit view, waiting on pyramid level 1 (4000x3000) | 640 ms (514 for the level) | 575 ms (442 for the level) |
 | Open a 120x90 GIF, three frames, and show it | 3 ms to shown | 3 ms to shown |
@@ -1916,7 +1987,7 @@ them.
 
 # Part 12: the review trail
 
-Fifty-nine findings were raised against the plan and folded into the parts above. This table
+Sixty-two findings were raised against the plan and folded into the parts above. This table
 is the record; the fixes themselves live where the table points. Severity is how the finding
 was rated when it was raised.
 
@@ -1981,6 +2052,9 @@ was rated when it was raised.
 | F57 | The product build warns that three fields of the decode notes are read only by the feature-gated report | 🟡 | S0.5, `host/src/source/mod.rs` | Open, pre-existing: a cfg attribute or a use in the product; reported by the S0.6 review, not fixed there |
 | F58 | S0.7 says memory growth with the library "is a failure of R11", and no part of the plan defines R11 | 🟡 | S0.7, §3.8 | Open: read at S0.7 as §3.8's rule that memory must not grow with the size of the library or a folder, which is what was measured; the label needs a home or a rewrite |
 | F59 | The tray process's memory floor is about 170 MB, and 162 to 165 MB of it is the hidden editor's web view | 🟡 | S0.7, part 5, part 8 | Open: judged on its own, as S0.7 asks; part 8 has no row that fires on it. A web view destroyed when idle and recreated on the hotkey would lower it and cost the editor interval its warm start |
+| F60 | The main display is wide gamut (132% of sRGB by its EDID primaries), so the sRGB decision's own revisit trigger has fired: a capture taken there is treated as sRGB when it is not | 🟠 | §3.7, sRGB decision, S0.8 | Open: Rotem's call. Keep sRGB for v1 with the record stated, or tag captures with the display's profile (a decision entry superseding the sRGB one) |
+| F61 | HDR is detected and logged, and nothing tells the user that a capture on an HDR display is the SDR rendering | 🟡 | S0.8, S1 | Open: a one-line notice in the editor when the frozen display had HDR on; Stage 1 |
+| F62 | The hotkey against an elevated application in the foreground is not measured, and cannot be by a synthesized key | 🟠 | S0.8, S0.1 | Open: Rotem presses it once. Run the product, open Task Manager (elevated), click it, press the capture key; the log's first overlay line names the window and "elevated", or "HOTKEY FIRED" never appears. Either result is recorded here, and no decision rests on a guess |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the
 two things it compares and the failure that would turn it red (`project-os/QA.md` §12), and a
