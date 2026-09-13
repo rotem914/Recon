@@ -61,6 +61,13 @@
          font-family: ui-monospace, Consolas, monospace; pointer-events: none;
          white-space: pre; }
   #probe { position: absolute; inset: 0; display: none; }
+  /* The mode button (§3.3), the other half of the Annotate control beside the A key:
+     Rotem's call on 2026-09-14, both. Outside the stage so a click on it reaches no
+     canvas handler. */
+  #mode { position: absolute; right: 12px; top: 10px; padding: 6px 12px; border-radius: 6px;
+          border: 1px solid #3a4149; background: #1b1f24; color: #f2f2f2; font: 13px system-ui, sans-serif;
+          cursor: pointer; }
+  #mode:hover { border-color: #7aa7ff; }
   body.checking #stage { cursor: progress; }
   #report { position: absolute; inset: 0; display: none; padding: 18px 22px; overflow: auto;
             background: #0c0e10; font-family: ui-monospace, Consolas, monospace;
@@ -76,6 +83,7 @@
   </div>
 </div>
 <div id="hud"></div>
+<button id="mode" type="button" hidden>Annotate</button>
 <div id="report"></div>
 
 <script>
@@ -103,6 +111,7 @@
   const scene = document.getElementById('scene');
   const arrows = document.getElementById('arrows');
   const hud = document.getElementById('hud');
+  const modeButton = document.getElementById('mode');
   const context = canvas.getContext('2d', { alpha: false });
 
   // ---------------------------------------------------------------- the scene
@@ -475,8 +484,15 @@
   // file on screen, or resumed if one exists for that file and frame, never a second one.
   const applyMode = () => {
     document.body.classList.toggle('viewing', model.mode !== 'annotate');
+    modeButton.textContent = model.mode === 'annotate' ? 'View' : 'Annotate';
+    modeButton.hidden = !model.image.width;
     drawHud();
   };
+  modeButton.addEventListener('click', () => {
+    setMode(model.mode === 'annotate' ? 'view' : 'annotate').catch((err) => console.error('mode', err));
+    // The keys stay the page's: a focused button would swallow Space and Enter.
+    modeButton.blur();
+  });
 
   const setMode = async (mode) => {
     if (mode === model.mode) return model.mode;

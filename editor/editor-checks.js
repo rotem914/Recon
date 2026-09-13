@@ -871,6 +871,14 @@ export async function runChecks(editor, invoke) {
     const shot = await invoke('editor_capture_probe', { width: 320, height: 200 });
     await editor.loadImage(shot);
     check('a capture opens ready for annotation', model.mode === 'annotate' && shot.managed === true);
+    const button = document.getElementById('mode');
+    check('the button offers the other mode', !button.hidden && button.textContent === 'View', button.textContent);
+    button.click();
+    for (let i = 0; i < 20 && model.mode !== 'view'; i += 1) await sleep(20);
+    check('clicking it switches to viewing, and it offers Annotate', model.mode === 'view' && button.textContent === 'Annotate' && document.activeElement !== button);
+    button.click();
+    for (let i = 0; i < 20 && model.mode !== 'annotate'; i += 1) await sleep(20);
+    check('and back', model.mode === 'annotate' && button.textContent === 'View');
     await editor.setMode('view');
     await editor.setMode('annotate');
     managed = await invoke('editor_managed');

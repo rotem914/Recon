@@ -380,7 +380,7 @@ is a contract broken on day one.
 | Previous and next image, outside text editing | Walk the active navigation context, folder or Recon history, in the §3.4 order | 1, built at S1.4: PageDown and PageUp, Home and End for the first and last; the ends stop |
 | Fit to window · actual size · zoom in · zoom out | Viewing controls, no effect on export resolution | 1, built: keys, the wheel to pan, Ctrl with the wheel to zoom around the pointer |
 | Fullscreen | Enter fullscreen | 1, built: F11, and the same key or Escape out |
-| Annotate, and back to viewing | Switch the window between viewing, where no click creates anything, and annotation, where the callout tool is live (§3.3). The work stays either way | 1, built at S1.5 on the `A` key, provisional until the control is decided: a key, a button, or both |
+| Annotate, and back to viewing | Switch the window between viewing, where no click creates anything, and annotation, where the callout tool is live (§3.3). The work stays either way | 1, built at S1.5: the `A` key and a button at the window's top right, both, Rotem's call on 2026-09-14 |
 | `Ctrl+S` | Save As a PNG file, to a new file. Internal saving stays automatic | 1 |
 | `Ctrl+Shift+Enter` | Send to Rogers, once that exists and is configured | 4 |
 
@@ -1804,7 +1804,8 @@ work rather than a feature count.
       **Built 2026-09-14.** A file opens in viewing: the scene takes no pointer, a click
       selects nothing, a drag pans, and the checks press the same click in both modes to
       see one create nothing and the other create a note. A capture opens in annotation.
-      The `A` key switches, provisionally, with the mode named in the HUD. Annotate on a
+      The `A` key switches, and so does a button at the top right that names the other
+      mode, both at Rotem's call, with the mode named in the HUD. Annotate on a
       file asks the host for the document: created once for that path and frame, its
       decoded image preserved at once and PNG-encoded on a thread, in the same in-memory
       list the previous captures sit in until S1.8; or resumed when one exists, never a
