@@ -1063,3 +1063,6 @@ A browser's page, a folder window's file list and a chat's message pane are each
 click. Cost: a window whose page has no child window, Firefox is the known case, lights
 whole; the accessibility route stays open for it. Revisit if a part that is not what the
 eye sees keeps winning, or if the key of option 2 turns out to be missed.
+
+Rotem, the same evening: Firefox needs no support. The whole browser lit there is the
+final behaviour, and the accessibility route is not planned.
