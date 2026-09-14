@@ -19,6 +19,7 @@ use std::time::Instant;
 
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{HWND, LPARAM, RECT, WPARAM};
+use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
 use windows::Win32::System::Console::GetConsoleWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     keybd_event, mouse_event, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, MOUSEEVENTF_LEFTDOWN,
@@ -161,6 +162,17 @@ pub fn run() -> i32 {
         Ok(()) => {}
         Err(reason) => {
             println!("return FAILED: {reason}");
+            failures += 1;
+        }
+    }
+
+    println!();
+    println!("=== H. a click with no drag picks the window under the pointer; a drag still draws its own ===");
+    quiet();
+    match window_pick_test(&frame) {
+        Ok(()) => {}
+        Err(reason) => {
+            println!("window pick FAILED: {reason}");
             failures += 1;
         }
     }
@@ -463,6 +475,133 @@ fn quiet() {
 
 /// The title of the stand-in window, a second process of this same executable.
 const STAND_IN: &str = "Recon stand-in";
+
+/// The window pick: with the stand-in window in front, a click inside it with no drag hands
+/// back its visible bounds, read here straight from the window manager rather than through
+/// the overlay's own listing, so the two sides of the comparison are independent. Then a
+/// drag that starts inside the same window still hands back the dragged rectangle, which
+/// is what would go wrong if the threshold were read the wrong way round.
+fn window_pick_test(frame: &Frame) -> Result<(), String> {
+    let (mut child, hwnd) = open_stand_in()?;
+    let mut bounds = RECT::default();
+    let read = unsafe {
+        DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            &mut bounds as *mut RECT as *mut std::ffi::c_void,
+            std::mem::size_of::<RECT>() as u32,
+        )
+    };
+    if let Err(err) = read {
+        let _ = child.kill();
+        return Err(format!(
+            "the stand-in's visible bounds could not be read: {err}"
+        ));
+    }
+    let visible = DesktopRect::from_points(bounds.left, bounds.top, bounds.right, bounds.bottom);
+    // Cut to the display the click lands on, as the product does (§3.2).
+    let centre = (
+        visible.x + visible.width as i32 / 2,
+        visible.y + visible.height as i32 / 2,
+    );
+    let display = monitors()
+        .into_iter()
+        .map(|m| m.rect)
+        .find(|r| {
+            centre.0 >= r.x
+                && centre.1 >= r.y
+                && centre.0 < r.x + r.width as i32
+                && centre.1 < r.y + r.height as i32
+        })
+        .ok_or("the stand-in's centre is on no display")?;
+    let expected = DesktopRect::from_points(
+        visible.x.max(display.x),
+        visible.y.max(display.y),
+        (visible.x + visible.width as i32).min(display.x + display.width as i32),
+        (visible.y + visible.height as i32).min(display.y + display.height as i32),
+    );
+
+    let picked = with_overlay(frame, move || {
+        move_to(centre.0, centre.1);
+        // The lit window, as a person sees it before the click: the screen with the
+        // overlay up, written beside the executable to be looked at.
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        match copy_rect(display) {
+            Ok(pixels) => {
+                if let Ok(exe) = std::env::current_exe() {
+                    let path = exe.with_file_name("s02-window-lit.png");
+                    match image::RgbaImage::from_raw(display.width, display.height, pixels) {
+                        Some(buffer) => match buffer.save(&path) {
+                            Ok(()) => println!("  the lit window is at {}", path.display()),
+                            Err(err) => println!("  the lit window was not written: {err}"),
+                        },
+                        None => println!("  the lit window was not written: size mismatch"),
+                    }
+                }
+            }
+            Err(err) => println!("  the lit window was not written: {err}"),
+        }
+        press_left();
+        release_left();
+    });
+    let picked = match picked {
+        Ok(outcome) => outcome,
+        Err(err) => {
+            let _ = child.kill();
+            return Err(err);
+        }
+    };
+    let pick_result = match picked {
+        Outcome::Selected(got) if got == expected => {
+            println!(
+                "  a click at {},{} picked the stand-in's visible bounds exactly: {got:?}",
+                centre.0, centre.1
+            );
+            Ok(())
+        }
+        Outcome::Selected(got) => Err(format!(
+            "a click inside the stand-in gave {got:?} rather than its visible bounds {expected:?}"
+        )),
+        Outcome::Cancelled => {
+            Err("a click inside the stand-in cancelled rather than picking it".to_string())
+        }
+    };
+    if let Err(err) = pick_result {
+        let _ = child.kill();
+        return Err(err);
+    }
+
+    // The drag: from the centre, well past any drag threshold, so the window must not win.
+    let dragged = DesktopRect {
+        x: centre.0,
+        y: centre.1,
+        width: 60,
+        height: 40,
+    };
+    let outcome = with_overlay(frame, move || {
+        move_to(dragged.x, dragged.y);
+        press_left();
+        move_to(dragged.x + 30, dragged.y + 20);
+        move_to(
+            dragged.x + dragged.width as i32,
+            dragged.y + dragged.height as i32,
+        );
+        release_left();
+    });
+    let _ = unsafe { PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0)) };
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    let _ = child.kill();
+    match outcome? {
+        Outcome::Selected(got) if got == dragged => {
+            println!("  a drag from the same point still gave the dragged rectangle: {got:?}");
+            Ok(())
+        }
+        Outcome::Selected(got) => Err(format!(
+            "a drag inside the stand-in gave {got:?} rather than the dragged {dragged:?}"
+        )),
+        Outcome::Cancelled => Err("a drag inside the stand-in cancelled".to_string()),
+    }
+}
 
 /// A plain window in a process of its own, for the focus test to stand in front of. The
 /// first version opened Notepad, and on Windows 11 that joined the owner's own Notepad

@@ -10,12 +10,21 @@
 //! The selection is drawn on the FROZEN image, never on the live screen, so nothing can
 //! change under the pointer mid-drag. A selection stays inside the display it started on,
 //! which is the product rule in §3.2, and is why each window handles its own drag.
+//!
+//! Before a drag begins, the window under the pointer is the selection: its visible bounds
+//! are lit and framed as the pointer moves, and a click with no drag captures them. The
+//! windows are listed once, when the overlay comes up, because the picture under it is
+//! frozen at that moment too. A drag past the system's own drag threshold takes over and
+//! draws a free rectangle, exactly as before.
 
 use std::cell::RefCell;
 use std::ffi::c_void;
 
-use windows::core::{w, PCWSTR};
+use windows::core::{w, BOOL, PCWSTR};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Graphics::Dwm::{
+    DwmGetWindowAttribute, DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS,
+};
 use windows::Win32::Graphics::Gdi::{
     AlphaBlend, BeginPaint, BitBlt, CreateCompatibleDC, CreateDIBSection, CreateSolidBrush,
     DeleteDC, DeleteObject, EndPaint, FrameRect, GetDC, InvalidateRect, ReleaseDC, SelectObject,
@@ -25,11 +34,13 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, VK_ESCAPE};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetForegroundWindow,
-    GetMessageW, IsWindow, LoadCursorW, PostMessageW, PostQuitMessage, RegisterClassExW,
-    SetForegroundWindow, ShowWindow, TranslateMessage, CS_HREDRAW, CS_VREDRAW, IDC_CROSS, MSG,
-    SW_SHOW, WM_APP, WM_DESTROY, WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP,
-    WM_MOUSEMOVE, WM_PAINT, WNDCLASSEXW, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, EnumWindows, GetCursorPos,
+    GetForegroundWindow, GetMessageW, GetSystemMetrics, GetWindowLongPtrW, GetWindowRect,
+    GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, LoadCursorW, PostMessageW,
+    PostQuitMessage, RegisterClassExW, SetForegroundWindow, ShowWindow, TranslateMessage,
+    CS_HREDRAW, CS_VREDRAW, GWL_EXSTYLE, IDC_CROSS, MSG, SM_CXDRAG, SM_CYDRAG, SW_SHOW, WM_APP,
+    WM_DESTROY, WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_PAINT,
+    WNDCLASSEXW, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
 };
 
 use crate::capture::coords::DesktopRect;
@@ -69,11 +80,40 @@ struct Drag {
     current: (i32, i32),
     /// Which window owns this drag. A selection never leaves the display it started on.
     hwnd: isize,
+    /// Whether the pointer has left the system's drag threshold since the button went
+    /// down. Until it has, the press is a click on the window under it, and the window
+    /// stays lit; once it has, the drag draws its own rectangle.
+    moved: bool,
+}
+
+/// One top-level window as it stood when the overlay came up: its visible bounds in
+/// desktop space, and its handle for the log.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct WindowBounds {
+    hwnd: isize,
+    rect: DesktopRect,
+}
+
+/// The window under the pointer, lit as the selection while nothing is being dragged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Hover {
+    /// The window's bounds, cut to the display the pointer is on (§3.2).
+    rect: DesktopRect,
+    /// The surface showing it, which is the display the pointer is on.
+    surface: isize,
+    /// The window itself, for the log line when it is picked.
+    window: isize,
 }
 
 struct State {
     surfaces: Vec<Surface>,
     drag: Option<Drag>,
+    /// Every visible top-level window, front to back, as listed when the overlay came up.
+    windows: Vec<WindowBounds>,
+    hover: Option<Hover>,
+    /// How far the pointer may move from the press before it is a drag: the system's own
+    /// value, so a click here is a click everywhere else on this machine.
+    drag_threshold: (i32, i32),
     outcome: Outcome,
     /// A 1x1 black bitmap, stretched by AlphaBlend to dim whatever is not selected.
     dim_dc: HDC,
@@ -102,11 +142,14 @@ pub fn select_region(frame: &Frame) -> Outcome {
     if list.is_empty() {
         return Outcome::Cancelled;
     }
+    // The windows as they stand right now, before the overlay's own exist. The picture
+    // under the overlay is frozen at this moment, so the list is too.
+    let windows = top_level_windows();
 
     unsafe {
         register_class();
 
-        let Some(state) = build_state(frame, &list) else {
+        let Some(state) = build_state(frame, &list, windows) else {
             return Outcome::Cancelled;
         };
         STATE.with(|cell| *cell.borrow_mut() = Some(state));
@@ -184,7 +227,11 @@ unsafe fn register_class() {
     unsafe { RegisterClassExW(&class) };
 }
 
-unsafe fn build_state(frame: &Frame, list: &[MonitorInfo]) -> Option<State> {
+unsafe fn build_state(
+    frame: &Frame,
+    list: &[MonitorInfo],
+    windows: Vec<WindowBounds>,
+) -> Option<State> {
     let screen_dc = unsafe { GetDC(None) };
     if screen_dc.is_invalid() {
         return None;
@@ -229,6 +276,14 @@ unsafe fn build_state(frame: &Frame, list: &[MonitorInfo]) -> Option<State> {
     Some(State {
         surfaces,
         drag: None,
+        windows,
+        hover: None,
+        drag_threshold: unsafe {
+            (
+                GetSystemMetrics(SM_CXDRAG).max(0),
+                GetSystemMetrics(SM_CYDRAG).max(0),
+            )
+        },
         outcome: Outcome::Cancelled,
         dim_dc,
         dim_bitmap,
@@ -381,6 +436,21 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         }
         WM_ACCEPTING => {
             crate::marks::mark(crate::marks::OVERLAY_ACCEPTING);
+            // The pointer may already be resting on a window when the overlay appears, and
+            // no move arrives to say so: light that window now rather than on the first
+            // twitch.
+            let mut at = POINT::default();
+            if unsafe { GetCursorPos(&mut at) }.is_ok() {
+                let changed = STATE.with(|cell| {
+                    let mut borrowed = cell.borrow_mut();
+                    let state = borrowed.as_mut()?;
+                    let surface = state.surface_at(at.x, at.y)?;
+                    Some(state.update_hover(surface, (at.x, at.y)))
+                });
+                if let Some(changed) = changed {
+                    unsafe { invalidate_hover_change(changed) };
+                }
+            }
             LRESULT(0)
         }
         WM_LBUTTONDOWN => {
@@ -398,6 +468,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                             anchor: desktop,
                             current: desktop,
                             hwnd: hwnd.0 as isize,
+                            moved: false,
                         });
                     }
                 }
@@ -407,21 +478,56 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         }
         WM_MOUSEMOVE => {
             let point = point_of(lparam);
+            // With no button down, the move only changes which window is lit.
+            let hover_change = STATE.with(|cell| {
+                let mut borrowed = cell.borrow_mut();
+                let state = borrowed.as_mut()?;
+                if state.drag.is_some() {
+                    return None;
+                }
+                let monitor = state.monitor_of(hwnd)?.rect;
+                let desktop = (monitor.x + point.x, monitor.y + point.y);
+                Some(state.update_hover(hwnd.0 as isize, desktop))
+            });
+            if let Some(changed) = hover_change {
+                unsafe { invalidate_hover_change(changed) };
+                return LRESULT(0);
+            }
             let invalidate = STATE.with(|cell| {
                 let mut borrowed = cell.borrow_mut();
                 let state = borrowed.as_mut()?;
                 let monitor = state.monitor_of(hwnd)?.rect;
                 let origin = (monitor.x, monitor.y);
+                let threshold = state.drag_threshold;
+                let mut lit = None;
                 let drag = state.drag.as_mut()?;
                 if drag.hwnd != hwnd.0 as isize {
                     return None;
                 }
-                let before = DesktopRect::from_points(
+                // Inside the threshold the press is still a click, and the lit window is
+                // still the selection; nothing to redraw.
+                if !drag.moved {
+                    let dx = (monitor.x + point.x - drag.anchor.0).abs();
+                    let dy = (monitor.y + point.y - drag.anchor.1).abs();
+                    if dx <= threshold.0 && dy <= threshold.1 {
+                        return None;
+                    }
+                    drag.moved = true;
+                    // The drag has taken over: the lit window goes back to dim, once, and
+                    // is not consulted again until the overlay ends.
+                    lit = state.hover.take().map(|h| h.rect);
+                }
+                let drag = state.drag.as_mut()?;
+                let dragged = DesktopRect::from_points(
                     drag.anchor.0,
                     drag.anchor.1,
                     drag.current.0,
                     drag.current.1,
                 );
+                let before = match lit {
+                    Some(rect) => union_of(rect, dragged),
+                    None => dragged,
+                };
                 // Clamped to the display the drag started on. Mouse capture keeps
                 // delivering moves past the edge, and without this a drag that overshoots
                 // produces a rectangle outside the frozen frame, which the conversion then
@@ -456,6 +562,27 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 let mut borrowed = cell.borrow_mut();
                 let state = borrowed.as_mut()?;
                 let drag = state.drag.take()?;
+                if !drag.moved {
+                    // A click with no drag captures the window that was lit under it. With
+                    // nothing lit, on bare desktop on a display without one, it is a
+                    // cancellation, not a zero-pixel capture.
+                    match state.hover {
+                        Some(hover) if hover.surface == hwnd.0 as isize => {
+                            state.outcome = Outcome::Selected(hover.rect);
+                            crate::log(&format!(
+                                "overlay: a click picked the window {} at {}x{} desktop {},{}",
+                                crate::platform::window_owner(HWND(hover.window as *mut _)).line(),
+                                hover.rect.width,
+                                hover.rect.height,
+                                hover.rect.x,
+                                hover.rect.y
+                            ));
+                            crate::marks::mark(crate::marks::SELECTION_COMPLETED);
+                        }
+                        _ => state.outcome = Outcome::Cancelled,
+                    }
+                    return Some(());
+                }
                 let rect = DesktopRect::from_points(
                     drag.anchor.0,
                     drag.anchor.1,
@@ -463,7 +590,8 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                     drag.current.1,
                 );
                 if rect.is_empty() {
-                    // A click with no drag is a cancellation, not a zero-pixel capture.
+                    // A drag that moved past the threshold on one axis only is a line, not
+                    // a capture.
                     state.outcome = Outcome::Cancelled;
                 } else {
                     state.outcome = Outcome::Selected(rect);
@@ -520,15 +648,27 @@ impl State {
             .find(|s| s.hwnd.0 as isize == hwnd.0 as isize)
     }
 
-    /// The live selection in this window's client coordinates, if the drag belongs to it.
+    /// The live selection in this window's client coordinates: the dragged rectangle once
+    /// a drag is under way, otherwise the lit window, if either belongs to this surface.
     fn client_selection(&self, hwnd: HWND) -> Option<RECT> {
-        let drag = self.drag.as_ref()?;
-        if drag.hwnd != hwnd.0 as isize {
-            return None;
-        }
         let origin = self.origin_of(hwnd)?;
-        let rect =
-            DesktopRect::from_points(drag.anchor.0, drag.anchor.1, drag.current.0, drag.current.1);
+        let rect = match self.drag.as_ref() {
+            Some(drag) if drag.moved => {
+                if drag.hwnd != hwnd.0 as isize {
+                    return None;
+                }
+                DesktopRect::from_points(
+                    drag.anchor.0,
+                    drag.anchor.1,
+                    drag.current.0,
+                    drag.current.1,
+                )
+            }
+            _ => self
+                .hover
+                .filter(|h| h.surface == hwnd.0 as isize)
+                .map(|h| h.rect)?,
+        };
         if rect.is_empty() {
             return None;
         }
@@ -539,6 +679,166 @@ impl State {
             bottom: rect.y - origin.1 + rect.height as i32,
         })
     }
+
+    /// The surface whose display holds a desktop point.
+    fn surface_at(&self, x: i32, y: i32) -> Option<isize> {
+        self.surfaces
+            .iter()
+            .find(|s| contains(s.monitor.rect, x, y))
+            .map(|s| s.hwnd.0 as isize)
+    }
+
+    /// Re-reads which window is under the pointer and lights it, cut to the display the
+    /// pointer is on. Returns what has to be repainted: the window that was lit before,
+    /// on its surface, and the one lit now, on this one.
+    fn update_hover(&mut self, surface: isize, desktop: (i32, i32)) -> HoverChange {
+        let display = self
+            .surfaces
+            .iter()
+            .find(|s| s.hwnd.0 as isize == surface)
+            .map(|s| s.monitor.rect);
+        let next = display.and_then(|display| {
+            let hit = window_at(&self.windows, desktop.0, desktop.1)?;
+            let rect = clamp_to(hit.rect, display)?;
+            Some(Hover {
+                rect,
+                surface,
+                window: hit.hwnd,
+            })
+        });
+        let previous = self.hover;
+        if previous == next {
+            return HoverChange::default();
+        }
+        self.hover = next;
+        HoverChange {
+            before: previous.map(|h| (h.surface, self.origin_of_surface(h.surface), h.rect)),
+            after: next.map(|h| (h.surface, self.origin_of_surface(h.surface), h.rect)),
+        }
+    }
+
+    fn origin_of_surface(&self, surface: isize) -> (i32, i32) {
+        self.surfaces
+            .iter()
+            .find(|s| s.hwnd.0 as isize == surface)
+            .map(|s| (s.monitor.rect.x, s.monitor.rect.y))
+            .unwrap_or((0, 0))
+    }
+}
+
+/// What a change of the lit window leaves to repaint: each entry is a surface, its
+/// desktop origin, and the rectangle on it.
+#[derive(Debug, Default, Clone, Copy)]
+struct HoverChange {
+    before: Option<(isize, (i32, i32), DesktopRect)>,
+    after: Option<(isize, (i32, i32), DesktopRect)>,
+}
+
+unsafe fn invalidate_hover_change(change: HoverChange) {
+    for (surface, origin, rect) in change.before.into_iter().chain(change.after) {
+        unsafe { invalidate_union(HWND(surface as *mut _), origin, rect, rect) };
+    }
+}
+
+fn contains(rect: DesktopRect, x: i32, y: i32) -> bool {
+    x >= rect.x && y >= rect.y && x < rect.x + rect.width as i32 && y < rect.y + rect.height as i32
+}
+
+/// The frontmost window under a desktop point, given the list front to back.
+fn window_at(windows: &[WindowBounds], x: i32, y: i32) -> Option<WindowBounds> {
+    windows.iter().copied().find(|w| contains(w.rect, x, y))
+}
+
+/// The part of a rectangle inside another, or nothing when they do not meet.
+fn clamp_to(rect: DesktopRect, bounds: DesktopRect) -> Option<DesktopRect> {
+    let left = rect.x.max(bounds.x);
+    let top = rect.y.max(bounds.y);
+    let right = (rect.x + rect.width as i32).min(bounds.x + bounds.width as i32);
+    let bottom = (rect.y + rect.height as i32).min(bounds.y + bounds.height as i32);
+    if left >= right || top >= bottom {
+        return None;
+    }
+    Some(DesktopRect::from_points(left, top, right, bottom))
+}
+
+/// The smallest rectangle holding both.
+fn union_of(a: DesktopRect, b: DesktopRect) -> DesktopRect {
+    DesktopRect::from_points(
+        a.x.min(b.x),
+        a.y.min(b.y),
+        (a.x + a.width as i32).max(b.x + b.width as i32),
+        (a.y + a.height as i32).max(b.y + b.height as i32),
+    )
+}
+
+/// Every window a click could land on, front to back: visible, not minimised, not cloaked
+/// (kept by Windows but not drawn: another virtual desktop, a suspended app), not
+/// click-through, and never Recon's own. The bounds are the visible frame, without the
+/// invisible resize border a Windows 10 or 11 window carries around its edge, so a pick
+/// is the window the user sees and not a strip of its neighbour.
+fn top_level_windows() -> Vec<WindowBounds> {
+    let mut out: Vec<WindowBounds> = Vec::new();
+    unsafe {
+        let _ = EnumWindows(
+            Some(collect_window),
+            LPARAM(&mut out as *mut Vec<WindowBounds> as isize),
+        );
+    }
+    out
+}
+
+unsafe extern "system" fn collect_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    let out = unsafe { &mut *(lparam.0 as *mut Vec<WindowBounds>) };
+    let keep = BOOL(1);
+    unsafe {
+        if !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() {
+            return keep;
+        }
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        if pid == std::process::id() {
+            return keep;
+        }
+        let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+        if ex_style & WS_EX_TRANSPARENT.0 != 0 {
+            return keep;
+        }
+        let mut cloaked = 0u32;
+        let asked = DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_CLOAKED,
+            &mut cloaked as *mut u32 as *mut c_void,
+            std::mem::size_of::<u32>() as u32,
+        );
+        if asked.is_ok() && cloaked != 0 {
+            return keep;
+        }
+        let mut rect = RECT::default();
+        let bounds = DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            &mut rect as *mut RECT as *mut c_void,
+            std::mem::size_of::<RECT>() as u32,
+        );
+        if bounds.is_err() && GetWindowRect(hwnd, &mut rect).is_err() {
+            return keep;
+        }
+        let width = rect.right - rect.left;
+        let height = rect.bottom - rect.top;
+        if width <= 0 || height <= 0 {
+            return keep;
+        }
+        out.push(WindowBounds {
+            hwnd: hwnd.0 as isize,
+            rect: DesktopRect {
+                x: rect.left,
+                y: rect.top,
+                width: width as u32,
+                height: height as u32,
+            },
+        });
+    }
+    keep
 }
 
 unsafe fn invalidate_union(
@@ -732,5 +1032,58 @@ mod tests {
         let d = rect(0, 0, 40, 40);
         let sel = rect(100, 100, 120, 120);
         assert_eq!(dim_parts(d, Some(sel)).len(), 1);
+    }
+
+    fn desktop(x: i32, y: i32, width: u32, height: u32) -> DesktopRect {
+        DesktopRect {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    #[test]
+    fn the_frontmost_window_under_the_point_wins() {
+        // A small window in front of a large one: a point on both picks the front one, a
+        // point only on the large one picks that, and a point on neither picks nothing.
+        let front = WindowBounds {
+            hwnd: 1,
+            rect: desktop(100, 100, 200, 100),
+        };
+        let back = WindowBounds {
+            hwnd: 2,
+            rect: desktop(0, 0, 1000, 1000),
+        };
+        let list = [front, back];
+        assert_eq!(window_at(&list, 150, 150), Some(front));
+        assert_eq!(window_at(&list, 50, 50), Some(back));
+        assert_eq!(window_at(&list, 1000, 1000), None);
+        // The right and bottom edges are outside, as in every other rectangle here.
+        assert_eq!(window_at(&list, 300, 150), Some(back));
+    }
+
+    #[test]
+    fn a_window_is_cut_to_the_display_the_pointer_is_on() {
+        let display = desktop(0, 0, 1920, 1080);
+        // Hangs off the right and the bottom: the visible part stays.
+        assert_eq!(
+            clamp_to(desktop(1800, 1000, 400, 300), display),
+            Some(desktop(1800, 1000, 120, 80))
+        );
+        // Wholly on another display: nothing to light here.
+        assert_eq!(clamp_to(desktop(1920, 0, 400, 300), display), None);
+        // A maximised window's frame reaches past the display by its border, and comes
+        // back as the display itself.
+        assert_eq!(
+            clamp_to(desktop(-8, -8, 1936, 1096), display),
+            Some(display)
+        );
+    }
+
+    #[test]
+    fn the_union_holds_both_rectangles() {
+        let u = union_of(desktop(10, 10, 10, 10), desktop(50, 5, 5, 30));
+        assert_eq!(u, desktop(10, 5, 45, 30));
     }
 }

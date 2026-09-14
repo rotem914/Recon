@@ -148,6 +148,9 @@ the editor with that region.
   selection decorations must never appear in the result.
 - Selection happens on the frozen image, so content cannot change under the pointer
   mid-drag.
+- Before a drag begins, the window under the pointer is the selection: its visible frame
+  is lit as the pointer moves, and a click with no drag captures it. A drag past the
+  system's drag threshold draws a free region instead. Added 2026-09-14 at Rotem's ask.
 - A region can be selected on any connected display. A single region spanning two displays
   is out of v1: selection stays within its starting display.
 - `Esc` cancels and restores the preceding context. A cancelled capture creates nothing and

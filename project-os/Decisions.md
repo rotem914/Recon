@@ -83,6 +83,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-14 · _Previous captures are kept in memory, encoded and capped, until the store exists._ (superseded by the store below)
 - 2026-09-14 · The store: one folder per document in local application data, the image once, the record whole, the number its creation time.
 - 2026-09-14 · A deleted document goes to Recon's own trash for thirty days, by a thumbnail's × or Ctrl+Delete.
+- 2026-09-14 · The window under the pointer is the selection until a drag begins, listed once with the overlay, told from a drag by the system's threshold.
 
 ---
 
@@ -980,3 +981,46 @@ trash, in Recon once S2.7 lands. The sweep runs at startup only, so a machine ne
 restarted keeps its trash longer, which errs on the safe side. Cost: the trash takes disk
 until the sweep. Revisit the key if Ctrl+Delete collides with a habit, and the days if
 thirty proves too many or too few.
+
+---
+
+## 2026-09-14 · The window under the pointer is the selection until a drag begins, listed once with the overlay, told from a drag by the system's threshold
+
+### Context
+
+Rotem asked for the selection to follow the window under the pointer during a capture,
+the way a browser or an Explorer window is picked whole. The overlay until now knew only
+a drag, and a click with no drag cancelled. Three things had to be chosen: what a click
+means, where the window bounds come from, and when a press stops being a click.
+
+### Options
+
+1. Hover lights the window under the pointer; a click captures it; a drag draws a free
+   rectangle as before.
+2. A mode key to switch between window picking and free selection.
+3. Window picking only, with the drag removed.
+
+For the bounds: the window rectangle as Win32 reports it, which on Windows 10 and 11
+includes an invisible resize border around every framed window; or the frame the desktop
+compositor draws, which is what the eye sees. For the window list: read at every pointer
+move, or once when the overlay comes up.
+
+### Decision
+
+Option 1, mine, on Rotem's ask. The bounds are the compositor's frame, so a picked window
+does not carry a strip of its neighbour; the list is taken once, when the overlay comes up,
+because the picture under the overlay is frozen at that moment and a window that moves
+afterwards is not in that picture anyway. A press becomes a drag when the pointer leaves
+the system's own drag threshold, so a click here means what a click means everywhere on the
+machine and no number of Recon's own is invented. Cloaked windows, click-through windows,
+minimised ones and Recon's own are left out of the list: none of them is a thing the user
+could click on the real desktop. A window's bounds are cut to the display the pointer is
+on, which is §3.2's rule for a selection.
+
+### Consequences
+
+A click with no drag now captures rather than cancels; the bare desktop is a window too,
+so a click there captures the display. Cost: one listing of the top-level windows on the
+hotkey path, a few milliseconds, not yet measured against S0.7's interval. Revisit if a
+class of window is picked that should not be, or if child controls inside a window are ever
+wanted, which this list does not see.

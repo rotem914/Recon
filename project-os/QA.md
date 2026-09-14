@@ -33,6 +33,7 @@ that errors, and a working route says nothing about a layout that clips.
 | Client state / cache | Reload. Mutate, then confirm fresh data arrives. |
 | Refactor | Re-check the old behavior. Prove nothing moved. |
 | Process / rules | Cross-links resolve, and the change is recorded in `project-os/History.md`. |
+| The capture overlay | Build with `--features stage0-checks` and run `--selftest`: C drags, D escapes, H clicks a window and drags from the same point through the real overlay, and writes the lit window beside the executable to be looked at. |
 
 If a change spans rows, run every row it spans.
 
