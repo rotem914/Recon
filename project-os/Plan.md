@@ -2104,7 +2104,7 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       size of the whole list, so there is no element per picture at any count; thirty
       documents in a 1280-wide strip make nineteen elements, and a scroll to the end drops
       the newest and makes the oldest. The top edge is the handle, 96 the floor and the
-      default, 216 the one row of 320 by 200, then whole rows, 96% of the window the
+      default, 216 the one row of 320 by 200, then rows entering as room appears (a snap to whole rows was built first and jumped the handle away from the pointer; gone at Rotem's word on 2026-09-15), 96% of the window the
       ceiling, a double-click the reset, the height remembered by the page. The host makes
       `thumb.png` at 320 by 200 and remakes a 160 by 100 one it finds, once, under a rule
       unit-tested on sizes. Two things differ from the spec above. The kept file is served

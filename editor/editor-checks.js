@@ -2204,20 +2204,25 @@ export async function runChecks(editor, invoke) {
     for (let i = 0; i < 100 && ![...strip.querySelectorAll('img')].some((img) => img.complete && img.naturalWidth > 0); i += 1) await sleep(50);
     check('and back: the newest is there again, with its picture', !!strip.querySelector(`[data-id="${shots[29].document_id}"] img`), `${cellsOf()} cells`);
 
-    // The drag: taller, and the cells grow to 320 wide, then whole rows.
+    // The drag: taller, and the cells grow to 320 wide; then the height is exactly the
+    // hand's, never snapped, and a row enters when there is room for one.
     const h1 = editor.setStripHeight(300);
     layout = editor.stripLayout();
-    check('dragged past one row of 320: the strip snaps to that row, 216 tall, cells 320 by 200', h1 === 216 && layout.rows === 1 && layout.w === 320 && layout.h === 200 && stage.clientHeight === window.innerHeight - 32 - 216,
+    check('dragged past one row of 320: the strip is exactly as dragged, 300 tall, one row of 320 by 200 cells', h1 === 300 && layout.rows === 1 && layout.w === 320 && layout.h === 200 && stage.clientHeight === window.innerHeight - 32 - 300,
       `${h1} tall, ${layout.rows} row(s) of ${layout.w}x${layout.h}, stage ${stage.clientHeight}`);
-    const h2 = editor.setStripHeight(500);
+    const h1b = editor.setStripHeight(423);
+    check('one pixel short of a second row: still one row', h1b === 423 && editor.stripLayout().rows === 1, `${h1b} tall, ${editor.stripLayout().rows} row(s)`);
+    const h2 = editor.setStripHeight(424);
     layout = editor.stripLayout();
     const cols = Math.floor((strip.clientWidth - 16 + 8) / 328);
     const second = editor.cellRect(cols);
-    check('taller still: two rows of 320, as many columns as fit, scrolled vertically', h2 === 424 && layout.rows === 2 && layout.cols === cols && strip.classList.contains('grid') && second.x === 8 && second.y === 216
+    check('at 424 the second row enters: two rows of 320, as many columns as fit, scrolled vertically', h2 === 424 && layout.rows === 2 && layout.cols === cols && strip.classList.contains('grid') && second.x === 8 && second.y === 216
       && strip.scrollHeight === 16 + Math.ceil(30 / cols) * 208 - 8 && stage.clientHeight === window.innerHeight - 32 - 424,
       `${h2} tall, ${layout.rows} rows of ${layout.cols}, cell ${cols} at ${second.x},${second.y}, scroll height ${strip.scrollHeight}`);
+    const h2b = editor.setStripHeight(500);
+    check('and between rows the height is the hand\'s, the rows unchanged', h2b === 500 && editor.stripLayout().rows === 2 && stage.clientHeight === window.innerHeight - 32 - 500, `${h2b} tall, ${editor.stripLayout().rows} rows`);
     const h3 = editor.setStripHeight(100000);
-    check('the strip never takes more than 96% of the window', h3 <= Math.floor(window.innerHeight * 0.96) && h3 >= 216, `${h3} of ${window.innerHeight}`);
+    check('the strip never takes more than 96% of the window', h3 === Math.floor(window.innerHeight * 0.96), `${h3} of ${window.innerHeight}`);
 
     // The handle itself, with pointer events: up by 200 from the default, then a double-click.
     editor.setStripHeight(96);
@@ -2227,7 +2232,7 @@ export async function runChecks(editor, invoke) {
     pointer('pointerup', 500);
     let kept = null;
     try { kept = localStorage.getItem('recon.strip-height'); } catch (_) { /* none */ }
-    check('a drag on the top edge resizes the strip and the page remembers the height', editor.stripHeightOf() === 216 && kept === '216' && getComputedStyle(handle).cursor === 'ns-resize',
+    check('a drag on the top edge resizes the strip by exactly the move and the page remembers the height', editor.stripHeightOf() === 296 && kept === '296' && getComputedStyle(handle).cursor === 'ns-resize',
       `${editor.stripHeightOf()} tall, remembered ${kept}, cursor ${getComputedStyle(handle).cursor}`);
     handle.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     try { kept = localStorage.getItem('recon.strip-height'); } catch (_) { /* none */ }

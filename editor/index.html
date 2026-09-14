@@ -975,8 +975,8 @@
   // on either side exist as elements and hold their picture; a cell that scrolls further
   // away is dropped with its picture, so the page holds a screenful whatever the library
   // holds, and a startup asks for a screenful. The strip's top edge is a handle: dragged
-  // up, the cells grow to 320 wide; past that the strip snaps to whole rows of 320 and
-  // scrolls vertically. The height is remembered by the page.
+  // up, the cells grow to 320 wide; past that a row of 320 enters whenever there is room
+  // for one, and the strip scrolls vertically. The height is remembered by the page.
   const STRIP_MIN = 96;        // today's strip: the default and the floor
   const STRIP_PAD = 8;
   const STRIP_GAP = 8;
@@ -1027,15 +1027,11 @@
   const stripLayout = () => ({ ...layout });
 
   const stripMax = () => Math.max(STRIP_MIN, Math.floor(window.innerHeight * STRIP_SHARE));
-  // A wanted height made lawful: the floor, the share of the window, and past one row of
-  // 320 by 200 snapped down to whole rows.
-  const snapStripHeight = (wanted) => {
-    const h = Math.max(STRIP_MIN, Math.min(stripMax(), Math.round(wanted)));
-    const inner = h - 2 * STRIP_PAD;
-    if (inner <= CELL_MAX_H) return h;
-    const rows = Math.floor((inner + STRIP_GAP) / (CELL_MAX_H + STRIP_GAP));
-    return rows * (CELL_MAX_H + STRIP_GAP) - STRIP_GAP + 2 * STRIP_PAD;
-  };
+  // A wanted height made lawful: the floor and the share of the window, nothing else. The
+  // handle follows the hand exactly and a row of 320 enters the moment there is room for
+  // it (Rotem's word, 2026-09-15); until S2.8's first release the height snapped to whole
+  // rows, and the handle jumped away from the pointer.
+  const snapStripHeight = (wanted) => Math.max(STRIP_MIN, Math.min(stripMax(), Math.round(wanted)));
   const setStripHeight = (wanted) => {
     stripHeight = snapStripHeight(wanted);
     document.documentElement.style.setProperty('--strip-h', `${stripHeight}px`);
@@ -1054,7 +1050,7 @@
   const layoutStrip = () => {
     const inner = stripHeight - 2 * STRIP_PAD;
     const rows = inner <= CELL_MAX_H ? 1 : Math.floor((inner + STRIP_GAP) / (CELL_MAX_H + STRIP_GAP));
-    const h = rows === 1 ? inner : CELL_MAX_H;
+    const h = Math.min(inner, CELL_MAX_H); // a row never exceeds 320 by 200; the slack below it waits for the next row
     const w = Math.round(h * CELL_RATIO);
     const cols = rows === 1 ? Math.max(1, cells.length)
       : Math.max(1, Math.floor((strip.clientWidth - 2 * STRIP_PAD + STRIP_GAP) / (w + STRIP_GAP)));
