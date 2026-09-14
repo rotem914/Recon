@@ -435,7 +435,7 @@ export async function runChecks(editor, invoke) {
   say('S0.6 check 1: every source pixel the notes do not cover is exact, on a semi-transparent source');
   const exportCheck = async (name, mode, extra = {}) => {
     const layer = await editor.exportLayer();
-    return invoke('editor_export_check', layer.bytes, { headers: { name, margin: layer.margin, mode, ...extra } });
+    return invoke('editor_export_check', layer.bytes, { headers: { name, margin: layer.margin, blur: layer.blur, mode, ...extra } });
   };
   // A fresh document every time: opening the same file again keeps the notes on purpose
   // (a stepped frame is the same picture), and these checks want an empty page.
@@ -1976,6 +1976,60 @@ export async function runChecks(editor, invoke) {
     check('undo removes the text note in its turn', model.callouts.length === 1 && model.callouts[0].text === 'one');
     model.callouts = [];
     model.shapes = [];
+    editor.layoutScene();
+    editor.setTool('callout');
+  }
+
+  // ---------------------------------------------------------------- 35. S3.4: the blur
+  say('');
+  say('S3.4: B, then a drag, blurs a region: on screen through a box over the picture, in the output by the host on a copy of the source, the document\'s own pixels untouched');
+  {
+    const stage = editor.stage;
+    await invoke('editor_store_reset');
+    const shot = await invoke('editor_load_probe', { width: 800, height: 400 });
+    await editor.loadImage(shot);
+    await editor.setMode('annotate');
+    await editor.setZoom(1);
+    const box = stage.getBoundingClientRect();
+    const css = (ix, iy) => ({ x: box.left + model.offset.x + ((ix - model.pan.x) * model.zoom) / editor.ratioOf(), y: box.top + model.offset.y + ((iy - model.pan.y) * model.zoom) / editor.ratioOf() });
+    const pointer = (type, target, ix, iy) => {
+      const at = css(ix, iy);
+      target.dispatchEvent(new PointerEvent(type, { pointerId: 14, button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: at.x, clientY: at.y, bubbles: true, cancelable: true }));
+    };
+    const press = (init) => { const e = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }); window.dispatchEvent(e); return e.defaultPrevented; };
+
+    const before = await exportCheck('s34-before', 'source');
+    check('with no blur every source pixel is exact', before.source_mismatches === 0, `${before.source_mismatches} differ`);
+
+    press({ key: 'b', code: 'KeyB' });
+    check('B picks the blur', model.tool === 'blur');
+    // The probe's left half is a one-pixel checkerboard, which a blur changes everywhere.
+    pointer('pointerdown', stage, 40, 40);
+    pointer('pointermove', stage, 200, 160);
+    pointer('pointerup', stage, 200, 160);
+    const blur = model.shapes[0];
+    const el = document.querySelector(`.blur[data-shape="${blur && blur.id}"]`);
+    check('a drag makes a blur region, shown as a box that blurs what is behind it', !!blur && blur.kind === 'blur' && !!el && el.style.backdropFilter === `blur(${editor.blurRadius(editor.rectOfShape(blur))}px)` && editor.blurRadius(editor.rectOfShape(blur)) === 15,
+      el ? el.style.backdropFilter : 'no box');
+    check('the export layer carries the region as a header and not as a box', editor.blurString() === '40,40,160,120');
+    const layer = await editor.exportLayer();
+    check('no blur box is in the layer itself', !layer.markup.includes('class="blur"') && !layer.markup.includes('backdrop-filter'));
+
+    const after = await exportCheck('s34-after', 'source');
+    check('the output differs from the source inside the region only, and the document\'s own pixels stay', after.source_mismatches > 1000 && after.source_mismatches <= 160 * 120 && after.width === 800,
+      `${after.source_mismatches} pixels changed of ${160 * 120} in the region`);
+    const again = await exportCheck('s34-again', 'source');
+    check('exporting again gives the same blur, since the source was never altered', again.source_mismatches === after.source_mismatches);
+
+    pointer('pointerdown', el, 100, 100);
+    pointer('pointerup', stage, 100, 100);
+    press({ key: 'Delete', code: 'Delete' });
+    const gone = await exportCheck('s34-gone', 'source');
+    check('deleting the blur brings every source pixel back', model.shapes.length === 0 && gone.source_mismatches === 0, `${gone.source_mismatches} differ`);
+    press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    check('undo brings the blur back', model.shapes.length === 1 && model.shapes[0].kind === 'blur');
+    model.shapes = [];
+    model.callouts = [];
     editor.layoutScene();
     editor.setTool('callout');
   }

@@ -109,6 +109,7 @@
   #tools button.active { border-color: #7aa7ff; background: #26303c; }
   #arrows [data-shape] { pointer-events: visiblePainted; cursor: move; }
   #handles { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+  .blur { position: absolute; cursor: move; border: 1px dashed rgba(255,82,82,.6); box-sizing: border-box; }
   body.checking #stage { cursor: progress; }
   #report { position: absolute; inset: 0; display: none; padding: 18px 22px; overflow: auto;
             background: #0c0e10; font-family: ui-monospace, Consolas, monospace;
@@ -133,6 +134,7 @@
     <button type="button" data-tool="rect" title="Rectangle: drag across what to frame (R)">Rectangle</button>
     <button type="button" data-tool="highlight" title="Highlight: drag across what to mark (H)">Highlight</button>
     <button type="button" data-tool="text" title="Text: type where you click, no bubble (T)">Text</button>
+    <button type="button" data-tool="blur" title="Blur: drag across what to hide (B)">Blur</button>
   </div>
   <button id="copy" type="button" title="Copy the image to the clipboard (Ctrl+C)">Copy</button>
   <button id="saveas" type="button" title="Save As a new PNG file (Ctrl+S)">Save As</button>
@@ -733,6 +735,25 @@
     for (const el of [...scene.querySelectorAll('.anchor')]) {
       if (!model.callouts.some((c) => c.id === el.dataset.anchorFor)) el.remove();
     }
+    for (const shape of model.shapes) {
+      if (shape.kind !== 'blur') continue;
+      let el = scene.querySelector(`.blur[data-shape="${shape.id}"]`);
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'blur';
+        el.dataset.shape = shape.id;
+        scene.appendChild(el);
+      }
+      const r = rectOfShape(shape);
+      el.style.left = `${r.x}px`;
+      el.style.top = `${r.y}px`;
+      el.style.width = `${r.w}px`;
+      el.style.height = `${r.h}px`;
+      el.style.backdropFilter = `blur(${blurRadius(r)}px)`;
+    }
+    for (const el of [...scene.querySelectorAll('.blur')]) {
+      if (!model.shapes.some((s) => s.id === el.dataset.shape)) el.remove();
+    }
 
     drawArrows();
   };
@@ -797,6 +818,12 @@
     }
     return '';
   };
+
+  // The blur's radius, the same on screen and in the output: an eighth of the shorter
+  // side, six to forty pixels. The host applies it to a copy of the source at export; on
+  // screen a box blurs what is behind it.
+  const blurRadius = (r) => Math.min(40, Math.max(6, Math.floor(Math.min(r.w, r.h) / 8)));
+  const blurString = () => model.shapes.filter((s) => s.kind === 'blur').map((s) => { const r = rectOfShape(s); return `${r.x},${r.y},${r.w},${r.h}`; }).join(';');
 
   // The rectangle a drag from a to b describes, whichever way it was dragged.
   const rectOfShape = (shape) => ({
@@ -873,7 +900,7 @@
       `${modeLine}\n` +
       `zoom ${zoomText}   pan ${Math.round(model.pan.x)},${Math.round(model.pan.y)}   ` +
       `callouts ${model.callouts.length}   text ${sizeShown}px   dpr ${dpr()}\n` +
-      `0 fit  1 actual size  +/- zoom  wheel pan  Ctrl+wheel zoom  F11 fullscreen  PgUp/PgDn previous next  Ctrl +/- text size  arrows pan  ${model.mode === 'annotate' ? 'click to add' : 'drag to pan'}  Esc commit  Del remove  Ctrl+Z/Y undo redo  Ctrl+C copy  Ctrl+Enter copy and return  Ctrl+S save as  Ctrl+Del delete document  Ctrl+O open  C callout  L arrow  R rectangle  H highlight  T text` +
+      `0 fit  1 actual size  +/- zoom  wheel pan  Ctrl+wheel zoom  F11 fullscreen  PgUp/PgDn previous next  Ctrl +/- text size  arrows pan  ${model.mode === 'annotate' ? 'click to add' : 'drag to pan'}  Esc commit  Del remove  Ctrl+Z/Y undo redo  Ctrl+C copy  Ctrl+Enter copy and return  Ctrl+S save as  Ctrl+Del delete document  Ctrl+O open  C callout  L arrow  R rectangle  H highlight  T text  B blur` +
       (currentNotice ? `\n${currentNotice}` : '');
   };
 
@@ -1191,7 +1218,7 @@
       layoutScene();
       return;
     }
-    if (model.tool === 'arrow' || model.tool === 'rect' || model.tool === 'highlight') {
+    if (model.tool === 'arrow' || model.tool === 'rect' || model.tool === 'highlight' || model.tool === 'blur') {
       const shape = createShape(model.tool, toImage(event));
       drag = { kind: 'draw', shape };
       try { stage.setPointerCapture(event.pointerId); } catch (e) { /* a synthetic pointer */ }
@@ -1215,14 +1242,14 @@
     const point = toImage(event);
     if (drag.kind === 'draw') {
       drag.shape.b = { x: Math.round(point.x), y: Math.round(point.y) };
-      drawArrows();
+      if (drag.shape.kind === 'blur') layoutScene(); else drawArrows();
       return;
     }
     if (drag.kind === 'shape') {
       drag.shape.a = { x: Math.round(point.x + drag.dx), y: Math.round(point.y + drag.dy) };
       drag.shape.b = { x: Math.round(point.x + drag.bx), y: Math.round(point.y + drag.by) };
       drag.moved = true;
-      drawArrows();
+      if (drag.shape.kind === 'blur') layoutScene(); else drawArrows();
       return;
     }
     if (drag.kind === 'anchor') {
@@ -1412,6 +1439,7 @@
       if (event.code === 'KeyR') { setTool('rect'); event.preventDefault(); return; }
       if (event.code === 'KeyH') { setTool('highlight'); event.preventDefault(); return; }
       if (event.code === 'KeyT') { setTool('text'); event.preventDefault(); return; }
+      if (event.code === 'KeyB') { setTool('blur'); event.preventDefault(); return; }
     }
     if (event.key === 'Enter' && model.selected) { startEditing(model.selected); event.preventDefault(); return; }
 
@@ -1621,6 +1649,7 @@
       for (const child of scene.children) {
         if (child.classList && child.classList.contains('anchor')) continue; // editing UI
         if (child.id === 'handles') continue; // editing UI
+        if (child.classList && child.classList.contains('blur')) continue; // the host blurs the source
         const clone = child.cloneNode(true);
         if (child.id === 'arrows') {
           clone.removeAttribute('id');
@@ -1666,7 +1695,7 @@
     }
     const encodeMs = performance.now() - started - rasterMs;
     const bytes = new Uint8Array(await blob.arrayBuffer());
-    return { bytes, svgChars: svg.length, rasterMs, encodeMs, originClean, margin: marginString(), markup };
+    return { bytes, svgChars: svg.length, rasterMs, encodeMs, originClean, margin: marginString(), blur: blurString(), markup };
   };
 
   // Copy the composed image (§3.6): the layer to the host, which composes it over the
@@ -1687,7 +1716,7 @@
     let report;
     try {
       layer = await exportLayer();
-      report = await invoke('editor_copy', layer.bytes, { headers: { margin: layer.margin } });
+      report = await invoke('editor_copy', layer.bytes, { headers: { margin: layer.margin, blur: layer.blur } });
     } catch (err) {
       notice(`NOT COPIED: ${err}. Your work is here; try again`, 0);
       throw err;
@@ -1736,7 +1765,7 @@
     let layer;
     try {
       layer = await exportLayer();
-      await invoke('editor_save_as', layer.bytes, { headers: { margin: layer.margin } });
+      await invoke('editor_save_as', layer.bytes, { headers: { margin: layer.margin, blur: layer.blur } });
       notice('Save As is open', 0);
     } catch (err) {
       notice(`NOT SAVED: ${err}`, 0);
@@ -1783,6 +1812,8 @@
     createShape,
     removeShape,
     createTextNote,
+    blurRadius,
+    blurString,
     handles,
     snapshot,
     copyAndReturn,

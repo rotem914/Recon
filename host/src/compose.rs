@@ -162,6 +162,114 @@ pub fn source_mismatches(
     mismatches
 }
 
+/// A region of the source to blur at export (S3.4), in image pixels. The blur is an
+/// annotation: the source in the document and on disk is never touched, and the blur is
+/// applied afresh to a copy at every export, like every other mark.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BlurRect {
+    pub x: u32,
+    pub y: u32,
+    pub w: u32,
+    pub h: u32,
+}
+
+/// "x,y,w,h;x,y,w,h", empty for none, as the page sends it in a header.
+pub fn parse_blurs(text: &str) -> Result<Vec<BlurRect>, String> {
+    let mut rects = Vec::new();
+    for part in text.split(';').map(str::trim).filter(|p| !p.is_empty()) {
+        let mut it = part.split(',').map(|n| n.trim().parse::<u32>());
+        let mut next = || {
+            it.next()
+                .ok_or_else(|| format!("{part:?} is not x,y,w,h"))?
+                .map_err(|_| format!("{part:?} is not x,y,w,h"))
+        };
+        rects.push(BlurRect {
+            x: next()?,
+            y: next()?,
+            w: next()?,
+            h: next()?,
+        });
+    }
+    Ok(rects)
+}
+
+/// The radius for a region, the same on screen and in the output: an eighth of the
+/// shorter side, no less than six and no more than forty pixels.
+pub fn blur_radius(rect: BlurRect) -> u32 {
+    (rect.w.min(rect.h) / 8).clamp(6, 40)
+}
+
+/// Blurs the regions in place: a box blur, two passes each way, clamped at the region's
+/// own edges so nothing outside it is read or written. Alpha is left as it is.
+pub fn blur_rects(rgba: &mut [u8], width: u32, height: u32, rects: &[BlurRect]) {
+    for rect in rects {
+        let x0 = rect.x.min(width) as usize;
+        let y0 = rect.y.min(height) as usize;
+        let x1 = (rect.x.saturating_add(rect.w)).min(width) as usize;
+        let y1 = (rect.y.saturating_add(rect.h)).min(height) as usize;
+        if x1 <= x0 || y1 <= y0 {
+            continue;
+        }
+        let r = blur_radius(*rect) as usize;
+        let (rw, rh) = (x1 - x0, y1 - y0);
+        let mut region: Vec<[u8; 4]> = Vec::with_capacity(rw * rh);
+        for y in y0..y1 {
+            for x in x0..x1 {
+                let i = (y * width as usize + x) * 4;
+                region.push([rgba[i], rgba[i + 1], rgba[i + 2], rgba[i + 3]]);
+            }
+        }
+        let mut scratch = region.clone();
+        for _ in 0..2 {
+            // Rows.
+            for y in 0..rh {
+                for x in 0..rw {
+                    let a = x.saturating_sub(r);
+                    let b = (x + r + 1).min(rw);
+                    let mut sum = [0u32; 3];
+                    for xx in a..b {
+                        let p = region[y * rw + xx];
+                        sum[0] += p[0] as u32;
+                        sum[1] += p[1] as u32;
+                        sum[2] += p[2] as u32;
+                    }
+                    let n = (b - a) as u32;
+                    let p = &mut scratch[y * rw + x];
+                    p[0] = (sum[0] / n) as u8;
+                    p[1] = (sum[1] / n) as u8;
+                    p[2] = (sum[2] / n) as u8;
+                }
+            }
+            // Columns.
+            for x in 0..rw {
+                for y in 0..rh {
+                    let a = y.saturating_sub(r);
+                    let b = (y + r + 1).min(rh);
+                    let mut sum = [0u32; 3];
+                    for yy in a..b {
+                        let p = scratch[yy * rw + x];
+                        sum[0] += p[0] as u32;
+                        sum[1] += p[1] as u32;
+                        sum[2] += p[2] as u32;
+                    }
+                    let n = (b - a) as u32;
+                    let p = &mut region[y * rw + x];
+                    p[0] = (sum[0] / n) as u8;
+                    p[1] = (sum[1] / n) as u8;
+                    p[2] = (sum[2] / n) as u8;
+                }
+            }
+        }
+        for y in y0..y1 {
+            for x in x0..x1 {
+                let i = (y * width as usize + x) * 4;
+                let p = region[(y - y0) * rw + (x - x0)];
+                rgba[i..i + 3].copy_from_slice(&p[..3]);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

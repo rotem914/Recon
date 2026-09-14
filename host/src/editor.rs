@@ -1365,9 +1365,21 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
 /// Composes the page's annotation layer over the current image, in canvas space.
 ///
 /// Returns the composite, the decoded layer (the checks count from it) and the time.
+/// The blur regions the page sends in a header (S3.4): none when the header is absent.
+fn blur_header(request: &tauri::ipc::Request<'_>) -> Result<Vec<crate::compose::BlurRect>, String> {
+    request
+        .headers()
+        .get("blur")
+        .and_then(|v| v.to_str().ok())
+        .map(crate::compose::parse_blurs)
+        .transpose()
+        .map(|b| b.unwrap_or_default())
+}
+
 fn compose_layer(
     png: &[u8],
     margin: crate::compose::Margin,
+    blurs: &[crate::compose::BlurRect],
 ) -> Result<(crate::compose::Composite, Vec<u8>, u128), String> {
     let image = state().image().ok_or("no image is loaded")?;
     let (w, h) = (image.frame.width(), image.frame.height());
@@ -1384,8 +1396,17 @@ fn compose_layer(
         ));
     }
     let layer = layer.into_raw();
-    let composite =
-        crate::compose::compose(&image.frame.rgba, w, h, &layer, margin, crate::compose::MAT)?;
+    // The blur is applied to a copy, never to the document's own pixels (S3.4).
+    let blurred;
+    let source: &[u8] = if blurs.is_empty() {
+        &image.frame.rgba
+    } else {
+        let mut copy = image.frame.rgba.clone();
+        crate::compose::blur_rects(&mut copy, w, h, blurs);
+        blurred = copy;
+        &blurred
+    };
+    let composite = crate::compose::compose(source, w, h, &layer, margin, crate::compose::MAT)?;
     Ok((composite, layer, started.elapsed().as_millis()))
 }
 
@@ -1417,7 +1438,8 @@ pub fn editor_copy(request: tauri::ipc::Request<'_>) -> Result<CopyReport, Strin
             return Err("the layer arrived as JSON, not as bytes".into())
         }
     };
-    let (composite, _, compose_ms) = compose_layer(&bytes, margin)?;
+    let blurs = blur_header(&request)?;
+    let (composite, _, compose_ms) = compose_layer(&bytes, margin, &blurs)?;
     let published = crate::clipboard::publish(&composite.rgba, composite.width, composite.height)?;
     println!(
         "copied {}x{} to the clipboard: composed in {compose_ms} ms, encoded in {} ms, published in {} ms as {}",
@@ -1673,7 +1695,8 @@ pub fn editor_save_as(app: AppHandle, request: tauri::ipc::Request<'_>) -> Resul
             return Err("the layer arrived as JSON, not as bytes".into())
         }
     };
-    let (composite, _, compose_ms) = compose_layer(&bytes, margin)?;
+    let blurs = blur_header(&request)?;
+    let (composite, _, compose_ms) = compose_layer(&bytes, margin, &blurs)?;
     let window = app
         .get_webview_window("editor")
         .ok_or("there is no editor window")?;
@@ -2570,7 +2593,8 @@ mod checks {
             }
         };
 
-        let (composite, layer, compose_ms) = compose_layer(&bytes, margin)?;
+        let blurs = blur_header(&request)?;
+        let (composite, layer, compose_ms) = compose_layer(&bytes, margin, &blurs)?;
         let image = state().image().ok_or("no image is loaded")?;
         let (sw, sh) = (image.frame.width(), image.frame.height());
         let source_mismatches = crate::compose::source_mismatches(
@@ -3291,7 +3315,8 @@ mod checks {
                 return Err("the layer arrived as JSON, not as bytes".into())
             }
         };
-        let (composite, _, _) = compose_layer(&bytes, margin)?;
+        let blurs = blur_header(&request)?;
+        let (composite, _, _) = compose_layer(&bytes, margin, &blurs)?;
         let target = std::path::Path::new(&path);
         let encoded =
             crate::export::encode(&composite.rgba, composite.width, composite.height, target)?;

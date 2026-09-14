@@ -2047,10 +2047,19 @@ Annotate and Copy were settled.
       anchor or arrow made for it; red with a white halo so it reads on a picture. It
       takes no callout number, so the notes' numbering stays theirs. Checked in section
       34 of the editor checks.
-- [ ] S3.4 Blur: a region the composer blurs in the source at export, since the page never
+- [x] S3.4 Blur: a region the composer blurs in the source at export, since the page never
       holds the pixels (part 5); the layer carries the region and the host does the work,
       on screen through a blurred region from the region service. Model: Fable 5.1, it
       changes the composer.
+      **Built 2026-09-14.** B, then a drag, makes a blur region, a shape like the others:
+      selected, moved, deleted, undone, saved. On screen it is a box in the scene that
+      blurs what is behind it, which is the canvas, so no pixels cross to the page. In the
+      output the page sends the regions as a header beside the layer, and the composer
+      blurs a copy of the source inside them, a box blur two passes each way with a radius
+      of an eighth of the shorter side between six and forty pixels, the same number the
+      screen uses; the document's own pixels are never touched, so exporting twice gives
+      the same blur and deleting the blur gives every source pixel back, which the checks
+      see. Section 35 of the editor checks.
 - [x] S2.6 Export beyond PNG: Save As offering JPEG beside PNG, the same never-overwrite
       path, the quality fixed rather than asked. Model: Opus 5, the path exists.
       **Built 2026-09-14, on Fable at Rotem's word.** The Save As dialog offers JPEG beside
