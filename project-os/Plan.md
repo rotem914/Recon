@@ -1987,6 +1987,14 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       store holds and how many megabytes they take, read from the file sizes and never
       from the images, refreshed with the timeline. The daily rate stays stated in §3.8.
       Model: Opus 5, wired as documented; built on Fable at Rotem's word, 2026-09-14.
+- [ ] S2.5 Intentional deletion (§3.8): one unambiguous delete of a document, its folder
+      gone from the store and its thumbnail from the timeline, never the external original
+      and never an export, with a way back for a slip. **Waits on Rotem's call**, because it
+      is the first thing in Recon that removes work: where the control sits (on the
+      timeline's thumbnail, a key, or both), and whether a deleted document goes to the
+      recycle bin or is gone at once. Model: Fable 5.1, it deletes.
+- [ ] S2.6 Export beyond PNG: Save As offering JPEG beside PNG, the same never-overwrite
+      path, the quality fixed rather than asked. Model: Opus 5, the path exists.
 
 Stage 1 is the release that replaces both current tools. It ships without the thumbnail
 strip, without export options beyond PNG, and without Rogers.
