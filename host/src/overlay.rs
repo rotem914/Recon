@@ -254,7 +254,11 @@ unsafe fn build_state(
         return None;
     }
 
-    // The dimming layer: one black pixel, stretched over whatever is not selected.
+    // The dimming layer: one black pixel, stretched over whatever is not selected. Its
+    // alpha byte is 255 on purpose: the blend writes the window's alpha channel too, and
+    // a transparent source left the dimmed pixels at 45% alpha, which the compositor then
+    // showed over the identical live desktop, cancelling the dim exactly. The screen
+    // looked undimmed while every blend call reported success.
     let dim_dc = unsafe { CreateCompatibleDC(Some(screen_dc)) };
     let mut info = solid_header(1, 1);
     let mut bits: *mut c_void = std::ptr::null_mut();
@@ -267,7 +271,7 @@ unsafe fn build_state(
             return None;
         }
     };
-    unsafe { std::ptr::write_bytes(bits as *mut u8, 0, 4) };
+    unsafe { std::ptr::copy_nonoverlapping([0u8, 0, 0, 255].as_ptr(), bits as *mut u8, 4) };
     let dim_previous = unsafe { SelectObject(dim_dc, HGDIOBJ(dim_bitmap.0)) };
     std::hint::black_box(&mut info);
 
