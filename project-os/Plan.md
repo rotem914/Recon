@@ -2129,7 +2129,10 @@ daily use actually demanded. Depends on the scene and composer being stable.
 Acceptance: each tool takes part in selection, editing, undo, persistence and identical
 clipboard and file rendering, and its arrival disturbs nothing in the callout flow.
 
-**Stage 4, Rogers delivery.** Inspect Rogers first, then design the submission record against
+**Stage 4, Rogers delivery: in the Backlog at Rotem's word on 2026-09-14, whole.** Nothing of
+it is planned or built until he takes it out; §3.9 stays as the record of what it is, and
+`Ctrl+Shift+Enter` stays a key that is taken and does nothing.
+Inspect Rogers first, then design the submission record against
 what is actually there. The work is destination validation, item and attachment behavior,
 what counts as success, duplicate prevention, retry under a reused identifier, and error
 handling. Calling any of that transport understates it. Explicit retry only, no background

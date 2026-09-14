@@ -31,6 +31,7 @@ The owner-curated open-items list. One place to see what is still open.
 | 2026-09-14 | When no place for a new note is both inside the picture and clear of the others, the canvas grows rather than the bubbles stacking; the order can prefer inside-and-overlapping instead (F81) | S1.6, Rotem's Backlog on 2026-09-14 |
 | 2026-09-14 | A document read from disk stands without its file open behind it, so its frames cannot be stepped and its folder is not active until the file is opened again (F82) | S1.8, Rotem's Backlog on 2026-09-14 |
 | 2026-09-14 | A note added while Copy and Return is composing can grow the margin, and then the copy fails as "NOT COPIED" instead of copying and staying (F83) | S1.10, Rotem's Backlog on 2026-09-14 |
+| 2026-09-14 | Everything to do with Rogers: Stage 4, Send to Rogers, the target shown in the editor, the submission record, retry under one identifier, Ctrl+Shift+Enter, and the look at Rogers that comes first (plan §3.9 and part 10) | Rotem's Backlog on 2026-09-14 |
 
 ## Done
 
