@@ -31,6 +31,7 @@ mod registration;
 #[cfg(feature = "stage0-checks")]
 mod selftest;
 mod source;
+mod store;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -260,6 +261,12 @@ fn editor_run(demo: bool) -> i32 {
         }
         editor::set_app(app.handle().clone());
         editor::set_hotkey(config::load().hotkey);
+        // The checks' own store, beside the executable, never the user's documents.
+        store::set_root(
+            std::env::current_exe()
+                .map(|exe| exe.with_file_name("s18-store"))
+                .unwrap_or_else(|_| "s18-store".into()),
+        );
         tauri::WebviewWindowBuilder::new(
             app,
             "editor",
@@ -544,6 +551,9 @@ fn main() {
                 .on_menu_event(|app, event| {
                     if event.id() == "quit" {
                         log("quit chosen in the tray menu");
+                        // Pending changes are saved before Quit (§3.8): the page is asked to
+                        // save now, and given a moment to.
+                        editor::flush_saves(app);
                         app.exit(0);
                     } else if event.id() == "defaults" {
                         // Windows' own page, where the user makes Recon the default (§3.1).
@@ -566,6 +576,16 @@ fn main() {
             // ---- the editor, created hidden so a capture only has to show it ----
             editor::set_app(app.handle().clone());
             editor::set_hotkey(hotkey_label.clone());
+            // The store (§3.8, S1.8): the user's local application data, read once here;
+            // the latest document reopens, hidden, so Open Recon shows it.
+            match store::product_root() {
+                Some(root) => {
+                    log(&format!("store: {}", root.display()));
+                    store::set_root(root);
+                    editor::load_store();
+                }
+                None => log("store: LOCALAPPDATA is not set, so nothing is saved this session"),
+            }
             let created = std::time::Instant::now();
             editor::create_hidden(app.handle())?;
             log(&format!(
@@ -627,6 +647,7 @@ fn main() {
             // work in it must survive. Quit is the tray's, and it is explicit.
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
+                editor::flush_saves(window.app_handle());
                 match editor::hide(window.app_handle()) {
                     Ok(()) => {}
                     Err(err) => log(&format!("editor NOT hidden on close: {err}")),

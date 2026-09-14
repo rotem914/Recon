@@ -80,6 +80,8 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-14 · The web view's security posture: a strict policy, and the region scheme answers the page's origin only.
 - 2026-09-14 · Previous captures are kept in memory, encoded and capped, until the store exists.
 - 2026-09-14 · A bubble is placed from a fixed list of candidates, and the margin is what the notes need, recomputed at rest.
+- 2026-09-14 · _Previous captures are kept in memory, encoded and capped, until the store exists._ (superseded by the store below)
+- 2026-09-14 · The store: one folder per document in local application data, the image once, the record whole, the number its creation time.
 
 ---
 
@@ -831,6 +833,8 @@ page or remote content ever enters the web view.
 
 ## 2026-09-14 · Previous captures are kept in memory, encoded and capped, until the store exists
 
+_Superseded on 2026-09-14 by the store entry below: the cap and the in-memory list are gone._
+
 ### Context
 
 §3.3 says a new capture never overwrites the previous one, and the store that keeps
@@ -898,3 +902,47 @@ that half of the order is F81 and one line to reverse. The margin is never the u
 to set in v1; the checks set a floor under it. Revisit if daily use shows the canvas
 growing when a user would rather have had the bubbles overlap, or if a margin that
 appears and disappears as notes move reads as jumpy.
+
+---
+
+## 2026-09-14 · The store: one folder per document in local application data, the image once, the record whole, the number its creation time
+
+### Context
+
+Part 5 fixed the shape, one folder per document with the image as a PNG never rewritten
+and a JSON record with a schema version, atomic writes, no index. S1.8 had to choose
+where the folders live, what a document's number is once numbers must survive a restart,
+what the record holds, and when the page's notes reach the disk.
+
+### Options
+
+1. Roaming application data, beside the hotkey setting, so the documents follow the user's
+   profile between machines.
+2. Local application data, `%LOCALAPPDATA%\Recon\documents`, machine-local.
+3. A folder the user picks, or the Pictures folder.
+4. For the number: keep the per-session counter and renumber on load; or a random id; or
+   the creation time in milliseconds, monotonic within a session.
+5. For the notes: a host-side schema of callouts, or the page's object carried whole.
+
+### Decision
+
+Option 2 for the place, by the assistant: a day is tens to hundreds of megabytes (§3.8),
+which a roaming profile would sync at every logon, and nothing in a document is
+machine-specific, so a later move to a chosen folder is a path change. The number is the
+creation time in milliseconds, bumped past the last issued when two fall in one, so the
+page's stash and the disk agree on one key before and after a restart and numbers never
+collide. The notes are the page's own object, carried whole and never read by the host,
+which is part 5's rule that the format is not coupled to a renderer; the host adds the
+schema version, the size and the source around it. Saves: debounced 800 ms while typing,
+at once on blur, before navigation, before another document, before a hide, and when the
+host asks at close or quit and waits up to a second for the page's answer.
+
+### Consequences
+
+Every capture is on disk from its first moment and a note typed is on disk within a
+second of the last keystroke; a crash loses at most that. The record is rewritten whole
+through a temporary file, so a document on disk is always the old one or the new one.
+Cost: the image is encoded and written for every capture, on a thread, about 40 ms and
+3.5 MB for a full screen; retention is the user's until Stage 2 adds deletion (§3.8). A
+document read back has no file behind it (F82). Revisit the place if a user wants the
+documents on another drive, and the number if two machines ever merge a store.

@@ -152,6 +152,10 @@
     // operation. Typing has the engine's own undo while a note is being edited; the
     // committed text change joins this history as one grouped step.
     history: { steps: [], index: -1 },
+    // The save state of this document's notes (§3.8): 'saved', 'saving', or 'failed' with
+    // the reason, which stays on screen until a save succeeds. Never "saved" unless the
+    // host said so.
+    save: { state: 'saved', error: '', dirty: false },
     callouts: [],
     nextNumber: 1,
     selected: null,
@@ -228,6 +232,7 @@
   const stashCurrent = () => {
     if (!model.image.document_id) return;
     if (model.editing) commitEditing();
+    saveNow().catch(() => {});
     documents.set(model.image.document_id, {
       callouts: model.callouts,
       nextNumber: model.nextNumber,
@@ -468,6 +473,56 @@
     return true;
   };
 
+  // ---------------------------------------------------------------- saving
+  //
+  // §3.8: new captures save automatically and later edits save with no Apply action. The
+  // notes go to the host as one object, keyed by the document's number, so a save that
+  // lands after the page moved on still reaches the right document. Debounced while
+  // typing; forced on blur, before navigation, before another document, before a hide and
+  // at quit. A failure is shown and the work stays; the next change tries again.
+  let saveTimer = null;
+  let saving = null;
+  const notesOf = () => ({
+    callouts: model.callouts,
+    nextNumber: model.nextNumber,
+    margin: { ...model.margin },
+    textSize: model.textSize,
+  });
+  const markDirty = () => {
+    if (!model.image.managed) return;
+    model.save.dirty = true;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => { saveNow().catch(() => {}); }, 800);
+  };
+  const saveNow = async () => {
+    clearTimeout(saveTimer);
+    if (!model.save.dirty || !model.image.managed || !model.image.document_id) {
+      if (saving) await saving;
+      return model.save.state;
+    }
+    // Taken now, before any wait: the page may move to another document meanwhile, and
+    // what was pending belongs to this one.
+    const documentId = model.image.document_id;
+    const notes = JSON.parse(JSON.stringify(notesOf()));
+    const save = model.save;
+    if (saving) await saving;
+    save.dirty = false;
+    save.state = 'saving';
+    drawHud();
+    saving = invoke('editor_save_notes', { documentId, notes }).then(() => {
+      save.state = 'saved';
+      save.error = '';
+    }, (err) => {
+      save.dirty = true;
+      save.state = 'failed';
+      save.error = String(err);
+      console.error('save failed', err);
+    }).finally(() => { saving = null; drawHud(); });
+    await saving;
+    return save.state;
+  };
+  window.addEventListener('blur', () => { saveNow().catch(() => {}); });
+
   // ---------------------------------------------------------------- undo and redo
   //
   // One snapshot per completed operation: a note committed with its text, moved, its anchor
@@ -484,6 +539,7 @@
     h.steps.splice(h.index + 1);
     h.steps.push(now);
     h.index = h.steps.length - 1;
+    markDirty();
     return true;
   };
 
@@ -494,6 +550,7 @@
     model.selected = null;
     model.editing = null;
     settle();
+    markDirty();
     drawHud();
   };
 
@@ -630,8 +687,10 @@
         (model.image.total > 0 ? `  ${model.image.position} of ${model.image.total} in ${model.image.context}` : '')
       : model.image.source;
     const ago = (s) => (s < 60 ? 'just now' : s < 3600 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`);
+    const saveText = model.save.state === 'failed' ? `   NOT SAVED: ${model.save.error}`
+      : model.save.state === 'saving' ? '   saving' : (model.image.managed ? '   saved' : '');
     const modeLine = model.mode === 'annotate'
-      ? `mode annotate   A to view${model.image.source_changed ? '   the file on disk has changed since; this document keeps its own pixels' : ''}`
+      ? `mode annotate   A to view${model.image.source_changed ? '   the file on disk has changed since; this document keeps its own pixels' : ''}${saveText}`
       : `mode view   A to annotate${model.image.edited_ago_s != null ? `   annotated before, ${ago(model.image.edited_ago_s)}; A resumes it` : ''}`;
     hud.textContent =
       `${model.image.width}x${model.image.height}  ${where}\n` +
@@ -824,7 +883,16 @@
   };
   // A note growing as it is typed takes its room as it goes, so nothing it holds is ever
   // outside the composition an export would cut at.
-  stage.addEventListener('input', () => { if (model.editing && fitMargin()) paintRegion(); });
+  stage.addEventListener('input', () => {
+    if (!model.editing) return;
+    // The typed text is read into the model at commit; saving it before that would save
+    // the previous text under the new timestamp, so a keystroke commits the text to the
+    // model first, without ending the editing.
+    const el = scene.querySelector(`[data-id="${model.editing.id}"] .t`);
+    if (el) model.editing.text = el.innerText.replace(/\u00a0/g, ' ').replace(/\r\n?/g, '\n').replace(/\n+$/, '');
+    markDirty();
+    if (fitMargin()) paintRegion();
+  });
   // The wheel pans; with Ctrl it zooms around the pointer (§3.4). The wheel's numbers are
   // CSS pixels, so they become image pixels through the ratio and the zoom.
   stage.addEventListener('wheel', (event) => {
@@ -905,9 +973,9 @@
       if (model.selected) { model.selected = null; layoutScene(); event.preventDefault(); return; }
       // Fullscreen leaves first (§3.6); the hide is the Escape after it.
       if (model.fullscreen) { setFullscreen(false).catch((err) => console.error('fullscreen', err)); event.preventDefault(); return; }
-      // The idle editor: hide, and the focus goes back to where the capture began (§3.1).
-      // Pending changes are in memory until S1.8 gives them a store.
-      invoke('editor_hide').catch((err) => console.error('hide', err));
+      // The idle editor: pending changes are saved, then hide, and the focus goes back to
+      // where the capture began (§3.1, §3.8).
+      saveNow().catch(() => {}).then(() => invoke('editor_hide')).catch((err) => console.error('hide', err));
       event.preventDefault();
       return;
     }
@@ -954,6 +1022,7 @@
     // same one, and the same document keeps its view.
     const steps = { PageDown: 'next', PageUp: 'previous', Home: 'first', End: 'last' };
     if (steps[event.key] && model.image.total > 0) {
+      saveNow().catch(() => {});
       invoke('editor_navigate', { step: steps[event.key] })
         .then((info) => loadImage(info))
         .catch((err) => console.error('navigate', err));
@@ -1058,7 +1127,21 @@
     }
     stashCurrent();
     model.image = info;
-    const known = documents.get(info.document_id);
+    let known = documents.get(info.document_id);
+    if (!known && info.managed) {
+      const saved = await invoke('editor_notes', { documentId: info.document_id }).catch(() => null);
+      if (saved && Array.isArray(saved.callouts)) {
+        known = {
+          callouts: saved.callouts,
+          nextNumber: saved.nextNumber || 1,
+          margin: saved.margin || { left: 0, top: 0, right: 0, bottom: 0 },
+          marginFloor: { left: 0, top: 0, right: 0, bottom: 0 },
+          textSize: saved.textSize || model.textSize,
+          history: null,
+        };
+      }
+    }
+    model.save = { state: 'saved', error: '', dirty: false };
     model.margin = known ? { ...known.margin } : { left: 0, top: 0, right: 0, bottom: 0 };
     model.marginFloor = known ? { ...known.marginFloor } : { left: 0, top: 0, right: 0, bottom: 0 };
     model.callouts = known ? known.callouts : [];
@@ -1197,7 +1280,10 @@
     const before = snapshot();
     const report = await copyComposed();
     const changed = model.image.document_id !== document_id || snapshot() !== before || model.editing;
-    if (!changed) await invoke('editor_hide');
+    if (!changed) {
+      await saveNow();
+      await invoke('editor_hide');
+    }
     return { ...report, hidden: !changed };
   };
 
@@ -1227,6 +1313,8 @@
     record,
     undo,
     redo,
+    saveNow,
+    markDirty,
     snapshot,
     copyAndReturn,
     fitMargin,
@@ -1263,6 +1351,9 @@
         new Promise((resolve) => setTimeout(() => resolve(false), 3000)),
       ]);
       if (focused) invoke('editor_mark', { name: 'page focused' }).catch(() => {});
+    });
+    await window.__TAURI__.event.listen('save-now', async () => {
+      try { await saveNow(); } finally { invoke('editor_saves_flushed').catch(() => {}); }
     });
     invoke('editor_mark', { name: 'page booted' }).catch(() => {});
     try {

@@ -1856,12 +1856,32 @@ work rather than a feature count.
       Backspace, Delete, 1, A, F11 and PageDown into a note being typed and none is taken.
       The undo table's own rule in §3.6 is the record; nothing here adds a key it does not
       name.
-- [ ] S1.8 The document store: the schema from part 5, plus the source path and the page or
+- [x] S1.8 The document store: the schema from part 5, plus the source path and the page or
       frame for an annotated file, debounced autosave, forced saves on blur, navigation,
       opening another file, hide and quit, reopen after restart, and a visible failure that
       never claims to have saved. Model: Fable 5.1, it touches stored work.
       **Carried from S0.5:** the save-and-restart leg of the animation frame, orientation,
       colour and SVG raster size tests.
+      **Built 2026-09-14.** One folder per document under the user's local application
+      data, `Recon\documents\<number>`: `source.png`, the preserved image, written once
+      and never rewritten, and `document.json` with a schema version, the size, the
+      source (a capture, or the file's path and frame with its stamp) and the page's notes
+      carried whole. Every write is a temporary file renamed into place. A document's
+      number is its creation time in milliseconds, so numbers read back from disk never
+      collide with new ones. A capture is a document from its first moment: the record
+      at once, the image from a thread. The page saves its notes debounced while typing
+      and at once on blur, before navigation, before another document, before a hide and
+      when the host asks at close or quit; the HUD says saved only after the host did,
+      and a failed save says NOT SAVED with the reason and keeps the work until the next
+      save lands. At startup the store is read and the latest document reopens, hidden.
+      Checked: the folder and both files after a capture, no temporary file left, the
+      typed note on disk on its own, the hide carrying the change first, the image's
+      bytes unchanged after every save, the reload with the notes from disk and the page
+      holding none, a failing store shown and recovered from. The S0.5 leg: the GIF's
+      third frame, the JPEG upright at 200x300, the profiled PNG converted and the SVG at
+      its raster size are each, after the reload, byte for byte the frame decoded afresh
+      from the file. Not run: a real process restart, which the reload stands in for;
+      Rotem's hand closes that one. Frame stepping inside a document stays F79.
 - [ ] S1.9 History navigation: previous and next through documents, captures and annotated
       files alike, the position indicator, shortcuts to the first and last, and the context
       activation rules in §3.4. Model: Opus 5.
@@ -2187,7 +2207,8 @@ was rated when it was raised.
 | F77 | Registration runs only by the user's hand: the code is tested as data, and whether Explorer's double-click and "Open with" reach Recon on this machine is unverified until Rotem runs it | 🟠 | S1.2, §3.1 | Closed 2026-09-14: Rotem ran the registration, double-clicked an image in Explorer and it opened in Recon, then dropped another on the window and it replaced the first |
 | F78 | Several files dropped at once open the first only; the folder they came from is S1.4's navigation context | 🟡 | S1.2, S1.4 | Open: S1.4 |
 | F79 | A managed document is keyed by path and frame, but stepping frames inside it keeps the document's number while its preserved image is the one frame, so a note placed on frame 3 of a resumed frame-0 document sits on pixels the document does not hold | 🟠 | §3.8, S1.5, S1.8 | Open: S1.8 decides what a document of an animation preserves, one frame or the frame it is asked for |
-| F80 | The in-memory list of documents is capped at fifty, and an annotated file's document dropped at the cap loses its notes with no store to fall back on | 🟠 | S1.1 decision, S1.5, S1.8 | Open: the store at S1.8 removes the cap; until then fifty documents in a session is the limit, and the log names the drop |
+| F80 | The in-memory list of documents is capped at fifty, and an annotated file's document dropped at the cap loses its notes with no store to fall back on | 🟠 | S1.1 decision, S1.5, S1.8 | Closed at S1.8: the cap is gone, every document is on disk from its first moment, and the in-memory list holds paths |
+| F82 | A document read from disk stands without a file behind it, so its frames or pages cannot be stepped and its folder context is none until the file is opened again | 🟡 | §3.3, S1.8, S1.9 | Open: the document names its file, and Ctrl+O or the folder walk reaches the file itself; S1.9 decides whether history navigation reopens the file beside the document |
 | F81 | When no candidate is both inside the picture and clear of the other bubbles, placement takes a clear one in the margin over an overlapping one inside, so a crowded corner grows the canvas rather than stacking bubbles | 🟡 | §3.5, S1.6 | Open, Rotem's call: the order can prefer inside-and-overlapping instead; one line in `placeCallout` |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the

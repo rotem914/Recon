@@ -714,12 +714,17 @@ export async function runChecks(editor, invoke) {
     await sleep(1500);
     let outcome = await invoke('editor_dialog_outcome');
     check('the picker is open, so Ctrl+O has no outcome yet', outcome === '', JSON.stringify(outcome));
-    await invoke('editor_press_escape');
-    for (let i = 0; i < 40 && !outcome; i += 1) {
+    // The key is sent only when the picker, ours, is in front; with someone else's window
+    // in front nothing is sent, because a key pressed for real lands wherever the focus
+    // is, and the check says so instead.
+    const sent = await invoke('editor_press_escape');
+    for (let i = 0; i < 40 && sent && !outcome; i += 1) {
       await sleep(100);
       outcome = await invoke('editor_dialog_outcome');
     }
-    if (screenOff && outcome === '') {
+    if (!sent) {
+      skipped('Escape closes the picker with nothing chosen', 'another application is in front, so no key was sent; the picker is left open');
+    } else if (screenOff && outcome === '') {
       skipped('Escape closes the picker with nothing chosen', 'the session shows no screen, so the picker could not be closed by a key');
     } else {
       check('Escape closes the picker with nothing chosen', outcome === 'Ctrl+O: nothing chosen', JSON.stringify(outcome));
@@ -912,7 +917,7 @@ export async function runChecks(editor, invoke) {
     await editor.setMode('view');
     await editor.setMode('annotate');
     managed = await invoke('editor_managed');
-    check('the mode on a capture changes no document', model.image.document_id === shot.document_id && managed.filter((m) => m.id === shot.document_id).length === 0);
+    check('the mode on a capture changes no document: one entry, the same number', model.image.document_id === shot.document_id && managed.filter((m) => m.id === shot.document_id).length === 1);
     model.callouts = [];
     editor.layoutScene();
   }
@@ -1166,12 +1171,11 @@ export async function runChecks(editor, invoke) {
 
     // Outside typing: Ctrl+C copies the composed image; keys of later stages do nothing.
     const copy = press({ key: 'c', code: 'KeyC', ctrlKey: true });
-    // The key starts the copy; the clipboard shows the previous one until it lands.
-    let back = await invoke('editor_clipboard_readback');
-    for (let i = 0; i < 60 && !(back.width === model.image.width && back.height === model.image.height); i += 1) {
-      await sleep(50);
-      back = await invoke('editor_clipboard_readback');
-    }
+    // The key starts the copy; the HUD says when it landed, and only then is the clipboard
+    // read back.
+    const hudEl = document.getElementById('hud');
+    for (let i = 0; i < 200 && !hudEl.textContent.includes(`copied ${model.image.width}x${model.image.height}`); i += 1) await sleep(50);
+    const back = await invoke('editor_clipboard_readback');
     check('Ctrl+C outside typing copies the composed image', copy && back.png && back.width === model.image.width && back.height === model.image.height, `${back.width}x${back.height}`);
     check('Ctrl+S and Ctrl+Shift+Enter are taken and do nothing yet, the stage column honoured',
       press({ key: 's', code: 'KeyS', ctrlKey: true }) && press({ key: 'Enter', code: 'Enter', ctrlKey: true, shiftKey: true }) && model.callouts.length === 1);
@@ -1186,8 +1190,126 @@ export async function runChecks(editor, invoke) {
     await invoke('editor_show');
     check('the window is back for the checks', (await invoke('editor_window_visible')) === true);
     check('Ctrl+Enter is the key for it', press({ key: 'Enter', code: 'Enter', ctrlKey: true }));
-    await sleep(600);
+    for (let i = 0; i < 200 && (await invoke('editor_window_visible')); i += 1) await sleep(50);
     await invoke('editor_show');
+    model.callouts = [];
+    editor.layoutScene();
+  }
+
+  // ---------------------------------------------------------------- 23. S1.8: the document store
+  say('');
+  say('S1.8: one folder per document, the image written once, the notes saved without an Apply, the latest reopened after a restart, a failure visible');
+  {
+    const hud = document.getElementById('hud');
+    const list = () => invoke('editor_store_list');
+    const line = async (id) => (await list()).find((l) => l.id === id);
+    const until = async (test, ms = 3000) => {
+      const started = performance.now();
+      let value = await test();
+      while (!value && performance.now() - started < ms) { await sleep(50); value = await test(); }
+      return value;
+    };
+    const el = (c) => document.querySelector(`[data-id="${c.id}"]`);
+    const dir = await invoke('editor_store_reset');
+    say(`the checks' store is ${dir}`);
+
+    // A capture is a document on disk from its first moment: the record at once, the
+    // image when its encode is done, and nothing left over from the atomic writes.
+    const shot = await invoke('editor_capture_probe', { width: 320, height: 200 });
+    await editor.loadImage(shot);
+    let entry = await until(async () => { const l = await line(shot.document_id); return l && l.json && l.source_png ? l : null; });
+    check('a new capture is saved automatically: a folder with document.json and source.png', !!entry && entry.source_bytes > 0 && entry.leftovers === 0,
+      entry ? `${entry.source_bytes} bytes of PNG, ${entry.leftovers} leftovers` : 'no folder');
+    const sourceBytes = entry ? entry.source_bytes : 0;
+
+    // Typing autosaves, debounced: the note is on disk within a couple of seconds, with no
+    // Apply, and the HUD says saved only after the host said so.
+    const note = editor.createCallout({ x: 100, y: 100 });
+    editor.layoutScene();
+    editor.startEditing(note);
+    el(note).querySelector('.t').textContent = 'saved as I type';
+    el(note).querySelector('.t').dispatchEvent(new InputEvent('input', { bubbles: true }));
+    const typed = await until(async () => { const l = await line(shot.document_id); return l && l.notes.includes('saved as I type') ? l : null; });
+    check('a note being typed reaches the disk on its own, debounced', !!typed && model.save.state === 'saved' && hud.textContent.includes('saved'),
+      typed ? `on disk, ${typed.notes.length} chars of notes, HUD ${JSON.stringify(hud.textContent.split('\n')[1])}` : 'not on disk within 3 s');
+    editor.commitEditing();
+    await editor.saveNow();
+
+    // A hide saves first: the text changes and the hide follows at once.
+    editor.startEditing(note);
+    el(note).querySelector('.t').textContent = 'saved before the hide';
+    editor.commitEditing();
+    await editor.saveNow();
+    await invoke('editor_hide');
+    entry = await line(shot.document_id);
+    check('a hide carries the pending change to disk first', !!entry && entry.notes.includes('saved before the hide'));
+    await invoke('editor_show');
+
+    // The image is written once: the same bytes after every save.
+    entry = await line(shot.document_id);
+    check('source.png is never rewritten', !!entry && entry.source_bytes === sourceBytes, `${entry && entry.source_bytes} bytes, was ${sourceBytes}`);
+
+    // A restart: the list and the image are dropped, the disk is read, the latest reopens
+    // with its notes, the page holding none of its own.
+    const wasId = shot.document_id;
+    const wasNumber = model.nextNumber;
+    editor.documents.clear();
+    model.callouts = [];
+    model.image = { width: 0, height: 0, source: '' }; // a fresh page holds nothing
+    const back = await invoke('editor_store_reload');
+    await editor.loadImage(back);
+    check('after a restart the latest document reopens, same number, same size, in annotation',
+      back.document_id === wasId && back.width === 320 && back.height === 200 && back.managed === true && model.mode === 'annotate',
+      `document ${back.document_id}, ${back.width}x${back.height}`);
+    check('with its notes, from the disk', model.callouts.length === 1 && model.callouts[0].text === 'saved before the hide' && model.nextNumber === wasNumber,
+      `${model.callouts.length} notes, next ${model.nextNumber}`);
+
+    // The S0.5 leg carried here: an annotated file's document holds the frame asked for,
+    // upright, converted, at the raster size fixed at open, and it survives the restart.
+    const carried = [];
+    for (const [name, frame, why] of [
+      ['gif-three-frames.gif', 2, 'the third frame, not the first'],
+      ['jpeg-orientation-6.jpg', 0, 'upright, the orientation applied once'],
+      ['png-alpha-and-swapped-profile.png', 0, 'converted to sRGB once'],
+      ['svg-text-labels.svg', 0, 'the raster size fixed at open'],
+    ]) {
+      let info = await openFixture(name);
+      if (frame > 0) info = await invoke('editor_frame', { index: frame });
+      await editor.loadImage(info);
+      await editor.setMode('annotate');
+      const id = model.image.document_id;
+      const written = await until(async () => { const l = await line(id); return l && l.source_png ? l : null; });
+      carried.push({ name, id, frame, width: info.width, height: info.height, written: !!written, why });
+    }
+    editor.documents.clear();
+    model.callouts = [];
+    model.image = { width: 0, height: 0, source: '' };
+    await editor.loadImage(await invoke('editor_store_reload'));
+    for (const c of carried) {
+      const same = await invoke('editor_store_verify', { id: c.id }).catch((err) => String(err));
+      const record = JSON.parse(await invoke('editor_store_read', { id: c.id }));
+      check(`${c.name}: after the restart the document's image is the file's frame ${c.frame} decoded afresh, ${c.why}`,
+        c.written && same === true && record.source.kind === 'file' && record.source.frame === c.frame && record.width === c.width && record.height === c.height,
+        `same ${same}, ${record.width}x${record.height}, frame ${record.source.frame}, ${record.source.path.split('\\').pop()}`);
+    }
+    check('the latest document reopened is the last one annotated', model.image.file === 'svg-text-labels.svg' && model.image.managed === true, model.image.file);
+
+    // A save that fails is visible, keeps the work, and the next one lands.
+    await invoke('editor_store_break', { on: true });
+    const c = editor.createCallout({ x: 60, y: 60 });
+    editor.layoutScene();
+    editor.startEditing(c);
+    el(c).querySelector('.t').textContent = 'written while the disk was refusing';
+    editor.commitEditing();
+    const state = await editor.saveNow();
+    check('a failed save says so on screen and never says saved', state === 'failed' && hud.textContent.includes('NOT SAVED') && model.save.dirty === true,
+      JSON.stringify(hud.textContent.split('\n')[1].slice(0, 160)));
+    check('the work is still here', model.callouts.length === 1 && model.callouts[0].text === 'written while the disk was refusing');
+    await invoke('editor_store_break', { on: false });
+    editor.markDirty();
+    const again = await editor.saveNow();
+    entry = await line(model.image.document_id);
+    check('the next save lands, and the notice goes', again === 'saved' && !!entry && entry.notes.includes('written while the disk was refusing') && !hud.textContent.includes('NOT SAVED'));
     model.callouts = [];
     editor.layoutScene();
   }

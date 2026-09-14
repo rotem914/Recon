@@ -139,10 +139,24 @@ pub fn state() -> &'static Editor {
 /// one, so the page can tell a new document from a new frame of the same one, and keep or
 /// stash its notes accordingly (S1.1).
 static CURRENT_ID: AtomicU64 = AtomicU64::new(0);
-static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+/// The last number issued, so two in one millisecond still differ and a number never
+/// repeats in a session. Since S1.8 a number is the document's creation time in
+/// milliseconds, so the numbers of documents read back from disk never collide with new
+/// ones, and the page keys its notes by the same number before and after a restart.
+static LAST_ID: AtomicU64 = AtomicU64::new(0);
 
 fn next_document_id() -> u64 {
-    let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
+    let now = crate::store::millis(std::time::SystemTime::now());
+    let id = loop {
+        let last = LAST_ID.load(Ordering::SeqCst);
+        let next = now.max(last + 1);
+        if LAST_ID
+            .compare_exchange(last, next, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+        {
+            break next;
+        }
+    };
     CURRENT_ID.store(id, Ordering::SeqCst);
     id
 }
@@ -172,6 +186,8 @@ pub enum Source {
 enum Preserved {
     Decoded(Arc<Image>),
     Encoded(Vec<u8>),
+    /// Written to the store as source.png, once; read back when the document is shown.
+    OnDisk(std::path::PathBuf),
 }
 
 /// A managed document, kept in memory until the store exists (S1.8). "Taking a new
@@ -187,14 +203,49 @@ pub struct Managed {
     pub width: u32,
     pub height: u32,
     preserved: Preserved,
-    /// When annotation last touched it: created, or resumed. S1.8's autosave moves it.
+    pub created: std::time::SystemTime,
+    /// When annotation last touched it: created, resumed, or saved.
     pub annotated: std::time::SystemTime,
+    /// The page's notes as last saved or read back, carried whole (part 5).
+    pub notes: serde_json::Value,
+    /// What the last write to disk said, so a failure stays visible until a save succeeds.
+    pub save_error: Option<String>,
 }
 
 static DOCUMENTS: Mutex<Vec<Managed>> = Mutex::new(Vec::new());
 
-/// How many documents are kept in memory until S1.8 moves them to disk.
-const RETAINED_LIMIT: usize = 50;
+fn record_of(document: &Managed) -> crate::store::Record {
+    crate::store::Record {
+        schema: crate::store::SCHEMA,
+        id: document.id,
+        created_ms: crate::store::millis(document.created),
+        modified_ms: crate::store::millis(document.annotated),
+        width: document.width,
+        height: document.height,
+        source: match &document.source {
+            Source::Capture => crate::store::SourceRecord::Capture,
+            Source::File {
+                path,
+                frame,
+                modified,
+                len,
+            } => crate::store::SourceRecord::File {
+                path: path.display().to_string(),
+                frame: *frame,
+                modified_ms: modified.map(crate::store::millis),
+                len: *len,
+            },
+        },
+        notes: document.notes.clone(),
+    }
+}
+
+/// Writes one document's record, under the lock the caller holds, and remembers the result.
+fn write_record_of(document: &mut Managed) -> Result<(), String> {
+    let result = crate::store::write_record(&record_of(document));
+    document.save_error = result.as_ref().err().cloned();
+    result
+}
 
 /// Files the document under its number at once, decoded, then encodes it on its own thread
 /// and swaps the PNG in, so the capture path and the Annotate key pay nothing for it.
@@ -204,17 +255,24 @@ fn preserve(image: Arc<Image>, id: u64, source: Source) {
         if documents.iter().any(|d| d.id == id) {
             return;
         }
+        let now = std::time::SystemTime::now();
         documents.push(Managed {
             id,
             source,
             width,
             height,
             preserved: Preserved::Decoded(image.clone()),
-            annotated: std::time::SystemTime::now(),
+            created: now,
+            annotated: now,
+            notes: serde_json::Value::Null,
+            save_error: None,
         });
-        while documents.len() > RETAINED_LIMIT {
-            let old = documents.remove(0).id;
-            println!("document {old} dropped at the cap of {RETAINED_LIMIT}");
+        // The record first, so the document exists on disk from its first moment; the
+        // image follows from the thread below.
+        if let Some(document) = documents.iter_mut().find(|d| d.id == id) {
+            if let Err(err) = write_record_of(document) {
+                crate::log(&format!("document {id} NOT saved: {err}"));
+            }
         }
     }
     std::thread::spawn(move || {
@@ -230,27 +288,43 @@ fn preserve(image: Arc<Image>, id: u64, source: Source) {
             println!("document {id} kept decoded: the PNG did not encode: {err}");
             return;
         }
+        let encode_ms = started.elapsed().as_millis();
+        // To disk, once, outside the lock; the bytes stay in memory only if that failed.
+        let written = crate::store::write_source(id, &png);
         let Ok(mut documents) = DOCUMENTS.lock() else {
             return;
         };
         if let Some(document) = documents.iter_mut().find(|d| d.id == id) {
-            document.preserved = Preserved::Encoded(png);
+            match written {
+                Ok(path) => {
+                    document.preserved = Preserved::OnDisk(path);
+                    println!(
+                        "document {id} preserved: {width}x{height} encoded in {encode_ms} ms, written in {} ms, {} documents",
+                        started.elapsed().as_millis() - encode_ms,
+                        documents.len(),
+                    );
+                }
+                Err(err) => {
+                    document.preserved = Preserved::Encoded(png);
+                    document.save_error = Some(err.clone());
+                    crate::log(&format!(
+                        "document {id} image NOT saved, kept in memory: {err}"
+                    ));
+                }
+            }
         }
-        let held: usize = documents.iter().map(Managed::bytes).sum();
-        println!(
-            "document {id} preserved: {width}x{height} in {} ms, {} kept, {:.1} MB",
-            started.elapsed().as_millis(),
-            documents.len(),
-            held as f64 / (1024.0 * 1024.0),
-        );
     });
 }
 
 impl Managed {
-    /// The PNG's size, or zero while the encode is still running.
+    /// The PNG's size, or zero while the encode is still running; the checks' history line.
+    #[cfg(feature = "stage0-checks")]
     fn bytes(&self) -> usize {
         match &self.preserved {
             Preserved::Encoded(png) => png.len(),
+            Preserved::OnDisk(path) => std::fs::metadata(path)
+                .map(|m| m.len() as usize)
+                .unwrap_or(0),
             Preserved::Decoded(_) => 0,
         }
     }
@@ -258,18 +332,28 @@ impl Managed {
     /// The preserved pixels as a frame, from the PNG or the decoded copy, whichever is
     /// held right now. This is the document's own image; the file on disk is not read.
     fn frame(&self, name: &'static str) -> Result<Frame, String> {
+        let decode = |png: &[u8]| {
+            image::load_from_memory_with_format(png, image::ImageFormat::Png)
+                .map_err(|err| {
+                    format!(
+                        "document {}: its preserved PNG did not decode: {err}",
+                        self.id
+                    )
+                })
+                .map(|img| img.into_rgba8().into_raw())
+        };
         let rgba = match &self.preserved {
             Preserved::Decoded(image) => image.frame.rgba.clone(),
-            Preserved::Encoded(png) => {
-                image::load_from_memory_with_format(png, image::ImageFormat::Png)
-                    .map_err(|err| {
-                        format!(
-                            "document {}: its preserved PNG did not decode: {err}",
-                            self.id
-                        )
-                    })?
-                    .into_rgba8()
-                    .into_raw()
+            Preserved::Encoded(png) => decode(png)?,
+            Preserved::OnDisk(path) => {
+                let png = std::fs::read(path).map_err(|err| {
+                    format!(
+                        "document {}: {} could not be read: {err}",
+                        self.id,
+                        path.display()
+                    )
+                })?;
+                decode(&png)?
             }
         };
         Ok(Frame {
@@ -323,6 +407,138 @@ pub fn history_summary() -> Vec<(u64, u32, u32, usize)> {
         .unwrap_or_default()
 }
 
+/// Reads every document on disk into the list, then reopens the latest one (§3.8: after a
+/// restart, the latest document reopens). The image is not decoded until it is shown.
+pub fn load_store() {
+    let found = crate::store::scan();
+    let count = found.len();
+    let latest = found.last().map(|(record, _)| record.id);
+    if let Ok(mut documents) = DOCUMENTS.lock() {
+        for (record, source) in found {
+            if documents.iter().any(|d| d.id == record.id) {
+                continue;
+            }
+            LAST_ID.fetch_max(record.id, Ordering::SeqCst);
+            documents.push(Managed {
+                id: record.id,
+                source: match record.source {
+                    crate::store::SourceRecord::Capture => Source::Capture,
+                    crate::store::SourceRecord::File {
+                        path,
+                        frame,
+                        modified_ms,
+                        len,
+                    } => Source::File {
+                        path: std::path::PathBuf::from(path),
+                        frame,
+                        modified: modified_ms.map(crate::store::from_millis),
+                        len,
+                    },
+                },
+                width: record.width,
+                height: record.height,
+                preserved: Preserved::OnDisk(source),
+                created: crate::store::from_millis(record.created_ms),
+                annotated: crate::store::from_millis(record.modified_ms),
+                notes: record.notes,
+                save_error: None,
+            });
+        }
+    }
+    crate::log(&format!("store: {count} documents read"));
+    if let Some(id) = latest {
+        match show_document(id) {
+            Ok(()) => crate::log(&format!("store: document {id} reopened")),
+            Err(err) => crate::log(&format!("store: document {id} NOT reopened: {err}")),
+        }
+    }
+}
+
+/// Puts a managed document on screen from its own preserved image, as the resume of
+/// Annotate does, without a file behind it: the document stands on its own (§3.3).
+fn show_document(id: u64) -> Result<(), String> {
+    let frame = {
+        let documents = DOCUMENTS.lock().map_err(|_| "the documents are poisoned")?;
+        let document = documents
+            .iter()
+            .find(|d| d.id == id)
+            .ok_or_else(|| format!("document {id} is not in the list"))?;
+        document.frame(match document.source {
+            Source::Capture => "capture",
+            Source::File { .. } => "document",
+        })?
+    };
+    state().set_document(None);
+    if let Ok(mut slot) = state().folder.lock() {
+        *slot = None;
+    }
+    CURRENT_ID.store(id, Ordering::SeqCst);
+    state().set_frame(frame);
+    if let Ok(app) = app() {
+        if let Ok(info) = editor_image_info() {
+            set_title(app, &info);
+        }
+    }
+    Ok(())
+}
+
+/// The page's notes for one document, saved: the record is rewritten whole, atomically. A
+/// failure is returned to the page, which shows it and keeps the work; the document keeps
+/// the notes in memory either way, so the next save carries them.
+#[tauri::command]
+pub fn editor_save_notes(document_id: u64, notes: serde_json::Value) -> Result<(), String> {
+    let mut documents = DOCUMENTS.lock().map_err(|_| "the documents are poisoned")?;
+    let document = documents
+        .iter_mut()
+        .find(|d| d.id == document_id)
+        .ok_or_else(|| {
+            format!("document {document_id} is not managed, so there is nothing to save into")
+        })?;
+    document.notes = notes;
+    document.annotated = std::time::SystemTime::now();
+    let result = write_record_of(document);
+    if let Err(err) = &result {
+        crate::log(&format!("document {document_id} NOT saved: {err}"));
+    }
+    result
+}
+
+/// The notes as the host holds them, for a page that has no copy of its own: after a
+/// restart, or for a document read from disk.
+#[tauri::command]
+pub fn editor_notes(document_id: u64) -> Option<serde_json::Value> {
+    DOCUMENTS.lock().ok().and_then(|documents| {
+        documents
+            .iter()
+            .find(|d| d.id == document_id)
+            .map(|d| d.notes.clone())
+    })
+}
+
+/// The page's answer to "save now": it has saved what was pending.
+static FLUSHES: AtomicU64 = AtomicU64::new(0);
+
+#[tauri::command]
+pub fn editor_saves_flushed() {
+    FLUSHES.fetch_add(1, Ordering::SeqCst);
+}
+
+/// Asks the page to save what is pending and waits for its answer, up to a second, so a
+/// close or a quit from the host's side never drops a note being typed (§3.8).
+pub fn flush_saves(app: &AppHandle) {
+    let before = FLUSHES.load(Ordering::SeqCst);
+    if app.emit("save-now", ()).is_err() {
+        return;
+    }
+    let started = Instant::now();
+    while FLUSHES.load(Ordering::SeqCst) == before && started.elapsed().as_millis() < 1000 {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    if FLUSHES.load(Ordering::SeqCst) == before {
+        crate::log("save-now: the page did not answer within a second");
+    }
+}
+
 /// What the page needs about the document on screen against the managed list (§3.3):
 /// whether it IS a managed document, when a document that exists for this file was last
 /// annotated (the route to its saved edit, shown only while the file itself is on screen),
@@ -341,9 +557,14 @@ fn standing() -> Standing {
         .ok()
         .and_then(|slot| slot.as_ref().map(|d| (d.opened.path.clone(), d.index)));
     let Some((path, frame)) = key else {
-        // A capture is a managed document from the moment it exists (§3.3).
+        // A capture is a managed document from the moment it exists (§3.3), and since
+        // S1.8 it is in the list from that moment; a probe image the checks load is not.
+        let managed = DOCUMENTS
+            .lock()
+            .map(|documents| documents.iter().any(|d| d.id == id))
+            .unwrap_or(false);
         return Standing {
-            managed: true,
+            managed,
             edited_ago_s: None,
             source_changed: false,
         };
@@ -558,14 +779,16 @@ fn set_title(app: &AppHandle, info: &ImageInfo) {
 
 fn present_frame(frame: Frame) -> Result<u128, String> {
     let app = app()?;
-    // The previous capture is kept, never overwritten (§3.3), whatever replaces it.
-    if let Some(previous) = state().image() {
-        if previous.frame.source == "capture" {
-            preserve(previous, current_document_id(), Source::Capture);
+    let is_capture = frame.source == "capture";
+    let id = next_document_id();
+    state().set_frame(frame);
+    // A capture is a document from its first moment (§3.8: new captures save
+    // automatically), so the previous one is never overwritten by the next (§3.3).
+    if is_capture {
+        if let Some(image) = state().image() {
+            preserve(image, id, Source::Capture);
         }
     }
-    next_document_id();
-    state().set_frame(frame);
     let info = editor_image_info()?;
     set_title(app, &info);
     app.emit("capture-ready", &info)
@@ -710,7 +933,16 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_fullscreen,
         editor_navigate,
         editor_annotate,
+        editor_save_notes,
+        editor_notes,
+        editor_saves_flushed,
         checks::editor_window_title,
+        checks::editor_store_reset,
+        checks::editor_store_list,
+        checks::editor_store_read,
+        checks::editor_store_reload,
+        checks::editor_store_verify,
+        checks::editor_store_break,
         checks::editor_window_visible,
         checks::editor_managed,
         checks::editor_replace_in_folder,
@@ -756,6 +988,9 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_fullscreen,
         editor_annotate,
         editor_navigate,
+        editor_save_notes,
+        editor_notes,
+        editor_saves_flushed,
     ]);
     builder.register_asynchronous_uri_scheme_protocol("region", |_ctx, request, responder| {
         let query = request.uri().query().unwrap_or_default().to_string();
@@ -918,6 +1153,30 @@ pub fn editor_image_info() -> Result<ImageInfo, String> {
             None => (String::new(), "still".to_string(), 0, 1),
         },
         Err(_) => (String::new(), "still".to_string(), 0, 1),
+    };
+    // A document read back from disk, or resumed, has no file open behind it; its name and
+    // frame come from the document itself.
+    let (file, index) = if file.is_empty() {
+        DOCUMENTS
+            .lock()
+            .ok()
+            .and_then(|documents| {
+                documents
+                    .iter()
+                    .find(|d| d.id == current_document_id())
+                    .and_then(|d| match &d.source {
+                        Source::File { path, frame, .. } => Some((
+                            path.file_name()
+                                .map(|n| n.to_string_lossy().to_string())
+                                .unwrap_or_default(),
+                            *frame,
+                        )),
+                        Source::Capture => None,
+                    })
+            })
+            .unwrap_or((file, index))
+    } else {
+        (file, index)
     };
     let (position, total, context) = match state().folder.lock() {
         Ok(slot) => match slot.as_ref() {
@@ -2189,6 +2448,139 @@ mod checks {
             .map_err(|err| err.to_string())
     }
 
+    fn store_dir() -> std::path::PathBuf {
+        std::env::current_exe()
+            .map(|exe| exe.with_file_name("s18-store"))
+            .unwrap_or_else(|_| "s18-store".into())
+    }
+
+    /// Empties the checks' store and the list, so a section starts from nothing on disk.
+    #[tauri::command]
+    pub fn editor_store_reset() -> Result<String, String> {
+        let dir = store_dir();
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+        crate::store::set_root(dir.clone());
+        if let Ok(mut documents) = DOCUMENTS.lock() {
+            documents.clear();
+        }
+        Ok(dir.display().to_string())
+    }
+
+    #[derive(serde::Serialize)]
+    pub struct StoreLine {
+        pub id: u64,
+        pub source_png: bool,
+        pub source_bytes: u64,
+        pub json: bool,
+        pub modified_ms: u64,
+        pub notes: String,
+        pub leftovers: u32,
+    }
+
+    /// What is on disk, folder by folder, as the S1.8 check reads it.
+    #[tauri::command]
+    pub fn editor_store_list() -> Result<Vec<StoreLine>, String> {
+        let mut lines = Vec::new();
+        for entry in std::fs::read_dir(store_dir())
+            .map_err(|err| err.to_string())?
+            .flatten()
+        {
+            let dir = entry.path();
+            if !dir.is_dir() {
+                continue;
+            }
+            let record = crate::store::read_record(&dir).ok();
+            let source = std::fs::metadata(dir.join("source.png")).ok();
+            let leftovers = std::fs::read_dir(&dir)
+                .map(|d| {
+                    d.flatten()
+                        .filter(|e| e.path().to_string_lossy().ends_with(".tmp"))
+                        .count()
+                })
+                .unwrap_or(0) as u32;
+            lines.push(StoreLine {
+                id: record
+                    .as_ref()
+                    .map(|r| r.id)
+                    .or_else(|| dir.file_name()?.to_string_lossy().parse().ok())
+                    .unwrap_or(0),
+                source_png: source.is_some(),
+                source_bytes: source.map(|m| m.len()).unwrap_or(0),
+                json: record.is_some(),
+                modified_ms: record.as_ref().map(|r| r.modified_ms).unwrap_or(0),
+                notes: record.map(|r| r.notes.to_string()).unwrap_or_default(),
+                leftovers,
+            });
+        }
+        lines.sort_by_key(|l| l.id);
+        Ok(lines)
+    }
+
+    /// One document's JSON, as written.
+    #[tauri::command]
+    pub fn editor_store_read(id: u64) -> Result<String, String> {
+        std::fs::read_to_string(store_dir().join(id.to_string()).join("document.json"))
+            .map_err(|err| err.to_string())
+    }
+
+    /// A restart, without the process: the list and the image on screen are dropped, the
+    /// store is read again from disk, and the latest document reopens as at startup.
+    #[tauri::command]
+    pub fn editor_store_reload() -> Result<ImageInfo, String> {
+        if let Ok(mut documents) = DOCUMENTS.lock() {
+            documents.clear();
+        }
+        if let Ok(mut slot) = state().image.lock() {
+            *slot = None;
+        }
+        CURRENT_ID.store(0, Ordering::SeqCst);
+        crate::store::set_root(store_dir());
+        load_store();
+        editor_image_info()
+    }
+
+    /// Whether a file document's source.png is, pixel for pixel, the frame the file gives
+    /// when decoded afresh: the S0.5 leg carried here, the frame asked for, upright,
+    /// converted, at the raster size fixed at open. False when the file changed meanwhile.
+    #[tauri::command]
+    pub fn editor_store_verify(id: u64) -> Result<bool, String> {
+        let (path, frame_index) = {
+            let documents = DOCUMENTS.lock().map_err(|_| "the documents are poisoned")?;
+            let document = documents
+                .iter()
+                .find(|d| d.id == id)
+                .ok_or_else(|| format!("document {id} is not in the list"))?;
+            match &document.source {
+                Source::File { path, frame, .. } => (path.clone(), *frame),
+                Source::Capture => return Err("a capture has no file to compare with".into()),
+            }
+        };
+        let preserved = std::fs::read(store_dir().join(id.to_string()).join("source.png"))
+            .map_err(|err| err.to_string())?;
+        let preserved = image::load_from_memory_with_format(&preserved, image::ImageFormat::Png)
+            .map_err(|err| err.to_string())?
+            .into_rgba8();
+        let mut opened = source::open(&path).map_err(|err| err.to_string())?;
+        let fresh = opened.frame(frame_index).map_err(|err| err.to_string())?;
+        Ok(preserved.dimensions() == (fresh.width, fresh.height)
+            && preserved.as_raw() == &fresh.rgba)
+    }
+
+    /// Points the store at a file instead of a folder, so every write fails, and back.
+    #[tauri::command]
+    pub fn editor_store_break(on: bool) -> Result<(), String> {
+        if on {
+            let blocker = store_dir().join("blocked");
+            std::fs::write(&blocker, b"a file where the store expects a folder")
+                .map_err(|err| err.to_string())?;
+            crate::store::set_root(blocker);
+        } else {
+            crate::store::set_root(store_dir());
+        }
+        Ok(())
+    }
+
     /// Whether the window is shown, for the S1.7 Copy and Return check.
     #[tauri::command]
     pub fn editor_window_visible(app: AppHandle) -> Result<bool, String> {
@@ -2206,8 +2598,19 @@ mod checks {
 
     /// Escape, pressed for real, so the picker under test closes the way a person closes it.
     #[tauri::command]
-    pub fn editor_press_escape() {
+    pub fn editor_press_escape() -> bool {
+        // Only into our own window: a key pressed for real lands wherever the focus is, and
+        // with someone else's application in front it would land there (S0.8's lesson).
+        let owner = crate::platform::foreground_owner();
+        if !owner.exists || owner.pid != std::process::id() {
+            crate::log(&format!(
+                "escape NOT sent: the foreground window is {:?}, pid {}",
+                owner.title, owner.pid
+            ));
+            return false;
+        }
         crate::selftest::press_escape();
+        true
     }
 
     /// A probe through the real capture path: a new document, the previous capture

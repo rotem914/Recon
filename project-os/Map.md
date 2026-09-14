@@ -54,6 +54,7 @@ Recon/
 │       ├── registration.rs         # the file types in "Open with" and Default apps, under the user, never a default taken
 │       ├── dialog.rs               # Ctrl+O: Windows' own picker, owned by the editor, on its own thread
 │       ├── folder.rs               # the folder context: listed once, logical order, previous and next, a gone file skipped
+│       ├── store.rs                # the document store: one folder per document, source.png once, document.json atomically
 │       ├── measure.rs              # --measure and --walk: the thirty-run measurement and memory sample, feature-gated
 │       ├── config.rs               # the hotkey, and where it was read from
 │       ├── overlay.rs              # the Win32 selection overlay, one window per display
@@ -115,7 +116,7 @@ Where state lives and who is allowed to write it.
 | The process docs | `CLAUDE.md`, `project-os/*.md` | Markdown | the assistant, under the rules each file states |
 | The hooks setting | `.claude/settings.local.json` | JSON | `project-os/install-hooks.mjs` only. Machine-local, not committed. |
 | The hotkey setting | `%APPDATA%\Recon\recon.json` | JSON | nobody yet. Recon only reads it, and says in its log where the value came from. |
-| Managed documents | in memory, `host/src/editor.rs`, until the store at S1.8 | the preserved image, PNG-encoded, under the document's number; the notes in the page by the same number | the host, at a capture's replacement or at Annotate on a file; capped at fifty |
+| Managed documents | `%LOCALAPPDATA%\Recon\documents\<number>\` | `source.png`, the preserved image, written once; `document.json`, schema 1, the size, the source and the page's notes, rewritten whole through a temporary file | the host only: the record and the image at a capture or at Annotate, the notes on every save the page sends. The checks use `host/target/debug/s18-store` instead, never this folder |
 
 ## Ownership
 
