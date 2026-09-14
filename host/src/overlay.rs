@@ -66,7 +66,7 @@ const ANTS_WIDTH: i32 = 2;
 /// Pixels a second, Rotem's number. The walk is read off the clock, not counted in
 /// ticks, and the pixel at every dash edge is blended by the fraction in between, so
 /// the dashes glide instead of stepping.
-const ANTS_SPEED: f64 = 12.0;
+const ANTS_SPEED: f64 = 24.0;
 /// The frame's redraw interval: about sixty a second.
 const ANTS_FRAME_MS: u32 = 16;
 const ANTS_TIMER: usize = 1;
