@@ -85,6 +85,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-14 · A deleted document goes to Recon's own trash for thirty days, by a thumbnail's × or Ctrl+Delete.
 - 2026-09-14 · The window under the pointer is the selection until a drag begins, listed once with the overlay, told from a drag by the system's threshold.
 - 2026-09-14 · The selection is the smallest part of the window under the pointer, the way Snagit picks a page.
+- 2026-09-14 · The frame's dashes are light on dark, not light on nothing, drawn by hand so they can walk.
 
 ---
 
@@ -1066,3 +1067,36 @@ eye sees keeps winning, or if the key of option 2 turns out to be missed.
 
 Rotem, the same evening: Firefox needs no support. The whole browser lit there is the
 final behaviour, and the accessibility route is not planned.
+
+---
+
+## 2026-09-14 · The frame's dashes are light on dark, not light on nothing, drawn by hand so they can walk
+
+### Context
+
+Rotem asked for the white frame around the lit area to be dashed and to move, very
+slowly. Two choices hid in that: what sits between the dashes, and how a moving dash is
+drawn on this surface, which is plain Win32 painting with no animation of its own.
+
+### Options
+
+1. Light dashes with dark gaps, the classic marching frame, drawn as one-pixel runs by
+   hand, with a timer stepping a phase and repainting only the frame's strips.
+2. Light dashes with nothing between them, the picture showing through.
+3. A dashed pen from the system, which draws dashes but has no phase, so it cannot walk.
+
+### Decision
+
+Option 1, mine, on Rotem's ask. A gap that shows the picture disappears on a light
+picture exactly where a white dash disappears on a dark one; light on dark reads on any
+background. The runs are laid along one path around the frame so a dash turns a corner
+rather than restarting at each edge. Six pixels a dash and a gap, one pixel every 120 ms,
+are starting values for Rotem's eye.
+
+### Consequences
+
+A timer ticks on each display's overlay for the length of a selection, doing nothing
+unless that display has something lit, and then repainting four one-pixel strips. Cost:
+the three values above are guesses until Rotem has seen them; the reply names them.
+Revisit the speed and the dash length by eye, and the colours if the frame ever hides on
+a mid-grey picture.

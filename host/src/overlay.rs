@@ -28,7 +28,7 @@ use windows::Win32::Graphics::Dwm::{
 };
 use windows::Win32::Graphics::Gdi::{
     AlphaBlend, BeginPaint, BitBlt, CreateCompatibleDC, CreateDIBSection, CreateSolidBrush,
-    DeleteDC, DeleteObject, EndPaint, FrameRect, GetDC, InvalidateRect, ReleaseDC, SelectObject,
+    DeleteDC, DeleteObject, EndPaint, FillRect, GetDC, InvalidateRect, ReleaseDC, SelectObject,
     AC_SRC_OVER, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, DIB_RGB_COLORS, HBITMAP,
     HBRUSH, HDC, HGDIOBJ, PAINTSTRUCT, SRCCOPY,
 };
@@ -39,10 +39,10 @@ use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetClassNameW, GetCursorPos, GetForegroundWindow, GetMessageW, GetSystemMetrics,
     GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindow,
     IsWindowVisible, LoadCursorW, PostMessageW, PostQuitMessage, RegisterClassExW,
-    SetForegroundWindow, ShowWindow, TranslateMessage, CS_HREDRAW, CS_VREDRAW, GWL_EXSTYLE,
-    IDC_CROSS, MSG, SM_CXDRAG, SM_CYDRAG, SW_SHOW, WM_APP, WM_DESTROY, WM_ERASEBKGND, WM_KEYDOWN,
-    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_PAINT, WNDCLASSEXW, WS_EX_TOOLWINDOW,
-    WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+    SetForegroundWindow, SetTimer, ShowWindow, TranslateMessage, CS_HREDRAW, CS_VREDRAW,
+    GWL_EXSTYLE, IDC_CROSS, MSG, SM_CXDRAG, SM_CYDRAG, SW_SHOW, WM_APP, WM_DESTROY, WM_ERASEBKGND,
+    WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_PAINT, WM_TIMER, WNDCLASSEXW,
+    WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
 };
 
 use crate::capture::coords::DesktopRect;
@@ -55,6 +55,12 @@ const DIM_ALPHA: u8 = 140;
 /// Posted by the overlay to itself once its windows exist. Its dispatch is S0.7's mark
 /// "overlay accepting input": the loop that delivers the pointer to these windows is running.
 const WM_ACCEPTING: u32 = WM_APP + 1;
+
+/// The marching frame: a light dash, a dark gap, each this many pixels long, walking one
+/// pixel along the frame every tick. Very slow on purpose, Rotem's word for it.
+const ANTS_DASH: u32 = 6;
+const ANTS_STEP_MS: u32 = 120;
+const ANTS_TIMER: usize = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
@@ -127,7 +133,11 @@ struct State {
     dim_dc: HDC,
     dim_bitmap: HBITMAP,
     dim_previous: HGDIOBJ,
+    /// The two inks of the marching frame: the light dash and the dark gap.
     border: HBRUSH,
+    ink: HBRUSH,
+    /// How far the dashes have walked along the frame, in pixels; one more per tick.
+    phase: u32,
 }
 
 thread_local! {
@@ -302,6 +312,8 @@ unsafe fn build_state(
         dim_bitmap,
         dim_previous,
         border: unsafe { CreateSolidBrush(windows::Win32::Foundation::COLORREF(0x00F0F0F0)) },
+        ink: unsafe { CreateSolidBrush(windows::Win32::Foundation::COLORREF(0x00202020)) },
+        phase: 0,
     })
 }
 
@@ -384,6 +396,8 @@ unsafe fn build_surface(frame: &Frame, monitor: &MonitorInfo, screen_dc: HDC) ->
         }
     };
     let _ = unsafe { ShowWindow(hwnd, SW_SHOW) };
+    // The frame's clock. It dies with the window; a tick with nothing lit does nothing.
+    unsafe { SetTimer(Some(hwnd), ANTS_TIMER, ANTS_STEP_MS, None) };
 
     Some(Surface {
         hwnd,
@@ -421,6 +435,7 @@ unsafe fn teardown(state: State) {
     let _ = unsafe { DeleteObject(HGDIOBJ(state.dim_bitmap.0)) };
     let _ = unsafe { DeleteDC(state.dim_dc) };
     let _ = unsafe { DeleteObject(HGDIOBJ(state.border.0)) };
+    let _ = unsafe { DeleteObject(HGDIOBJ(state.ink.0)) };
 }
 
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
@@ -630,6 +645,23 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 }
             });
             unsafe { PostQuitMessage(0) };
+            LRESULT(0)
+        }
+        WM_TIMER if wparam.0 == ANTS_TIMER => {
+            // One step of the dashes, and only the frame itself is repainted: four thin
+            // strips, not the lit area, so the walk costs nothing to speak of.
+            let ring = STATE.with(|cell| {
+                let mut borrowed = cell.borrow_mut();
+                let state = borrowed.as_mut()?;
+                let sel = state.client_selection(hwnd)?;
+                state.phase = state.phase.wrapping_add(1);
+                Some(ring_rects(sel))
+            });
+            if let Some(ring) = ring {
+                for strip in ring {
+                    let _ = unsafe { InvalidateRect(Some(hwnd), Some(&strip), false) };
+                }
+            }
             LRESULT(0)
         }
         WM_DESTROY => LRESULT(0),
@@ -1015,14 +1047,102 @@ unsafe fn paint(hwnd: HWND) {
                 }
             }
 
-            // 3. the marquee border
+            // 3. the marching frame: light dashes and dark gaps, one pixel wide, walking
+            // along the frame with the phase. Only the runs inside the dirty region are
+            // drawn, which on a tick is the frame's four strips.
             if let Some(sel) = selection {
-                let _ = unsafe { FrameRect(hdc, &sel, state.border) };
+                for (run, light) in ant_runs(sel, state.phase) {
+                    if run.right <= dirty.left
+                        || run.left >= dirty.right
+                        || run.bottom <= dirty.top
+                        || run.top >= dirty.bottom
+                    {
+                        continue;
+                    }
+                    let brush = if light { state.border } else { state.ink };
+                    let _ = unsafe { FillRect(hdc, &run, brush) };
+                }
             }
         });
     }
 
     let _ = unsafe { EndPaint(hwnd, &ps) };
+}
+
+/// The frame's four one-pixel strips, in client coordinates: what a tick repaints.
+fn ring_rects(sel: RECT) -> [RECT; 4] {
+    [
+        RECT {
+            left: sel.left,
+            top: sel.top,
+            right: sel.right,
+            bottom: sel.top + 1,
+        },
+        RECT {
+            left: sel.left,
+            top: sel.bottom - 1,
+            right: sel.right,
+            bottom: sel.bottom,
+        },
+        RECT {
+            left: sel.left,
+            top: sel.top,
+            right: sel.left + 1,
+            bottom: sel.bottom,
+        },
+        RECT {
+            left: sel.right - 1,
+            top: sel.top,
+            right: sel.right,
+            bottom: sel.bottom,
+        },
+    ]
+}
+
+/// The dashes of the marching frame: one-pixel runs around the frame, clockwise from the
+/// top-left corner, each light or dark, the pattern shifted by the phase so the dashes
+/// walk. The walk is one continuous path, so a dash turns a corner instead of restarting.
+fn ant_runs(sel: RECT, phase: u32) -> Vec<(RECT, bool)> {
+    let w = (sel.right - sel.left).max(0);
+    let h = (sel.bottom - sel.top).max(0);
+    if w == 0 || h == 0 {
+        return Vec::new();
+    }
+    let dash = ANTS_DASH as i32;
+    // The path: top edge left to right, right edge top to bottom, bottom edge right to
+    // left, left edge bottom to top, each edge without the corner the next one starts on.
+    let edges: [(i32, i32, i32, (i32, i32)); 4] = [
+        (sel.left, sel.top, w - 1, (1, 0)),
+        (sel.right - 1, sel.top, h - 1, (0, 1)),
+        (sel.right - 1, sel.bottom - 1, w - 1, (-1, 0)),
+        (sel.left, sel.bottom - 1, h - 1, (0, -1)),
+    ];
+    let mut runs = Vec::new();
+    let mut walked: i64 = 0;
+    for (x, y, length, (dx, dy)) in edges {
+        let mut at = 0;
+        while at < length.max(1) {
+            // The run ends at the next dash boundary, or the edge's end.
+            let position = walked + at as i64 + phase as i64;
+            let to_boundary = dash as i64 - position.rem_euclid(dash as i64);
+            let take = (to_boundary as i32).min(length.max(1) - at);
+            let light = (position.div_euclid(dash as i64)) % 2 == 0;
+            let (sx, sy) = (x + dx * at, y + dy * at);
+            let (ex, ey) = (x + dx * (at + take - 1), y + dy * (at + take - 1));
+            runs.push((
+                RECT {
+                    left: sx.min(ex),
+                    top: sy.min(ey),
+                    right: sx.max(ex) + 1,
+                    bottom: sy.max(ey) + 1,
+                },
+                light,
+            ));
+            at += take;
+        }
+        walked += length.max(1) as i64;
+    }
+    runs
 }
 
 /// The dirty region minus the selection, as up to four rectangles. Splitting it this way
@@ -1195,6 +1315,55 @@ mod tests {
         assert_eq!(smallest_at(&parts, 800, 700), Some(page));
         assert_eq!(smallest_at(&parts, 800, 50), Some(client));
         assert_eq!(smallest_at(&parts, 1705, 700), None);
+    }
+
+    /// Every pixel the runs cover, with its ink, in visiting order.
+    fn painted(sel: RECT, phase: u32) -> Vec<((i32, i32), bool)> {
+        let mut out = Vec::new();
+        for (run, light) in ant_runs(sel, phase) {
+            for y in run.top..run.bottom {
+                for x in run.left..run.right {
+                    out.push(((x, y), light));
+                }
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn the_dashes_cover_the_frame_once_and_alternate() {
+        let sel = rect(10, 20, 40, 35); // 30 by 15
+        let pixels = painted(sel, 0);
+        // The frame has 2 * (30 + 15) - 4 pixels, each painted exactly once.
+        assert_eq!(pixels.len(), 2 * (30 + 15) - 4);
+        let mut seen: Vec<(i32, i32)> = pixels.iter().map(|p| p.0).collect();
+        seen.sort_unstable();
+        seen.dedup();
+        assert_eq!(seen.len(), pixels.len());
+        for ((x, y), _) in &pixels {
+            let on_frame = *x == 10 || *x == 39 || *y == 20 || *y == 34;
+            assert!(on_frame, "{x},{y} is not on the frame");
+        }
+        // Along the path the ink changes every ANTS_DASH pixels, corners included.
+        for (i, (_, light)) in pixels.iter().enumerate() {
+            let expected = (i as u32 / ANTS_DASH).is_multiple_of(2);
+            assert_eq!(*light, expected, "pixel {i} along the path");
+        }
+    }
+
+    #[test]
+    fn a_step_of_phase_walks_the_dashes_one_pixel() {
+        let sel = rect(0, 0, 50, 30);
+        let before = painted(sel, 0);
+        let after = painted(sel, 1);
+        // What pixel i shows at phase 1 is what pixel i + 1 showed at phase 0.
+        for i in 0..before.len() - 1 {
+            assert_eq!(after[i].1, before[i + 1].1, "pixel {i}");
+        }
+        assert_ne!(
+            before[ANTS_DASH as usize - 1].1,
+            after[ANTS_DASH as usize - 1].1
+        );
     }
 
     #[test]
