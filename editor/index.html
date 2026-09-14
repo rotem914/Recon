@@ -76,10 +76,14 @@
   /* The mode button (§3.3), the other half of the Annotate control beside the A key:
      Rotem's call on 2026-09-14, both. Outside the stage so a click on it reaches no
      canvas handler. */
-  #mode { position: absolute; right: 12px; top: 10px; padding: 6px 12px; border-radius: 6px;
-          border: 1px solid #3a4149; background: #1b1f24; color: #f2f2f2; font: 13px system-ui, sans-serif;
-          cursor: pointer; }
-  #mode:hover { border-color: #7aa7ff; }
+  /* The controls (§3.3, S1.5, S2.3): the mode, and the two ways out that daily use asked
+     for by hand, beside the keys that do the same. Outside the stage so a click on them
+     reaches no canvas handler. Provisional, Rotem's to restyle. */
+  #controls { position: absolute; right: 12px; top: 10px; display: flex; gap: 6px; }
+  #controls button { padding: 6px 12px; border-radius: 6px; border: 1px solid #3a4149;
+                     background: #1b1f24; color: #f2f2f2; font: 13px system-ui, sans-serif;
+                     cursor: pointer; }
+  #controls button:hover { border-color: #7aa7ff; }
   body.checking #stage { cursor: progress; }
   #report { position: absolute; inset: 0; display: none; padding: 18px 22px; overflow: auto;
             background: #0c0e10; font-family: ui-monospace, Consolas, monospace;
@@ -96,7 +100,11 @@
 </div>
 <div id="hud"></div>
 <div id="strip"></div>
-<button id="mode" type="button" hidden>Annotate</button>
+<div id="controls" hidden>
+  <button id="copy" type="button" title="Copy the image to the clipboard (Ctrl+C)">Copy</button>
+  <button id="saveas" type="button" title="Save As a new PNG file (Ctrl+S)">Save As</button>
+  <button id="mode" type="button">Annotate</button>
+</div>
 <div id="report"></div>
 
 <script>
@@ -125,6 +133,7 @@
   const arrows = document.getElementById('arrows');
   const hud = document.getElementById('hud');
   const modeButton = document.getElementById('mode');
+  const controls = document.getElementById('controls');
   const strip = document.getElementById('strip');
   const context = canvas.getContext('2d', { alpha: false });
 
@@ -166,6 +175,8 @@
     // operation. Typing has the engine's own undo while a note is being edited; the
     // committed text change joins this history as one grouped step.
     history: { steps: [], index: -1 },
+    // What the store holds, for the HUD (§3.8): refreshed with the timeline.
+    storage: { documents: 0, bytes: 0 },
     // The save state of this document's notes (§3.8): 'saved', 'saving', or 'failed' with
     // the reason, which stays on screen until a save succeeds. Never "saved" unless the
     // host said so.
@@ -700,7 +711,8 @@
       ? `${model.image.file}  ${model.image.kind}` +
         (model.image.count > 1 ? `  ${model.image.index + 1} of ${model.image.count}  [ ] to step` : '')
       : model.image.source) +
-      (model.image.total > 0 ? `  ${model.image.position} of ${model.image.total} in ${model.image.context}` : '');
+      (model.image.total > 0 ? `  ${model.image.position} of ${model.image.total} in ${model.image.context}` : '') +
+      (model.storage.documents > 0 ? `   ${model.storage.documents} documents, ${(model.storage.bytes / (1024 * 1024)).toFixed(1)} MB on disk` : '');
     const ago = (s) => (s < 60 ? 'just now' : s < 3600 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`);
     const saveText = model.save.state === 'failed' ? `   NOT SAVED: ${model.save.error}`
       : model.save.state === 'saving' ? '   saving' : (model.image.managed ? '   saved' : '');
@@ -732,6 +744,7 @@
   };
   const refreshStrip = async () => {
     const docs = await invoke('editor_documents').catch(() => []);
+    model.storage = await invoke('editor_storage').catch(() => model.storage);
     document.body.classList.toggle('strip', docs.length > 0 && !model.fullscreen);
     const seen = new Set();
     for (const doc of docs) {
@@ -774,13 +787,22 @@
   const applyMode = () => {
     document.body.classList.toggle('viewing', model.mode !== 'annotate');
     modeButton.textContent = model.mode === 'annotate' ? 'View' : 'Annotate';
-    modeButton.hidden = !model.image.width;
+    controls.hidden = !model.image.width;
     drawHud();
   };
   modeButton.addEventListener('click', () => {
     setMode(model.mode === 'annotate' ? 'view' : 'annotate').catch((err) => console.error('mode', err));
     // The keys stay the page's: a focused button would swallow Space and Enter.
     modeButton.blur();
+  });
+  // The image, with the note being typed if there is one, as Ctrl+C outside typing does.
+  document.getElementById('copy').addEventListener('click', (event) => {
+    copyComposed().catch(() => {});
+    event.currentTarget.blur();
+  });
+  document.getElementById('saveas').addEventListener('click', (event) => {
+    saveAs().catch(() => {});
+    event.currentTarget.blur();
   });
 
   const setMode = async (mode) => {

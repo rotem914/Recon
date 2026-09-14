@@ -1971,9 +1971,22 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       under it; the menu is the right button's. A second start with no file was already
       showing the editor since S1.2. The click itself is Rotem's to try; nothing here can
       press a tray icon.
-- [ ] S2.3 Copy and Save As on an annotated image: what Rotem met on the first day; the
+- [x] S2.3 Copy and Save As on an annotated image: what Rotem met on the first day; the
       cause decides the step, a fix if the keys failed on an annotated file, visible
       controls if the keys were not the way in. Model: Fable 5.1 once the cause is known.
+      **Built 2026-09-14, the cause found on the way.** The window Rotem was testing was
+      the release build from midnight, before annotation, the store, Copy and Return and
+      Save As existed, so the keys were not in it. Both were made buttons as well, Copy
+      and Save As beside the mode at the top right, since that is how Annotate was
+      settled and a hand reaches a button before it finds a key; each does exactly what
+      its key does and gives the keys back at once. Ctrl+C while a note is being typed
+      stays the text copy, as §3.6 says; the button copies the image either way. The
+      release is rebuilt at the same path once the old window closed. Provisional look,
+      Rotem's to change; the keys on the new build are his to try.
+- [x] S2.4 Visible storage use (§3.8): the HUD's first line says how many documents the
+      store holds and how many megabytes they take, read from the file sizes and never
+      from the images, refreshed with the timeline. The daily rate stays stated in §3.8.
+      Model: Opus 5, wired as documented; built on Fable at Rotem's word, 2026-09-14.
 
 Stage 1 is the release that replaces both current tools. It ships without the thumbnail
 strip, without export options beyond PNG, and without Rogers.

@@ -631,6 +631,44 @@ pub fn editor_documents() -> Vec<DocumentLine> {
         .collect()
 }
 
+/// What the store holds, for the HUD (§3.8: visible storage usage): the documents and the
+/// bytes of every file under them, read from the file sizes, never from the images.
+#[derive(serde::Serialize)]
+pub struct Storage {
+    pub documents: u32,
+    pub bytes: u64,
+}
+
+#[tauri::command]
+pub fn editor_storage() -> Storage {
+    let mut storage = Storage {
+        documents: 0,
+        bytes: 0,
+    };
+    let Ok(root) = crate::store::root() else {
+        return storage;
+    };
+    let Ok(entries) = std::fs::read_dir(&root) else {
+        return storage;
+    };
+    for entry in entries.flatten() {
+        let dir = entry.path();
+        if !dir.is_dir() || !dir.join("document.json").is_file() {
+            continue;
+        }
+        storage.documents += 1;
+        if let Ok(files) = std::fs::read_dir(&dir) {
+            storage.bytes += files
+                .flatten()
+                .filter_map(|f| f.metadata().ok())
+                .filter(|m| m.is_file())
+                .map(|m| m.len())
+                .sum::<u64>();
+        }
+    }
+    storage
+}
+
 /// A document chosen from the timeline: shown from its own image, history active (§3.4).
 #[tauri::command]
 pub fn editor_show_document(id: u64) -> Result<ImageInfo, String> {
@@ -1089,6 +1127,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_save_as,
         editor_documents,
         editor_show_document,
+        editor_storage,
         checks::editor_save_as_outcome,
         checks::editor_save_as_plan,
         checks::editor_save_as_write,
@@ -1100,6 +1139,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         checks::editor_store_verify,
         checks::editor_store_break,
         checks::editor_window_visible,
+        checks::editor_in_front,
         checks::editor_hold_clipboard,
         checks::editor_stand_in,
         checks::editor_last_return,
@@ -1153,6 +1193,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_save_as,
         editor_documents,
         editor_show_document,
+        editor_storage,
     ]);
     builder.register_asynchronous_uri_scheme_protocol("region", |_ctx, request, responder| {
         let query = request.uri().query().unwrap_or_default().to_string();
@@ -3093,6 +3134,14 @@ mod checks {
     #[tauri::command]
     pub fn editor_dialog_outcome() -> String {
         DIALOG_OUTCOME.lock().map(|s| s.clone()).unwrap_or_default()
+    }
+
+    /// Whether the window in front belongs to this process: the screen compares read the
+    /// screen where our window is, and with another window over it they would read that.
+    #[tauri::command]
+    pub fn editor_in_front() -> bool {
+        let owner = crate::platform::foreground_owner();
+        owner.exists && owner.pid == std::process::id()
     }
 
     /// Escape, pressed for real, so the picker under test closes the way a person closes it.

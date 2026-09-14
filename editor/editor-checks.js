@@ -263,6 +263,10 @@ export async function runChecks(editor, invoke) {
       skipped('the screen shows what the page painted', 'the screen copy is all black, so the display is off; nothing can be seen on it');
       screenOff = true;
       looks = [];
+    } else if (looks.length && looks.every((look) => look.matching < 0.5) && !(await invoke('editor_in_front'))) {
+      skipped('the screen shows what the page painted', 'another window is over ours, so the screen shows that window; nothing of the page can be read there');
+      screenOff = true;
+      looks = [];
     }
     for (const look of looks) {
       const good = look.matching > 0.9 && look.black < 0.05;
@@ -600,6 +604,7 @@ export async function runChecks(editor, invoke) {
       await sleep(150);
       let live;
       try {
+        if (!(await invoke('editor_in_front'))) throw new Error('another window is over ours');
         live = await invoke('editor_live_compare', region);
       } catch (err) {
         // The same screen the show-and-look section needs: named, not failed, when the
@@ -1597,6 +1602,50 @@ export async function runChecks(editor, invoke) {
     check('fullscreen puts the strip away and gives the stage the whole window', !document.body.classList.contains('strip') && stage.clientHeight === window.innerHeight, `stage ${stage.clientHeight} of ${window.innerHeight}`);
     await editor.setFullscreen(false);
     check('and it comes back', document.body.classList.contains('strip') && strip.children.length === 3);
+    model.callouts = [];
+    editor.layoutScene();
+  }
+
+  // ---------------------------------------------------------------- 28. S2.3 and S2.4: the controls, and the storage line
+  say('');
+  say('S2.3 and S2.4: Copy and Save As are buttons beside the mode as well as keys, and the HUD says what the store holds');
+  {
+    const hud = document.getElementById('hud');
+    const controls = document.getElementById('controls');
+    const copyButton = document.getElementById('copy');
+    const saveButton = document.getElementById('saveas');
+    check('the three controls are shown with an image, in one row at the top right', !controls.hidden && copyButton && saveButton && document.getElementById('mode')
+      && copyButton.getBoundingClientRect().top < 40 && copyButton.getBoundingClientRect().right > window.innerWidth - 200);
+
+    const c = editor.createCallout({ x: 50, y: 50 });
+    c.text = 'copied by the button';
+    editor.layoutScene();
+    editor.record();
+    copyButton.click();
+    for (let i = 0; i < 200 && !hud.textContent.includes(`copied ${model.image.width}x${model.image.height}`); i += 1) await sleep(50);
+    const back = await invoke('editor_clipboard_readback');
+    check('the Copy button puts the composed image on the clipboard', back.png && back.width === model.image.width && back.height === model.image.height && document.activeElement !== copyButton,
+      `${back.width}x${back.height}`);
+
+    const storage = await invoke('editor_storage');
+    const docs = await invoke('editor_documents');
+    check('the HUD says how many documents the store holds and how much disk', storage.documents === docs.length && storage.bytes > 0 && hud.textContent.includes(`${storage.documents} documents, ${(storage.bytes / (1024 * 1024)).toFixed(1)} MB on disk`),
+      `${storage.documents} documents, ${storage.bytes} bytes`);
+
+    saveButton.click();
+    await sleep(1500);
+    let outcome = await invoke('editor_save_as_outcome');
+    check('the Save As button opens Save As', outcome.state === 'open' && document.activeElement !== saveButton, outcome.state);
+    const sent = await invoke('editor_press_escape');
+    for (let i = 0; i < 40 && sent && outcome.state === 'open'; i += 1) {
+      await sleep(100);
+      outcome = await invoke('editor_save_as_outcome');
+    }
+    if (!sent) {
+      skipped('Escape closes it with nothing saved', 'another application is in front, so no key was sent; the dialog is left open');
+    } else {
+      check('Escape closes it with nothing saved', outcome.state === 'cancelled', outcome.line);
+    }
     model.callouts = [];
     editor.layoutScene();
   }
