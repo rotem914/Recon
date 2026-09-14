@@ -947,3 +947,36 @@ Cost: the image is encoded and written for every capture, on a thread, about 40 
 3.5 MB for a full screen; retention is the user's until Stage 2 adds deletion (§3.8). A
 document read back has no file behind it (F82). Revisit the place if a user wants the
 documents on another drive, and the number if two machines ever merge a store.
+
+---
+
+## 2026-09-14 · A deleted document goes to Recon's own trash for thirty days, by a thumbnail's × or Ctrl+Delete
+
+### Context
+
+§3.8 asks for one unambiguous delete and no silent deletion, and Stage 2 had to say what
+happens to a deleted document and where the control sits, the first thing in Recon that
+removes work.
+
+### Options
+
+1. Gone at once, with a confirmation dialog.
+2. The system's recycle bin, which the user empties.
+3. Recon's own trash beside the documents, swept after a fixed number of days.
+4. The control on the thumbnail only, on a key only, or both.
+
+### Decision
+
+Option 3 with a thirty-day sweep and both controls, by Rotem on 2026-09-14. The key is
+Ctrl+Delete, chosen by the assistant so plain Delete stays the selected note's; provisional.
+The trash is Recon's rather than the recycle bin because the bin's emptying is the
+system's and the user's to time, and thirty days is a promise Recon can keep itself. No
+dialog: the trash is the safety net, and a dialog on every delete is what §3.8 rules out.
+
+### Consequences
+
+A delete is one click or one key and reversible for thirty days by the folder in the
+trash, in Recon once S2.7 lands. The sweep runs at startup only, so a machine never
+restarted keeps its trash longer, which errs on the safe side. Cost: the trash takes disk
+until the sweep. Revisit the key if Ctrl+Delete collides with a habit, and the days if
+thirty proves too many or too few.
