@@ -25,6 +25,12 @@
            display: grid; place-items: center; color: #6b7480; font-size: 11px; }
   .thumb img { max-width: 100%; max-height: 100%; display: block; }
   .thumb.current { border-color: #7aa7ff; }
+  .thumb { position: relative; }
+  .thumb .x { position: absolute; right: 2px; top: 2px; width: 18px; height: 18px; border-radius: 9px;
+              border: none; background: rgba(10,12,14,.75); color: #f2f2f2; font: 13px/18px system-ui, sans-serif;
+              cursor: pointer; display: none; padding: 0; }
+  .thumb:hover .x { display: block; }
+  .thumb .x:hover { background: #c0392b; }
   #canvas { position: absolute; left: 0; top: 0; display: block; image-rendering: pixelated; }
   /* The annotation margin, drawn under the picture in the same colour the host puts in the
      output, so what is on screen is what a copy contains (§3.5, §3.6). */
@@ -701,7 +707,12 @@
   };
 
   let currentNotice = '';
+  let emptyText = '';
   const drawHud = () => {
+    if (!model.image.width) {
+      hud.textContent = emptyText + (currentNotice ? `\n${currentNotice}` : '');
+      return;
+    }
     const target = model.editing || model.selected;
     const sizeShown = target ? (target.textSize || model.textSize) : model.textSize;
     const zoomText = Math.abs(model.zoom - model.fitZoom) < 0.0005
@@ -724,7 +735,7 @@
       `${modeLine}\n` +
       `zoom ${zoomText}   pan ${Math.round(model.pan.x)},${Math.round(model.pan.y)}   ` +
       `callouts ${model.callouts.length}   text ${sizeShown}px   dpr ${dpr()}\n` +
-      `0 fit  1 actual size  +/- zoom  wheel pan  Ctrl+wheel zoom  F11 fullscreen  PgUp/PgDn previous next  Ctrl +/- text size  arrows pan  ${model.mode === 'annotate' ? 'click to add' : 'drag to pan'}  Esc commit  Del remove  Ctrl+Z/Y undo redo  Ctrl+C copy  Ctrl+Enter copy and return  Ctrl+S save as  Ctrl+O open` +
+      `0 fit  1 actual size  +/- zoom  wheel pan  Ctrl+wheel zoom  F11 fullscreen  PgUp/PgDn previous next  Ctrl +/- text size  arrows pan  ${model.mode === 'annotate' ? 'click to add' : 'drag to pan'}  Esc commit  Del remove  Ctrl+Z/Y undo redo  Ctrl+C copy  Ctrl+Enter copy and return  Ctrl+S save as  Ctrl+Del delete document  Ctrl+O open` +
       (currentNotice ? `\n${currentNotice}` : '');
   };
 
@@ -758,13 +769,24 @@
         el.addEventListener('click', () => {
           invoke('editor_show_document', { id: doc.id }).then((info) => loadImage(info)).catch((err) => console.error('timeline', err));
         });
+        // The delete (§3.8, S2.5): into Recon's trash for thirty days; one click, no dialog.
+        const x = document.createElement('button');
+        x.className = 'x';
+        x.type = 'button';
+        x.textContent = '×';
+        x.title = 'Delete this document (Recon keeps it in its trash for 30 days)';
+        x.addEventListener('click', (event) => {
+          event.stopPropagation();
+          deleteDocument(doc.id).catch((err) => console.error('delete', err));
+        });
+        el.appendChild(x);
         strip.appendChild(el);
         thumbFor(doc.id).then((url) => {
           const img = document.createElement('img');
           img.src = url;
           img.alt = '';
-          el.textContent = '';
-          el.appendChild(img);
+          el.insertBefore(img, el.firstChild);
+          for (const node of [...el.childNodes]) if (node.nodeType === Node.TEXT_NODE) node.remove();
         }).catch((err) => console.warn(String(err)));
       }
       const when = new Date(doc.created_ms);
@@ -777,6 +799,35 @@
     }
     const current = strip.querySelector('.thumb.current');
     if (current) current.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+  };
+
+  // A document deleted: out of the timeline and, when it was the one on screen, the
+  // neighbour shows or the editor is empty. The host says what remains.
+  const deleteDocument = async (id) => {
+    const info = await invoke('editor_delete_document', { id });
+    documents.delete(id);
+    if (info) {
+      await loadImage(info);
+      await refreshStrip();
+    } else {
+      await showEmpty();
+    }
+    notice('deleted; Recon keeps it in its trash for 30 days', 4000);
+  };
+
+  const showEmpty = async () => {
+    model.image = { width: 0, height: 0, source: '' };
+    model.callouts = [];
+    model.selected = null;
+    model.editing = null;
+    canvas.style.display = 'none';
+    mat.style.display = 'none';
+    layoutScene();
+    applyMode();
+    await refreshStrip();
+    const hotkey = await invoke('editor_hotkey').catch(() => '');
+    emptyText = emptyStateText(hotkey);
+    drawHud();
   };
 
   // ---------------------------------------------------------------- the mode
@@ -1105,6 +1156,13 @@
       event.preventDefault();
       return;
     }
+    // Ctrl+Delete deletes the document on screen (S2.5, provisional key); plain Delete
+    // stays the selected note's.
+    if (event.key === 'Delete' && event.ctrlKey && !event.shiftKey && !event.altKey) {
+      if (model.image.document_id && model.image.managed) deleteDocument(model.image.document_id).catch((err) => console.error('delete', err));
+      event.preventDefault();
+      return;
+    }
     if (event.key === 'Delete' || event.key === 'Backspace') {
       if (model.selected) { removeCallout(model.selected); settle(); record(); drawHud(); event.preventDefault(); }
       return;
@@ -1229,6 +1287,7 @@
     }
     stashCurrent();
     model.image = info;
+    canvas.style.display = '';
     let known = documents.get(info.document_id);
     if (!known && info.managed) {
       const saved = await invoke('editor_notes', { documentId: info.document_id }).catch(() => null);
@@ -1465,6 +1524,7 @@
     saveAs,
     refreshStrip,
     strip,
+    deleteDocument,
     snapshot,
     copyAndReturn,
     fitMargin,

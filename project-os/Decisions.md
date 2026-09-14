@@ -82,6 +82,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-14 · A bubble is placed from a fixed list of candidates, and the margin is what the notes need, recomputed at rest.
 - 2026-09-14 · _Previous captures are kept in memory, encoded and capped, until the store exists._ (superseded by the store below)
 - 2026-09-14 · The store: one folder per document in local application data, the image once, the record whole, the number its creation time.
+- 2026-09-14 · A deleted document goes to Recon's own trash for thirty days, by a thumbnail's × or Ctrl+Delete.
 
 ---
 

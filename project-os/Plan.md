@@ -1987,12 +1987,27 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       store holds and how many megabytes they take, read from the file sizes and never
       from the images, refreshed with the timeline. The daily rate stays stated in §3.8.
       Model: Opus 5, wired as documented; built on Fable at Rotem's word, 2026-09-14.
-- [ ] S2.5 Intentional deletion (§3.8): one unambiguous delete of a document, its folder
+- [x] S2.5 Intentional deletion (§3.8): one unambiguous delete of a document, its folder
       gone from the store and its thumbnail from the timeline, never the external original
-      and never an export, with a way back for a slip. **Waits on Rotem's call**, because it
-      is the first thing in Recon that removes work: where the control sits (on the
-      timeline's thumbnail, a key, or both), and whether a deleted document goes to the
-      recycle bin or is gone at once. Model: Fable 5.1, it deletes.
+      and never an export, with a way back for a slip. Rotem's calls on 2026-09-14: the
+      control on the thumbnail and on a key, both; a deleted document goes to a trash and
+      is gone for good after thirty days. Model: Fable 5.1, it deletes.
+      **Built 2026-09-14.** A small × on a thumbnail when the pointer is over it, and
+      Ctrl+Delete for the document on screen (a provisional key, so plain Delete stays the
+      note's). One click, no dialog: the document leaves the list and its folder moves,
+      whole, into Recon's own trash beside the documents, stamped with the time; the
+      notice says so. The trash is Recon's, not the system's recycle bin, whose emptying
+      is not ours to time; at every startup whatever has been in it thirty days is
+      removed for good. If the deleted document was on screen the newer neighbour shows,
+      else the older, else the editor is empty with the timeline and the controls away,
+      and the next capture fills it again. An external file's document deleted leaves the
+      file where it was. The way back for a slip is the folder in the trash; a restore
+      inside Recon is S2.7. Checked: a thumbnail's delete on a document not on screen,
+      Ctrl+Delete on the one on screen showing its neighbour, the last one emptying the
+      editor, the file untouched, the sweep removing a folder backdated thirty-one days
+      and keeping the others, a capture after the empty state.
+- [ ] S2.7 Restore from the trash: a way inside Recon to bring a trashed document back
+      within its thirty days. Model: Opus 5, the folder moves back the way it went.
 - [ ] S2.6 Export beyond PNG: Save As offering JPEG beside PNG, the same never-overwrite
       path, the quality fixed rather than asked. Model: Opus 5, the path exists.
 

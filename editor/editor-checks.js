@@ -1650,6 +1650,72 @@ export async function runChecks(editor, invoke) {
     editor.layoutScene();
   }
 
+  // ---------------------------------------------------------------- 29. S2.5: deleting a document
+  say('');
+  say('S2.5: a document is deleted from the thumbnail or by Ctrl+Delete, into Recon\'s trash for thirty days, never an original; the neighbour shows, the last one leaves the editor empty');
+  {
+    const hud = document.getElementById('hud');
+    const strip = editor.strip;
+    await invoke('editor_store_reset');
+    const dir = await invoke('editor_make_folder');
+    const filePath = `${dir}\\img2.png`;
+    // An annotated file's document, then two captures.
+    let info = await invoke('editor_open_path', { path: filePath });
+    await editor.loadImage(info);
+    await editor.setMode('annotate');
+    const fileDoc = model.image.document_id;
+    const shots = [];
+    for (const [w, h] of [[320, 200], [340, 200]]) {
+      const s = await invoke('editor_capture_probe', { width: w, height: h });
+      await editor.loadImage(s);
+      shots.push(s);
+    }
+    await editor.refreshStrip();
+    for (let i = 0; i < 100 && [...strip.querySelectorAll('img')].length < 3; i += 1) await sleep(50);
+    check('three documents on the timeline, the newest current', strip.children.length === 3 && strip.children[2].classList.contains('current'));
+
+    // The thumbnail's delete on a document that is not on screen: gone from the timeline,
+    // in the trash, the one on screen unchanged, the external file untouched.
+    strip.children[0].querySelector('.x').click();
+    for (let i = 0; i < 60 && strip.children.length !== 2; i += 1) await sleep(50);
+    let trash = await invoke('editor_trash_list');
+    check('deleted from its thumbnail: off the timeline, into the trash, the one on screen unchanged', strip.children.length === 2 && trash.some(([id]) => id === fileDoc) && model.image.document_id === shots[1].document_id && hud.textContent.includes('trash for 30 days'),
+      `trash ${JSON.stringify(trash)}`);
+    const stillThere = await invoke('editor_open_path', { path: filePath }).then(() => true).catch(() => false);
+    check('the external file the document came from is untouched', stillThere);
+    await editor.loadImage(await invoke('editor_show_document', { id: shots[1].document_id }));
+
+    // Ctrl+Delete on the document on screen: the neighbour shows.
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', code: 'Delete', ctrlKey: true, bubbles: true, cancelable: true }));
+    for (let i = 0; i < 60 && model.image.document_id !== shots[0].document_id; i += 1) await sleep(50);
+    trash = await invoke('editor_trash_list');
+    check('Ctrl+Delete on the one on screen: the neighbour shows, and it is in the trash', model.image.document_id === shots[0].document_id && trash.length === 2 && strip.children.length === 1,
+      `on screen ${model.image.document_id}, ${trash.length} in the trash`);
+
+    // The last one: the editor is empty, the timeline gone.
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', code: 'Delete', ctrlKey: true, bubbles: true, cancelable: true }));
+    for (let i = 0; i < 60 && model.image.width !== 0; i += 1) await sleep(50);
+    await sleep(100);
+    check('the last document deleted leaves the editor empty, the timeline away, the controls away', model.image.width === 0 && !document.body.classList.contains('strip') && document.getElementById('controls').hidden && hud.textContent.includes('capture'),
+      hud.textContent.split('\n')[0]);
+
+    // The sweep: thirty days on, a trashed document is gone for good; a younger one stays.
+    await invoke('editor_trash_age', { id: shots[0].document_id, days: 31 });
+    const swept = await invoke('editor_sweep_trash');
+    trash = await invoke('editor_trash_list');
+    check('the sweep removes what is thirty days old and keeps the rest', swept.length === 1 && swept[0] === shots[0].document_id && trash.length === 2 && !trash.some(([id]) => id === shots[0].document_id),
+      `swept ${JSON.stringify(swept)}, left ${JSON.stringify(trash)}`);
+
+    // A capture after the empty state works as before.
+    const again = await invoke('editor_capture_probe', { width: 300, height: 200 });
+    await editor.loadImage(again);
+    await editor.refreshStrip();
+    check('a capture after the empty state shows and the timeline returns', model.image.width === 300 && document.body.classList.contains('strip') && editor.canvas.style.display !== 'none',
+      `${model.image.width}, strip ${document.body.classList.contains('strip')}, canvas ${JSON.stringify(editor.canvas.style.display)}`);
+    model.callouts = [];
+    editor.layoutScene();
+  }
+
   say('');
   const unrun = notRun ? `, ${notRun} not run` : '';
   if (failures === 0) {

@@ -604,6 +604,14 @@ fn main() {
                     log(&format!("store: {}", root.display()));
                     store::set_root(root);
                     editor::load_store();
+                    let swept = store::sweep_trash(store::TRASH_DAYS);
+                    if !swept.is_empty() {
+                        log(&format!(
+                            "trash: {} documents older than {} days removed",
+                            swept.len(),
+                            store::TRASH_DAYS
+                        ));
+                    }
                 }
                 None => log("store: LOCALAPPDATA is not set, so nothing is saved this session"),
             }

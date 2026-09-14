@@ -39,6 +39,88 @@ pub fn folder(id: u64) -> Result<PathBuf, String> {
     Ok(root()?.join(id.to_string()))
 }
 
+/// Recon's own trash, beside the documents: a deleted document's folder moves here whole
+/// and is swept after thirty days (S2.5, Rotem's call on 2026-09-14). Never the system's
+/// recycle bin, whose emptying is not ours to time.
+pub fn trash_root() -> Result<PathBuf, String> {
+    let root = root()?;
+    Ok(root
+        .parent()
+        .map(|p| p.join("trash"))
+        .unwrap_or_else(|| root.join("trash")))
+}
+
+pub const TRASH_DAYS: u64 = 30;
+
+/// Moves a document's folder into the trash, whole, with the time it was trashed written
+/// beside it. A folder that is not on disk yet is nothing to move.
+pub fn trash(id: u64) -> Result<Option<PathBuf>, String> {
+    let from = folder(id)?;
+    if !from.is_dir() {
+        return Ok(None);
+    }
+    let trash = trash_root()?;
+    std::fs::create_dir_all(&trash)
+        .map_err(|err| format!("{} could not be created: {err}", trash.display()))?;
+    let to = trash.join(id.to_string());
+    if to.exists() {
+        let _ = std::fs::remove_dir_all(&to);
+    }
+    std::fs::rename(&from, &to)
+        .map_err(|err| format!("{} could not be moved to the trash: {err}", from.display()))?;
+    let stamp = format!("{}", millis(SystemTime::now()));
+    write_atomic(&to.join("trashed"), stamp.as_bytes())?;
+    Ok(Some(to))
+}
+
+/// What the trash holds: each folder's number and how many days it has been there.
+pub fn trash_list() -> Vec<(u64, u64)> {
+    let Ok(trash) = trash_root() else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir(&trash) else {
+        return Vec::new();
+    };
+    let now = millis(SystemTime::now());
+    let mut found = Vec::new();
+    for entry in entries.flatten() {
+        let dir = entry.path();
+        let Some(id) = dir
+            .file_name()
+            .and_then(|n| n.to_string_lossy().parse::<u64>().ok())
+        else {
+            continue;
+        };
+        let trashed = std::fs::read_to_string(dir.join("trashed"))
+            .ok()
+            .and_then(|s| s.trim().parse::<u64>().ok())
+            .or_else(|| {
+                std::fs::metadata(&dir)
+                    .ok()
+                    .and_then(|m| m.modified().ok())
+                    .map(millis)
+            })
+            .unwrap_or(now);
+        found.push((id, now.saturating_sub(trashed) / 86_400_000));
+    }
+    found
+}
+
+/// Removes, for good, every trashed document older than the limit. Returns the numbers
+/// removed. Run at startup, so a day of use costs nothing here.
+pub fn sweep_trash(days: u64) -> Vec<u64> {
+    let Ok(trash) = trash_root() else {
+        return Vec::new();
+    };
+    let mut removed = Vec::new();
+    for (id, age) in trash_list() {
+        if age >= days && std::fs::remove_dir_all(trash.join(id.to_string())).is_ok() {
+            removed.push(id);
+        }
+    }
+    removed
+}
+
 pub fn millis(at: SystemTime) -> u64 {
     at.duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)

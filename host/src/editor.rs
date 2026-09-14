@@ -669,6 +669,63 @@ pub fn editor_storage() -> Storage {
     storage
 }
 
+/// Deletes a document (§3.8, S2.5): out of the list, its folder into Recon's trash for
+/// thirty days, never an external original and never an export. If it was the one on
+/// screen, the newer neighbour shows, else the older, else nothing, and the page gets the
+/// image info or none. Returns what was moved, for the log and the notice.
+#[tauri::command]
+pub fn editor_delete_document(id: u64) -> Result<Option<ImageInfo>, String> {
+    let ids = history_ids();
+    let at = ids.iter().position(|d| *d == id);
+    let was_current = id == current_document_id();
+    {
+        let mut documents = DOCUMENTS.lock().map_err(|_| "the documents are poisoned")?;
+        let before = documents.len();
+        documents.retain(|d| d.id != id);
+        if documents.len() == before {
+            return Err(format!("document {id} is not in the list"));
+        }
+    }
+    match crate::store::trash(id) {
+        Ok(Some(to)) => crate::log(&format!(
+            "document {id} deleted, into the trash at {}",
+            to.display()
+        )),
+        Ok(None) => crate::log(&format!("document {id} deleted; it had no folder yet")),
+        Err(err) => crate::log(&format!(
+            "document {id} deleted from the list, but NOT moved to the trash: {err}"
+        )),
+    }
+    if !was_current {
+        return Ok(Some(editor_image_info()?));
+    }
+    // The neighbour: the newer one, else the older, else the empty state.
+    let next = at.and_then(|i| {
+        ids.get(i + 1)
+            .or_else(|| i.checked_sub(1).and_then(|j| ids.get(j)))
+            .copied()
+    });
+    match next {
+        Some(next) => {
+            show_document(next)?;
+            Ok(Some(editor_image_info()?))
+        }
+        None => {
+            if let Ok(mut slot) = state().image.lock() {
+                *slot = None;
+            }
+            state().set_document(None);
+            CURRENT_ID.store(0, Ordering::SeqCst);
+            if let Ok(app) = app() {
+                if let Some(window) = app.get_webview_window("editor") {
+                    let _ = window.set_title("Recon");
+                }
+            }
+            Ok(None)
+        }
+    }
+}
+
 /// A document chosen from the timeline: shown from its own image, history active (§3.4).
 #[tauri::command]
 pub fn editor_show_document(id: u64) -> Result<ImageInfo, String> {
@@ -1128,6 +1185,10 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_documents,
         editor_show_document,
         editor_storage,
+        editor_delete_document,
+        checks::editor_trash_list,
+        checks::editor_trash_age,
+        checks::editor_sweep_trash,
         checks::editor_save_as_outcome,
         checks::editor_save_as_plan,
         checks::editor_save_as_write,
@@ -1194,6 +1255,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_documents,
         editor_show_document,
         editor_storage,
+        editor_delete_document,
     ]);
     builder.register_asynchronous_uri_scheme_protocol("region", |_ctx, request, responder| {
         let query = request.uri().query().unwrap_or_default().to_string();
@@ -2876,6 +2938,10 @@ mod checks {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
         crate::store::set_root(dir.clone());
+        // The checks' trash sits beside their store, and starts empty with it.
+        if let Ok(trash) = crate::store::trash_root() {
+            let _ = std::fs::remove_dir_all(trash);
+        }
         if let Ok(mut documents) = DOCUMENTS.lock() {
             documents.clear();
         }
@@ -3054,6 +3120,26 @@ mod checks {
             .lock()
             .map(|l| l.to_string())
             .unwrap_or_default()
+    }
+
+    /// The trash's contents, number and age in days.
+    #[tauri::command]
+    pub fn editor_trash_list() -> Vec<(u64, u64)> {
+        crate::store::trash_list()
+    }
+
+    /// Backdates a trashed document by so many days, so the sweep can be seen to work.
+    #[tauri::command]
+    pub fn editor_trash_age(id: u64, days: u64) -> Result<(), String> {
+        let dir = crate::store::trash_root()?.join(id.to_string());
+        let then =
+            crate::store::millis(std::time::SystemTime::now()).saturating_sub(days * 86_400_000);
+        crate::store::write_atomic(&dir.join("trashed"), then.to_string().as_bytes())
+    }
+
+    #[tauri::command]
+    pub fn editor_sweep_trash() -> Vec<u64> {
+        crate::store::sweep_trash(crate::store::TRASH_DAYS)
     }
 
     /// The last Save As, as the checks read it.
