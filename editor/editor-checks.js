@@ -1836,10 +1836,42 @@ export async function runChecks(editor, invoke) {
     pointer('pointerdown', stage, 300, 250);
     pointer('pointerup', stage, 300, 250);
     check('a click on the picture creates nothing', model.callouts.length === 0 && model.shapes.length === 0 && model.editing === null);
+    // Rotem, 2026-09-14: with no tool in hand a drag on the picture pans it, as in viewing;
+    // at the top zoom, where this capture is larger than the window.
+    const raw = (type, x, y) => stage.dispatchEvent(new PointerEvent(type, { pointerId: 11, button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: x, clientY: y, bubbles: true, cancelable: true }));
+    const mid = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+    await editor.setZoom(8);
+    const panFrom = { ...model.pan };
+    raw('pointerdown', mid.x, mid.y);
+    raw('pointermove', mid.x + 40, mid.y + 30);
+    raw('pointerup', mid.x + 40, mid.y + 30);
+    check('with no tool a drag on the picture pans it and creates nothing', model.pan.x < panFrom.x && model.pan.y < panFrom.y && model.callouts.length === 0 && model.shapes.length === 0,
+      `pan ${panFrom.x.toFixed(1)},${panFrom.y.toFixed(1)} to ${model.pan.x.toFixed(1)},${model.pan.y.toFixed(1)}`);
+    await editor.setZoom(1);
     press({ key: 'l', code: 'KeyL' });
     const arrowButton = document.querySelector('#tools [data-tool="arrow"]');
     check('L picks the arrow tool, its button lights, and the pointer is the crosshair', model.tool === 'arrow' && arrowButton.classList.contains('active') && getComputedStyle(stage).cursor === 'crosshair',
       getComputedStyle(stage).cursor);
+    // Space held with the arrow in hand: the ordinary pointer, the notes off the pointer, and a
+    // drag that pans instead of drawing; letting go, or the window losing the keyboard, ends it.
+    const scene = document.getElementById('scene');
+    press({ key: ' ', code: 'Space' });
+    check('Space held with a tool in hand gives the ordinary pointer and takes the notes off it, the tool kept',
+      document.body.classList.contains('space') && getComputedStyle(stage).cursor === 'auto' && getComputedStyle(scene).pointerEvents === 'none' && model.tool === 'arrow',
+      `cursor ${getComputedStyle(stage).cursor}, scene ${getComputedStyle(scene).pointerEvents}`);
+    await editor.setZoom(8);
+    const spaceFrom = { ...model.pan };
+    raw('pointerdown', mid.x, mid.y);
+    raw('pointermove', mid.x + 40, mid.y + 30);
+    raw('pointerup', mid.x + 40, mid.y + 30);
+    check('and a drag pans the picture and draws nothing', model.pan.x < spaceFrom.x && model.pan.y < spaceFrom.y && model.shapes.length === 0,
+      `pan ${spaceFrom.x.toFixed(1)},${spaceFrom.y.toFixed(1)} to ${model.pan.x.toFixed(1)},${model.pan.y.toFixed(1)}`);
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', code: 'Space', bubbles: true }));
+    check('letting go of Space brings the crosshair back, the arrow still in hand', !document.body.classList.contains('space') && getComputedStyle(stage).cursor === 'crosshair' && model.tool === 'arrow');
+    press({ key: ' ', code: 'Space' });
+    window.dispatchEvent(new Event('blur'));
+    check('the window losing the keyboard lets go of Space too', !document.body.classList.contains('space'));
+    await editor.setZoom(1);
 
     pointer('pointerdown', stage, 50, 60);
     pointer('pointermove', stage, 200, 160);
@@ -1888,6 +1920,7 @@ export async function runChecks(editor, invoke) {
     pointer('pointerdown', stage, 100, 100);
     pointer('pointerup', stage, 100, 100);
     check('C picks the callout tool and a click makes a note as before', model.tool === 'callout' && model.callouts.length === 1 && model.editing === model.callouts[0]);
+    check('Space while a note is typed is the note\'s, never a pan', press({ key: ' ', code: 'Space' }) === false && !document.body.classList.contains('space'));
     editor.commitEditing();
     model.callouts = [];
     model.shapes = [];

@@ -88,6 +88,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-14 · The frame's dashes are light on dark, not light on nothing, drawn by hand so they can walk.
 - 2026-09-14 · No tool is in hand when a picture opens, and a chosen one stays until the next picture.
 - 2026-09-14 · The wheel zooms around the pointer, with Ctrl or without, and a sideways wheel still pans.
+- 2026-09-14 · With no tool in hand a drag pans the picture, and Space held pans it whatever tool is in hand.
 
 ---
 
@@ -1172,3 +1173,40 @@ keys are what is left to pan with, since a drag on the picture belongs to the to
 and does nothing with none. A touchpad's two-finger scroll up or down zooms as well, because
 the page cannot tell it from a wheel. Revisit if panning a zoomed capture in annotation
 proves slow; a drag with no tool in hand could pan, as it does in viewing.
+
+The same evening, at Rotem's word: a drag with no tool in hand pans in annotation too, and
+Space held pans with any tool, so the arrow keys are no longer the only pan there. The
+entry on the drag and Space says how.
+
+---
+
+## 2026-09-14 · With no tool in hand a drag pans the picture, and Space held pans it whatever tool is in hand
+
+### Context
+
+Once the wheel zoomed instead of panning, a capture in annotation could be panned only with
+the arrow keys. Rotem said yes to a drag that pans when no tool is in hand, as viewing
+already does, and asked for Space to give the ordinary pointer and the same drag while a
+tool is in hand.
+
+### Options
+
+1. Space toggles the pan on and off with each press.
+2. Space pans while it is held, and letting go gives the tool back.
+3. Space held pans only from the empty picture, leaving notes and shapes to their own drags.
+
+### Decision
+
+Option 2, my reading of Rotem's ask, and his to change. While Space is held the notes take
+no pointer, as in viewing, so a drag pans whatever it starts on; option 3 would make the
+pan fail on a crowded picture. With no tool in hand a drag from the empty picture pans,
+committing a note being typed and clearing a selection on the way, while a drag that starts
+on a note or a shape still moves it. Space is never taken while a note is typed, where it
+is a space, and the window losing the keyboard lets go of it, so a Space released in
+another window cannot leave the editor panning.
+
+### Consequences
+
+A zoomed capture pans by hand in both modes and with any tool. Cost: one more key in the
+contract, and a hold that a user expecting a toggle will not find at first. Revisit if a
+toggle is wanted, or if Space is wanted for something else.

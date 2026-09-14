@@ -166,9 +166,11 @@ the editor with that region.
 The same main window serves both, and which one is active must be obvious at a glance.
 
 **A new capture opens ready for annotation.** No tool is in hand: the pointer is the
-ordinary arrow and a click on the picture creates nothing until a tool is chosen, and every
-picture shown starts that way again. Rotem's call on 2026-09-14; until then the callout tool
-was live and a click started a note.
+ordinary arrow, a click on the picture creates nothing until a tool is chosen, and a drag on
+the picture pans it, as in viewing; every picture shown starts that way again. With a tool
+in hand, Space held gives the ordinary pointer and the same pan, and letting go gives the
+tool back. Rotem's calls on 2026-09-14; until then the callout tool was live and a click
+started a note.
 
 **An existing file opens in viewing mode.** Ordinary clicking and dragging pan, select
 nothing and create nothing, so no stray callout can land on someone's photograph because
@@ -387,6 +389,7 @@ is a contract broken on day one.
 | `Ctrl+O` | Open an image file | 1, built at S1.2 |
 | Previous and next image, outside text editing | Walk the active navigation context, folder or Recon history, in the §3.4 order | 1, built at S1.4 for the folder and at S1.9 for history: PageDown and PageUp, Home and End for the first and last; the ends stop |
 | Fit to window · actual size · zoom in · zoom out | Viewing controls, no effect on export resolution | 1, built: keys, and the wheel to zoom around the pointer, with Ctrl or without, at Rotem's call on 2026-09-14; a sideways wheel pans |
+| `Space` held, outside text editing | The ordinary pointer, and a drag pans the picture whatever tool is in hand; letting go gives the tool back | 1, built at Rotem's word on 2026-09-14 |
 | Fullscreen | Enter fullscreen | 1, built: F11, and the same key or Escape out |
 | Annotate, and back to viewing | Switch the window between viewing, where no click creates anything, and annotation, where the tools are live and none is in hand until one is chosen (§3.3). The work stays either way | 1, built at S1.5: the `A` key and a button at the window's top right, both, Rotem's call on 2026-09-14 |
 | `Ctrl+S` | Save As a PNG file, to a new file. Internal saving stays automatic | 1, built at S1.11: Windows' own Save As, the last export folder, the suggested name, an available name offered when the chosen one exists |
@@ -2047,7 +2050,9 @@ Annotate and Copy were settled.
       Fable 5.1, the tool contract is new. **Built 2026-09-14**, checked in section 32 of
       the editor checks; the callout flow's checks all still pass. Since 2026-09-14, at
       Rotem's word, no tool is in hand when a picture opens: the pointer is the ordinary
-      one and a click on the picture creates nothing until a tool is chosen.
+      one and a click on the picture creates nothing until a tool is chosen. The same
+      evening, also his: a drag on the picture with no tool pans it, and Space held gives
+      any tool the ordinary pointer and the same pan.
 - [x] S3.2 Rectangle and highlight: the same drag, a rectangle outlined in the arrow's
       colour, a highlight as a translucent fill; R and H. Model: Opus 5, the mechanics exist.
       **Built 2026-09-14, on Fable at Rotem's word.** A drag in any direction makes the

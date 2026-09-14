@@ -108,9 +108,12 @@
   #tools { display: flex; gap: 2px; margin-right: 8px; }
   #tools button.active { border-color: #7aa7ff; background: #26303c; }
   /* The stage's crosshair is for a tool in hand in annotation. With no tool, the state every
-     picture opens in since Rotem's word on 2026-09-14, and in viewing, the pointer is the
-     ordinary one. */
-  body:not(.armed) #stage, body.viewing #stage { cursor: auto; }
+     picture opens in since Rotem's word on 2026-09-14, in viewing, and while Space is held,
+     the pointer is the ordinary one. */
+  body:not(.armed) #stage, body.viewing #stage, body.space #stage { cursor: auto; }
+  /* Space held takes the pointer off the notes, as viewing does, so a drag pans whatever it
+     starts on (Rotem, 2026-09-14). */
+  body.space #scene { pointer-events: none; }
   #arrows [data-shape] { pointer-events: visiblePainted; cursor: move; }
   #handles { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
   .blur { position: absolute; cursor: move; border: 1px dashed rgba(255,82,82,.6); box-sizing: border-box; }
@@ -901,7 +904,7 @@
     const modeLine = model.mode === 'annotate'
       ? `mode annotate   tool ${model.tool || 'none'}   A to view${model.image.source_changed ? '   the file on disk has changed since; this document keeps its own pixels' : ''}${saveText}`
       : `mode view   A to annotate${model.image.edited_ago_s != null ? `   annotated before, ${ago(model.image.edited_ago_s)}; A resumes it` : ''}`;
-    const pointerHint = model.mode !== 'annotate' ? 'drag to pan  ' : model.tool ? 'click to add  ' : '';
+    const pointerHint = model.mode === 'annotate' && model.tool ? 'click to add  Space+drag pan  ' : 'drag to pan  ';
     hud.textContent =
       `${model.image.width}x${model.image.height}  ${where}\n` +
       `${modeLine}\n` +
@@ -1157,18 +1160,34 @@
 
   let drag = null;
 
+  // A pan drag from where the pointer went down: viewing's drag, a drag on the empty picture
+  // with no tool in hand, and any drag while Space is held.
+  const startPan = (event) => {
+    drag = { kind: 'pan', x: event.clientX, y: event.clientY, pan: { ...model.pan } };
+    try { stage.setPointerCapture(event.pointerId); } catch (e) { /* a synthetic pointer */ }
+    event.preventDefault();
+  };
+
+  // Space held gives any tool the ordinary pointer and a drag that pans, and lets go with the
+  // key or when the window loses the keyboard (Rotem, 2026-09-14). The page's class takes the
+  // pointer off the notes while it is held.
+  let spaceHeld = false;
+  const setSpaceHeld = (held) => {
+    if (spaceHeld === held) return;
+    spaceHeld = held;
+    document.body.classList.toggle('space', held);
+  };
+
   stage.addEventListener('pointerdown', (event) => {
     if (event.button !== 0) return;
     const target = event.target;
 
-    // Viewing mode: the drag pans, whatever it started on, and nothing is created or
-    // selected (§3.3). The scene takes no pointer in this mode, so the target is the
+    // Viewing mode, or Space held: the drag pans, whatever it started on, and nothing is
+    // created or selected (§3.3). The scene takes no pointer then, so the target is the
     // stage or the canvas either way.
-    if (model.mode !== 'annotate') {
+    if (model.mode !== 'annotate' || spaceHeld) {
       if (!model.image.width) return;
-      drag = { kind: 'pan', x: event.clientX, y: event.clientY, pan: { ...model.pan } };
-      try { stage.setPointerCapture(event.pointerId); } catch (e) { /* a synthetic pointer */ }
-      event.preventDefault();
+      startPan(event);
       return;
     }
 
@@ -1213,6 +1232,19 @@
       return;
     }
 
+    // Empty canvas with no tool in hand: a click creates nothing and a drag pans, as in
+    // viewing; a note being typed is committed and a selection cleared on the way
+    // (Rotem, 2026-09-14).
+    if (!model.tool) {
+      if (model.editing) commitEditing();
+      if (model.selected || model.selectedShape) {
+        model.selected = null;
+        model.selectedShape = null;
+        layoutScene();
+      }
+      startPan(event);
+      return;
+    }
     // Empty canvas. Committing first means a click somewhere else ends the note being
     // typed, which is what "no Apply step" has to feel like.
     if (model.editing) {
@@ -1225,8 +1257,6 @@
       layoutScene();
       return;
     }
-    // No tool in hand: a click on the picture creates nothing (Rotem, 2026-09-14).
-    if (!model.tool) return;
     if (model.tool === 'arrow' || model.tool === 'rect' || model.tool === 'highlight' || model.tool === 'blur') {
       const shape = createShape(model.tool, toImage(event));
       drag = { kind: 'draw', shape };
@@ -1407,6 +1437,14 @@
     }
     if (model.editing) return; // typing owns every other key, the engine's undo included
 
+    // Space held: the ordinary pointer and a drag that pans, whatever tool is in hand
+    // (Rotem, 2026-09-14); by physical key, and never while a note is typed, above.
+    if (event.code === 'Space' && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      if (model.image.width) setSpaceHeld(true);
+      event.preventDefault();
+      return;
+    }
+
     // Outside text editing, Ctrl+C copies the composed image (§3.6); while editing it is
     // the text copy it always was, which is why it sits below the line above.
     if (event.ctrlKey && !event.shiftKey && !event.altKey && event.code === 'KeyC') {
@@ -1492,6 +1530,10 @@
     if (event.key === 'ArrowUp') { model.pan.y -= step; paintRegion(); return; }
     if (event.key === 'ArrowDown') { model.pan.y += step; paintRegion(); return; }
   });
+  // Space lets go with the key, and when the window loses the keyboard, since a key released
+  // in another window never reaches this page (Rotem, 2026-09-14).
+  window.addEventListener('keyup', (event) => { if (event.code === 'Space') setSpaceHeld(false); });
+  window.addEventListener('blur', () => setSpaceHeld(false));
 
   // Zooms so that one image point stays under one viewport point: the centre for a key,
   // the pointer for the wheel (§3.4). Anything else feels like the image jumped.
