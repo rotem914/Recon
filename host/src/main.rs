@@ -573,9 +573,8 @@ fn main() {
                     if event.id() == "quit" {
                         log("quit chosen in the tray menu");
                         // Pending changes are saved before Quit (§3.8): the page is asked to
-                        // save now, and given a moment to.
-                        editor::flush_saves(app);
-                        app.exit(0);
+                        // save now, and Recon exits when it has, or after a moment.
+                        editor::quit_after_saves(app);
                     } else if event.id() == "defaults" {
                         // Windows' own page, where the user makes Recon the default (§3.1).
                         match registration::open_default_apps_settings() {
@@ -683,11 +682,13 @@ fn main() {
             // work in it must survive. Quit is the tray's, and it is explicit.
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                editor::flush_saves(window.app_handle());
+                // Hidden at once; the page saves behind it, asked here and again by the
+                // blur the hide causes.
                 match editor::hide(window.app_handle()) {
                     Ok(_) => {}
                     Err(err) => log(&format!("editor NOT hidden on close: {err}")),
                 }
+                editor::ask_to_save(window.app_handle());
             }
             // A file dropped on the window opens (§3.1). Several: the first opens; the
             // folder they came from is S1.4's navigation context.

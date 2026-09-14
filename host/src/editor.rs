@@ -589,25 +589,41 @@ pub fn editor_notes(document_id: u64) -> Option<serde_json::Value> {
 /// The page's answer to "save now": it has saved what was pending.
 static FLUSHES: AtomicU64 = AtomicU64::new(0);
 
+/// The page has saved what was pending. If a quit is waiting on that, it goes now.
 #[tauri::command]
-pub fn editor_saves_flushed() {
+pub fn editor_saves_flushed(app: AppHandle) {
     FLUSHES.fetch_add(1, Ordering::SeqCst);
+    if QUIT_PENDING.swap(false, Ordering::SeqCst) {
+        crate::log("quit: the page saved, exiting");
+        app.exit(0);
+    }
 }
 
-/// Asks the page to save what is pending and waits for its answer, up to a second, so a
-/// close or a quit from the host's side never drops a note being typed (§3.8).
-pub fn flush_saves(app: &AppHandle) {
-    let before = FLUSHES.load(Ordering::SeqCst);
+static QUIT_PENDING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Asks the page to save what is pending, without waiting: the page's commands run on the
+/// thread this is called from, so a wait here would only hold them up (the two seconds a
+/// close took on 2026-09-14). A close hides at once and the save lands behind it.
+pub fn ask_to_save(app: &AppHandle) {
+    let _ = app.emit("save-now", ());
+}
+
+/// Quit after the page has saved (§3.8): asked now, exited when the page answers, or after
+/// a second and a half if it does not, so a stuck page can never hold Recon open.
+pub fn quit_after_saves(app: &AppHandle) {
+    QUIT_PENDING.store(true, Ordering::SeqCst);
     if app.emit("save-now", ()).is_err() {
+        app.exit(0);
         return;
     }
-    let started = Instant::now();
-    while FLUSHES.load(Ordering::SeqCst) == before && started.elapsed().as_millis() < 1000 {
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    }
-    if FLUSHES.load(Ordering::SeqCst) == before {
-        crate::log("save-now: the page did not answer within a second");
-    }
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+        if QUIT_PENDING.swap(false, Ordering::SeqCst) {
+            crate::log("quit: the page did not answer within a second and a half, exiting");
+            handle.exit(0);
+        }
+    });
 }
 
 /// The timeline's thumbnail of one document (S2.1): at most 160 by 100, made once from the
