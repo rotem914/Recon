@@ -18,6 +18,7 @@
 //! draws a free rectangle, exactly as before.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ffi::c_void;
 
 use windows::core::{w, BOOL, PCWSTR};
@@ -34,13 +35,14 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, VK_ESCAPE};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, EnumWindows, GetCursorPos,
-    GetForegroundWindow, GetMessageW, GetSystemMetrics, GetWindowLongPtrW, GetWindowRect,
-    GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, LoadCursorW, PostMessageW,
-    PostQuitMessage, RegisterClassExW, SetForegroundWindow, ShowWindow, TranslateMessage,
-    CS_HREDRAW, CS_VREDRAW, GWL_EXSTYLE, IDC_CROSS, MSG, SM_CXDRAG, SM_CYDRAG, SW_SHOW, WM_APP,
-    WM_DESTROY, WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_PAINT,
-    WNDCLASSEXW, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, EnumChildWindows,
+    EnumWindows, GetClassNameW, GetCursorPos, GetForegroundWindow, GetMessageW, GetSystemMetrics,
+    GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindow,
+    IsWindowVisible, LoadCursorW, PostMessageW, PostQuitMessage, RegisterClassExW,
+    SetForegroundWindow, ShowWindow, TranslateMessage, CS_HREDRAW, CS_VREDRAW, GWL_EXSTYLE,
+    IDC_CROSS, MSG, SM_CXDRAG, SM_CYDRAG, SW_SHOW, WM_APP, WM_DESTROY, WM_ERASEBKGND, WM_KEYDOWN,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_PAINT, WNDCLASSEXW, WS_EX_TOOLWINDOW,
+    WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
 };
 
 use crate::capture::coords::DesktopRect;
@@ -103,6 +105,9 @@ struct Hover {
     surface: isize,
     /// The window itself, for the log line when it is picked.
     window: isize,
+    /// The part of that window under the pointer, when it has parts: a browser's page
+    /// area, a folder window's file list. None lights the whole window.
+    part: Option<isize>,
 }
 
 struct State {
@@ -110,6 +115,9 @@ struct State {
     drag: Option<Drag>,
     /// Every visible top-level window, front to back, as listed when the overlay came up.
     windows: Vec<WindowBounds>,
+    /// A window's visible parts, its child windows at every depth, listed the first time
+    /// the pointer rests on that window and kept for the rest of the selection.
+    parts: HashMap<isize, Vec<WindowBounds>>,
     hover: Option<Hover>,
     /// How far the pointer may move from the press before it is a drag: the system's own
     /// value, so a click here is a click everywhere else on this machine.
@@ -281,6 +289,7 @@ unsafe fn build_state(
         surfaces,
         drag: None,
         windows,
+        parts: HashMap::new(),
         hover: None,
         drag_threshold: unsafe {
             (
@@ -574,8 +583,13 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                         Some(hover) if hover.surface == hwnd.0 as isize => {
                             state.outcome = Outcome::Selected(hover.rect);
                             crate::log(&format!(
-                                "overlay: a click picked the window {} at {}x{} desktop {},{}",
+                                "overlay: a click picked the window {}{} at {}x{} desktop {},{}",
                                 crate::platform::window_owner(HWND(hover.window as *mut _)).line(),
+                                match hover.part {
+                                    Some(part) =>
+                                        format!(", its part {:?}", class_of(HWND(part as *mut _))),
+                                    None => String::new(),
+                                },
                                 hover.rect.width,
                                 hover.rect.height,
                                 hover.rect.x,
@@ -701,13 +715,25 @@ impl State {
             .iter()
             .find(|s| s.hwnd.0 as isize == surface)
             .map(|s| s.monitor.rect);
-        let next = display.and_then(|display| {
+        let hit = display.and_then(|display| {
             let hit = window_at(&self.windows, desktop.0, desktop.1)?;
-            let rect = clamp_to(hit.rect, display)?;
+            Some((display, hit))
+        });
+        let next = hit.and_then(|(display, hit)| {
+            // The smallest visible part of the window under the pointer is the selection:
+            // a browser's page area rather than the browser, the way Snagit picks it. A
+            // part can reach past the window's frame, so it is cut to the frame first, and
+            // a window with no part under the pointer is lit whole.
+            let part = smallest_at(self.parts_of(hit.hwnd), desktop.0, desktop.1);
+            let rect = part
+                .and_then(|p| clamp_to(p.rect, hit.rect))
+                .unwrap_or(hit.rect);
+            let rect = clamp_to(rect, display)?;
             Some(Hover {
                 rect,
                 surface,
                 window: hit.hwnd,
+                part: part.map(|p| p.hwnd),
             })
         });
         let previous = self.hover;
@@ -719,6 +745,13 @@ impl State {
             before: previous.map(|h| (h.surface, self.origin_of_surface(h.surface), h.rect)),
             after: next.map(|h| (h.surface, self.origin_of_surface(h.surface), h.rect)),
         }
+    }
+
+    /// The parts of a top-level window, listed on first use.
+    fn parts_of(&mut self, window: isize) -> &[WindowBounds] {
+        self.parts
+            .entry(window)
+            .or_insert_with(|| parts_of_window(window))
     }
 
     fn origin_of_surface(&self, surface: isize) -> (i32, i32) {
@@ -773,6 +806,66 @@ fn union_of(a: DesktopRect, b: DesktopRect) -> DesktopRect {
         (a.x + a.width as i32).max(b.x + b.width as i32),
         (a.y + a.height as i32).max(b.y + b.height as i32),
     )
+}
+
+/// The smallest of the parts under a desktop point: the deepest thing the pointer is on.
+fn smallest_at(parts: &[WindowBounds], x: i32, y: i32) -> Option<WindowBounds> {
+    parts
+        .iter()
+        .copied()
+        .filter(|p| contains(p.rect, x, y))
+        .min_by_key(|p| p.rect.width as u64 * p.rect.height as u64)
+}
+
+/// A window's visible parts at every depth, with the rectangle each one covers. A part
+/// is not asked whether it takes clicks: a browser's page area is click-through by
+/// design, its input going to the window, and it is still the part the eye sees.
+fn parts_of_window(window: isize) -> Vec<WindowBounds> {
+    let mut out: Vec<WindowBounds> = Vec::new();
+    unsafe {
+        let _ = EnumChildWindows(
+            Some(HWND(window as *mut _)),
+            Some(collect_part),
+            LPARAM(&mut out as *mut Vec<WindowBounds> as isize),
+        );
+    }
+    out
+}
+
+unsafe extern "system" fn collect_part(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    let out = unsafe { &mut *(lparam.0 as *mut Vec<WindowBounds>) };
+    let keep = BOOL(1);
+    unsafe {
+        if !IsWindowVisible(hwnd).as_bool() {
+            return keep;
+        }
+        let mut rect = RECT::default();
+        if GetWindowRect(hwnd, &mut rect).is_err() {
+            return keep;
+        }
+        let width = rect.right - rect.left;
+        let height = rect.bottom - rect.top;
+        if width <= 0 || height <= 0 {
+            return keep;
+        }
+        out.push(WindowBounds {
+            hwnd: hwnd.0 as isize,
+            rect: DesktopRect {
+                x: rect.left,
+                y: rect.top,
+                width: width as u32,
+                height: height as u32,
+            },
+        });
+    }
+    keep
+}
+
+/// A window's class name, for the log.
+fn class_of(hwnd: HWND) -> String {
+    let mut buffer = [0u16; 128];
+    let n = unsafe { GetClassNameW(hwnd, &mut buffer) }.max(0) as usize;
+    String::from_utf16_lossy(&buffer[..n])
 }
 
 /// Every window a click could land on, front to back: visible, not minimised, not cloaked
@@ -1083,6 +1176,25 @@ mod tests {
             clamp_to(desktop(-8, -8, 1936, 1096), display),
             Some(display)
         );
+    }
+
+    #[test]
+    fn the_smallest_part_under_the_point_wins() {
+        // A browser's shape: a part covering the whole client area, and inside it the
+        // page area. On the page the page wins; on the toolbar only the big part is
+        // there; off both there is nothing.
+        let client = WindowBounds {
+            hwnd: 10,
+            rect: desktop(0, 0, 1705, 1391),
+        };
+        let page = WindowBounds {
+            hwnd: 11,
+            rect: desktop(0, 121, 1705, 1270),
+        };
+        let parts = [client, page];
+        assert_eq!(smallest_at(&parts, 800, 700), Some(page));
+        assert_eq!(smallest_at(&parts, 800, 50), Some(client));
+        assert_eq!(smallest_at(&parts, 1705, 700), None);
     }
 
     #[test]

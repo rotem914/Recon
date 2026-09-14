@@ -84,6 +84,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-14 · The store: one folder per document in local application data, the image once, the record whole, the number its creation time.
 - 2026-09-14 · A deleted document goes to Recon's own trash for thirty days, by a thumbnail's × or Ctrl+Delete.
 - 2026-09-14 · The window under the pointer is the selection until a drag begins, listed once with the overlay, told from a drag by the system's threshold.
+- 2026-09-14 · The selection is the smallest part of the window under the pointer, the way Snagit picks a page.
 
 ---
 
@@ -1024,3 +1025,41 @@ so a click there captures the display. Cost: one listing of the top-level window
 hotkey path, a few milliseconds, not yet measured against S0.7's interval. Revisit if a
 class of window is picked that should not be, or if child controls inside a window are ever
 wanted, which this list does not see.
+
+Revisited the same day: the parts are wanted, and the entry below says how.
+
+---
+
+## 2026-09-14 · The selection is the smallest part of the window under the pointer, the way Snagit picks a page
+
+### Context
+
+Rotem showed Snagit lighting a browser's page area alone, tabs and address bar left out,
+and asked for that. The window pick decided that morning lit whole windows only.
+
+### Options
+
+1. The smallest visible child window under the pointer wins; a window with no child under
+   the pointer is lit whole. Snagit's own behaviour, and what a probe of the running
+   Chrome makes possible: its page area is a child window whose rectangle matched Snagit's
+   marquee to the pixel.
+2. A key held to switch between the whole window and its part.
+3. The accessibility tree, which would also reach a browser that draws its page without
+   child windows.
+
+### Decision
+
+Option 1, mine, on Rotem's ask and on his daily use of Snagit. The whole window is one
+move away, to a spot with no part under it, a browser's tab strip for instance, so no key
+is needed. The parts of a window are listed the first time the pointer rests on it, not
+when the overlay comes up, because listing every child of every window would sit on the
+hotkey path for windows the pointer never visits. Parts are not filtered on being
+click-through, unlike top-level windows: a browser's page area is click-through by design
+and is exactly the part wanted.
+
+### Consequences
+
+A browser's page, a folder window's file list and a chat's message pane are each one
+click. Cost: a window whose page has no child window, Firefox is the known case, lights
+whole; the accessibility route stays open for it. Revisit if a part that is not what the
+eye sees keeps winning, or if the key of option 2 turns out to be missed.

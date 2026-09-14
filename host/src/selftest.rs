@@ -18,8 +18,9 @@
 use std::time::Instant;
 
 use windows::core::{w, PCWSTR};
-use windows::Win32::Foundation::{HWND, LPARAM, RECT, WPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
+use windows::Win32::Graphics::Gdi::ClientToScreen;
 use windows::Win32::System::Console::GetConsoleWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     keybd_event, mouse_event, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, MOUSEEVENTF_LEFTDOWN,
@@ -30,7 +31,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, FindWindowW, GetForegroundWindow,
     GetMessageW, GetWindowRect, IsWindow, PostMessageW, PostQuitMessage, RegisterClassExW,
     SetCursorPos, TranslateMessage, CW_USEDEFAULT, MSG, SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE,
-    WM_DESTROY, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
+    WM_DESTROY, WNDCLASSEXW, WS_CHILD, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
 };
 
 use crate::capture::coords::{DesktopRect, FrameGeometry};
@@ -476,6 +477,9 @@ fn quiet() {
 /// The title of the stand-in window, a second process of this same executable.
 const STAND_IN: &str = "Recon stand-in";
 
+/// Where the stand-in's one part sits in its client area: x, y, width, height.
+const STAND_IN_PART: (i32, i32, i32, i32) = (40, 60, 200, 100);
+
 /// The window pick: with the stand-in window in front, a click inside it with no drag hands
 /// back its visible bounds, read here straight from the window manager rather than through
 /// the overlay's own listing, so the two sides of the comparison are independent. Then a
@@ -521,9 +525,31 @@ fn window_pick_test(frame: &Frame) -> Result<(), String> {
         (visible.y + visible.height as i32).min(display.y + display.height as i32),
     );
 
+    // The part's place on screen, from the window manager and the known offsets, not from
+    // the overlay. The whole-window click lands near the bottom-right corner, clear of it.
+    let mut origin = POINT::default();
+    if !unsafe { ClientToScreen(hwnd, &mut origin) }.as_bool() {
+        let _ = child.kill();
+        return Err("the stand-in's client origin could not be read".into());
+    }
+    let part = DesktopRect {
+        x: origin.x + STAND_IN_PART.0,
+        y: origin.y + STAND_IN_PART.1,
+        width: STAND_IN_PART.2 as u32,
+        height: STAND_IN_PART.3 as u32,
+    };
+    let part_centre = (
+        part.x + part.width as i32 / 2,
+        part.y + part.height as i32 / 2,
+    );
+    let corner = (
+        visible.x + visible.width as i32 - 30,
+        visible.y + visible.height as i32 - 30,
+    );
+
     let picked = with_overlay(frame, move || {
-        move_to(centre.0, centre.1);
-        // The lit window, as a person sees it before the click: the screen with the
+        move_to(part_centre.0, part_centre.1);
+        // The lit part, as a person sees it before the click: the screen with the
         // overlay up, written beside the executable to be looked at.
         std::thread::sleep(std::time::Duration::from_millis(250));
         match copy_rect(display) {
@@ -541,6 +567,7 @@ fn window_pick_test(frame: &Frame) -> Result<(), String> {
             }
             Err(err) => println!("  the lit window was not written: {err}"),
         }
+        move_to(corner.0, corner.1);
         press_left();
         release_left();
     });
@@ -555,7 +582,7 @@ fn window_pick_test(frame: &Frame) -> Result<(), String> {
         Outcome::Selected(got) if got == expected => {
             println!(
                 "  a click at {},{} picked the stand-in's visible bounds exactly: {got:?}",
-                centre.0, centre.1
+                corner.0, corner.1
             );
             Ok(())
         }
@@ -567,6 +594,31 @@ fn window_pick_test(frame: &Frame) -> Result<(), String> {
         }
     };
     if let Err(err) = pick_result {
+        let _ = child.kill();
+        return Err(err);
+    }
+
+    // The part: a click on the stand-in's one child window picks that part, not the window.
+    let picked = with_overlay(frame, move || {
+        move_to(part_centre.0, part_centre.1);
+        press_left();
+        release_left();
+    });
+    let part_result = match picked {
+        Ok(Outcome::Selected(got)) if got == part => {
+            println!(
+                "  a click at {},{} picked the stand-in's part exactly: {got:?}",
+                part_centre.0, part_centre.1
+            );
+            Ok(())
+        }
+        Ok(Outcome::Selected(got)) => Err(format!(
+            "a click on the stand-in's part gave {got:?} rather than the part {part:?}"
+        )),
+        Ok(Outcome::Cancelled) => Err("a click on the stand-in's part cancelled".to_string()),
+        Err(err) => Err(err),
+    };
+    if let Err(err) = part_result {
         let _ = child.kill();
         return Err(err);
     }
@@ -649,6 +701,22 @@ pub fn stand_in_window() -> i32 {
         let Ok(hwnd) = hwnd else {
             return 1;
         };
+        // One part inside it, at a known place, for the part pick: a plain static
+        // control, the kind of child window a real application's panes are.
+        let _ = CreateWindowExW(
+            WINDOW_EX_STYLE(0),
+            w!("STATIC"),
+            w!("part"),
+            WS_CHILD | WS_VISIBLE,
+            STAND_IN_PART.0,
+            STAND_IN_PART.1,
+            STAND_IN_PART.2,
+            STAND_IN_PART.3,
+            Some(hwnd),
+            None,
+            Some(instance.into()),
+            None,
+        );
         let _ = ShowWindow(hwnd, SW_SHOW);
         let mut msg = MSG::default();
         while GetMessageW(&mut msg, None, 0, 0).as_bool() {
