@@ -107,6 +107,10 @@
   /* The tools (Stage 3): which one a click on the picture uses. Provisional, Rotem's to restyle. */
   #tools { display: flex; gap: 2px; margin-right: 8px; }
   #tools button.active { border-color: #7aa7ff; background: #26303c; }
+  /* The stage's crosshair is for a tool in hand in annotation. With no tool, the state every
+     picture opens in since Rotem's word on 2026-09-14, and in viewing, the pointer is the
+     ordinary one. */
+  body:not(.armed) #stage, body.viewing #stage { cursor: auto; }
   #arrows [data-shape] { pointer-events: visiblePainted; cursor: move; }
   #handles { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
   .blur { position: absolute; cursor: move; border: 1px dashed rgba(255,82,82,.6); box-sizing: border-box; }
@@ -223,8 +227,9 @@
     editing: null,
     // Stage 3: the tool a click on the picture uses, and the shapes it makes. Shapes live
     // beside the callouts, in the same undo, the same save and the same export, and never
-    // in the callouts' numbering.
-    tool: 'callout',
+    // in the callouts' numbering. No tool is in hand until one is chosen, and every picture
+    // shown starts with none (Rotem, 2026-09-14).
+    tool: null,
     shapes: [],
     nextShape: 1,
     selectedShape: null,
@@ -850,6 +855,7 @@
     for (const button of document.querySelectorAll('#tools button')) {
       button.classList.toggle('active', button.dataset.tool === tool);
     }
+    document.body.classList.toggle('armed', !!tool);
     drawHud();
   };
   for (const button of document.querySelectorAll('#tools button')) {
@@ -893,14 +899,15 @@
     const saveText = model.save.state === 'failed' ? `   NOT SAVED: ${model.save.error}`
       : model.save.state === 'saving' ? '   saving' : (model.image.managed ? '   saved' : '');
     const modeLine = model.mode === 'annotate'
-      ? `mode annotate   tool ${model.tool}   A to view${model.image.source_changed ? '   the file on disk has changed since; this document keeps its own pixels' : ''}${saveText}`
+      ? `mode annotate   tool ${model.tool || 'none'}   A to view${model.image.source_changed ? '   the file on disk has changed since; this document keeps its own pixels' : ''}${saveText}`
       : `mode view   A to annotate${model.image.edited_ago_s != null ? `   annotated before, ${ago(model.image.edited_ago_s)}; A resumes it` : ''}`;
+    const pointerHint = model.mode !== 'annotate' ? 'drag to pan  ' : model.tool ? 'click to add  ' : '';
     hud.textContent =
       `${model.image.width}x${model.image.height}  ${where}\n` +
       `${modeLine}\n` +
       `zoom ${zoomText}   pan ${Math.round(model.pan.x)},${Math.round(model.pan.y)}   ` +
       `callouts ${model.callouts.length}   text ${sizeShown}px   dpr ${dpr()}\n` +
-      `0 fit  1 actual size  +/- zoom  wheel pan  Ctrl+wheel zoom  F11 fullscreen  PgUp/PgDn previous next  Ctrl +/- text size  arrows pan  ${model.mode === 'annotate' ? 'click to add' : 'drag to pan'}  Esc commit  Del remove  Ctrl+Z/Y undo redo  Ctrl+C copy  Ctrl+Enter copy and return  Ctrl+S save as  Ctrl+Del delete document  Ctrl+O open  C callout  L arrow  R rectangle  H highlight  T text  B blur` +
+      `0 fit  1 actual size  +/- zoom  wheel zoom  F11 fullscreen  PgUp/PgDn previous next  Ctrl +/- text size  arrows pan  ${pointerHint}Esc commit  Del remove  Ctrl+Z/Y undo redo  Ctrl+C copy  Ctrl+Enter copy and return  Ctrl+S save as  Ctrl+Del delete document  Ctrl+O open  C callout  L arrow  R rectangle  H highlight  T text  B blur` +
       (currentNotice ? `\n${currentNotice}` : '');
   };
 
@@ -1218,6 +1225,8 @@
       layoutScene();
       return;
     }
+    // No tool in hand: a click on the picture creates nothing (Rotem, 2026-09-14).
+    if (!model.tool) return;
     if (model.tool === 'arrow' || model.tool === 'rect' || model.tool === 'highlight' || model.tool === 'blur') {
       const shape = createShape(model.tool, toImage(event));
       drag = { kind: 'draw', shape };
@@ -1297,12 +1306,13 @@
     markDirty();
     if (fitMargin()) paintRegion();
   });
-  // The wheel pans; with Ctrl it zooms around the pointer (§3.4). The wheel's numbers are
-  // CSS pixels, so they become image pixels through the ratio and the zoom.
+  // The wheel zooms around the pointer, with Ctrl or without, so the point under it stays
+  // put (§3.4; Rotem, 2026-09-14). A sideways wheel still pans: its numbers are CSS pixels,
+  // so they become image pixels through the ratio and the zoom.
   stage.addEventListener('wheel', (event) => {
     if (!model.image.width) return;
     event.preventDefault();
-    if (event.ctrlKey) {
+    if (event.deltaY !== 0) {
       const factor = event.deltaY < 0 ? 1.25 : 1 / 1.25;
       const box = stage.getBoundingClientRect();
       setZoomAround(model.zoom * factor, event.clientX - box.left, event.clientY - box.top);
@@ -1310,7 +1320,6 @@
     }
     const step = event.deltaMode === 1 ? 40 : 1;
     model.pan.x += (event.deltaX * step * dpr()) / model.zoom;
-    model.pan.y += (event.deltaY * step * dpr()) / model.zoom;
     paintRegion();
   }, { passive: false });
 
@@ -1592,6 +1601,9 @@
     // A capture opens ready for annotation; a file opens in viewing, and a document
     // resumed for it opens where it left off (§3.3).
     model.mode = info.managed ? 'annotate' : 'view';
+    // Every picture opens with no tool in hand: the ordinary pointer, and a click on the
+    // picture creates nothing until a tool is chosen (§3.3; Rotem, 2026-09-14).
+    setTool(null);
     model.history = known && known.history ? known.history : { steps: [snapshot()], index: 0 };
     applyMode();
     model.fitZoom = computeFit();

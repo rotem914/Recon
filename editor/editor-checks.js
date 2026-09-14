@@ -743,7 +743,7 @@ export async function runChecks(editor, invoke) {
 
   // ---------------------------------------------------------------- 18. S1.3: the viewing surface
   say('');
-  say('S1.3: zoom around the pointer, wheel pan, fullscreen in and out, the file name in the title');
+  say('S1.3: the wheel zooms around the pointer, with Ctrl or without, a sideways wheel pans, fullscreen in and out, the file name in the title');
   {
     const info = await invoke('editor_open_fixture', { name: 'reference-scene.png' });
     await editor.loadImage(info);
@@ -768,10 +768,32 @@ export async function runChecks(editor, invoke) {
     check('Ctrl+wheel zooms in around the pointer', model.zoom > 6 && Math.abs(after.x - before.x) < 1.5 && Math.abs(after.y - before.y) < 1.5,
       `zoom ${model.zoom.toFixed(3)}, the point under the pointer moved ${(after.x - before.x).toFixed(2)},${(after.y - before.y).toFixed(2)} image px`);
 
-    const panBefore = { ...model.pan };
-    stage.dispatchEvent(new WheelEvent('wheel', { deltaY: 120, deltaX: 0, bubbles: true, cancelable: true }));
+    // Rotem, 2026-09-14: the wheel alone zooms the same way, out and back in, around the
+    // same point.
+    const zoomIn = model.zoom;
+    const wheelAt = (init) => stage.dispatchEvent(new WheelEvent('wheel', { clientX: box.left + cssX, clientY: box.top + cssY, bubbles: true, cancelable: true, ...init }));
+    wheelAt({ deltaY: 120 });
     await sleep(200);
-    check('the wheel pans down', model.pan.y > panBefore.y, `pan ${panBefore.y.toFixed(1)} to ${model.pan.y.toFixed(1)}`);
+    const out = under();
+    check('the wheel zooms out around the pointer', model.zoom < zoomIn && Math.abs(out.x - before.x) < 1.5 && Math.abs(out.y - before.y) < 1.5,
+      `zoom ${zoomIn.toFixed(3)} to ${model.zoom.toFixed(3)}, the point under the pointer moved ${(out.x - before.x).toFixed(2)},${(out.y - before.y).toFixed(2)} image px`);
+    const zoomOut = model.zoom;
+    wheelAt({ deltaY: -120 });
+    await sleep(200);
+    const back = under();
+    check('and back in around it', model.zoom > zoomOut && Math.abs(back.x - before.x) < 1.5 && Math.abs(back.y - before.y) < 1.5,
+      `zoom ${zoomOut.toFixed(3)} to ${model.zoom.toFixed(3)}, the point under the pointer moved ${(back.x - before.x).toFixed(2)},${(back.y - before.y).toFixed(2)} image px`);
+
+    // A sideways wheel still pans and leaves the zoom alone: from the left end at the top
+    // zoom, where this picture is wider than the window.
+    await editor.setZoom(8);
+    model.pan.x = 0;
+    await editor.paintRegion();
+    const sideways = { zoom: model.zoom, x: model.pan.x };
+    wheelAt({ deltaX: 120, deltaY: 0 });
+    await sleep(200);
+    check('a sideways wheel pans and does not zoom', model.zoom === sideways.zoom && model.pan.x > sideways.x,
+      `zoom ${sideways.zoom} to ${model.zoom}, pan ${sideways.x.toFixed(1)} to ${model.pan.x.toFixed(1)}`);
 
     const on = await editor.setFullscreen(true);
     await sleep(300);
@@ -873,7 +895,11 @@ export async function runChecks(editor, invoke) {
 
     pointer('pointerdown', cx, cy);
     pointer('pointerup', cx, cy);
-    check('in annotation the same click creates a note', model.callouts.length === 1 && model.editing === model.callouts[0]);
+    check('in annotation with no tool in hand the same click creates nothing either', model.tool === null && model.callouts.length === 0 && model.shapes.length === 0 && model.editing === null);
+    editor.setTool('callout');
+    pointer('pointerdown', cx, cy);
+    pointer('pointerup', cx, cy);
+    check('with the callout tool the same click creates a note', model.callouts.length === 1 && model.editing === model.callouts[0]);
     document.querySelector(`[data-id="${model.callouts[0].id}"] .t`).textContent = 'kept across the modes';
     editor.commitEditing();
 
@@ -1802,10 +1828,18 @@ export async function runChecks(editor, invoke) {
     };
     const press = (init) => { const e = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }); window.dispatchEvent(e); return e.defaultPrevented; };
 
-    check('the callout tool is the one in hand at first, and the HUD says so', model.tool === 'callout' && hud.textContent.includes('tool callout'));
+    // Rotem, 2026-09-14: no tool is in hand when a picture opens, the pointer is the
+    // ordinary one, and a click on the picture creates nothing.
+    check('no tool is in hand at first: no button lit, the HUD says none, the ordinary pointer',
+      model.tool === null && !document.querySelector('#tools button.active') && hud.textContent.includes('tool none') && getComputedStyle(stage).cursor === 'auto',
+      `tool ${model.tool}, cursor ${getComputedStyle(stage).cursor}`);
+    pointer('pointerdown', stage, 300, 250);
+    pointer('pointerup', stage, 300, 250);
+    check('a click on the picture creates nothing', model.callouts.length === 0 && model.shapes.length === 0 && model.editing === null);
     press({ key: 'l', code: 'KeyL' });
     const arrowButton = document.querySelector('#tools [data-tool="arrow"]');
-    check('L picks the arrow tool and its button lights', model.tool === 'arrow' && arrowButton.classList.contains('active'));
+    check('L picks the arrow tool, its button lights, and the pointer is the crosshair', model.tool === 'arrow' && arrowButton.classList.contains('active') && getComputedStyle(stage).cursor === 'crosshair',
+      getComputedStyle(stage).cursor);
 
     pointer('pointerdown', stage, 50, 60);
     pointer('pointermove', stage, 200, 160);
@@ -1843,6 +1877,7 @@ export async function runChecks(editor, invoke) {
     model.image = { width: 0, height: 0, source: '' };
     await editor.loadImage(await invoke('editor_store_reload'));
     check('after a restart the arrow is back from the disk', model.shapes.length === 1 && model.shapes[0].kind === 'arrow' && model.shapes[0].b.x === 200, JSON.stringify(model.shapes[0]));
+    check('the picture opened again starts with no tool in hand, though the arrow was in hand before', model.tool === null && !document.body.classList.contains('armed'));
 
     pointer('pointerdown', shapeEl(), 120, 110);
     pointer('pointerup', stage, 120, 110);
@@ -1852,12 +1887,12 @@ export async function runChecks(editor, invoke) {
     press({ key: 'c', code: 'KeyC' });
     pointer('pointerdown', stage, 100, 100);
     pointer('pointerup', stage, 100, 100);
-    check('C brings the callout tool back and a click makes a note as before', model.tool === 'callout' && model.callouts.length === 1 && model.editing === model.callouts[0]);
+    check('C picks the callout tool and a click makes a note as before', model.tool === 'callout' && model.callouts.length === 1 && model.editing === model.callouts[0]);
     editor.commitEditing();
     model.callouts = [];
     model.shapes = [];
     editor.layoutScene();
-    editor.setTool('callout');
+    editor.setTool(null);
   }
 
   // ---------------------------------------------------------------- 33. S3.2: rectangle and highlight
@@ -1915,7 +1950,7 @@ export async function runChecks(editor, invoke) {
     model.callouts = [];
     model.shapes = [];
     editor.layoutScene();
-    editor.setTool('callout');
+    editor.setTool(null);
     for (let i = 0; i < 40 && !(await invoke('editor_window_visible')); i += 1) await sleep(50);
     await invoke('editor_show');
   }
@@ -1977,7 +2012,7 @@ export async function runChecks(editor, invoke) {
     model.callouts = [];
     model.shapes = [];
     editor.layoutScene();
-    editor.setTool('callout');
+    editor.setTool(null);
   }
 
   // ---------------------------------------------------------------- 35. S3.4: the blur
@@ -2031,7 +2066,7 @@ export async function runChecks(editor, invoke) {
     model.shapes = [];
     model.callouts = [];
     editor.layoutScene();
-    editor.setTool('callout');
+    editor.setTool(null);
   }
 
   say('');

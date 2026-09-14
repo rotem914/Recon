@@ -86,6 +86,8 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-14 · The window under the pointer is the selection until a drag begins, listed once with the overlay, told from a drag by the system's threshold.
 - 2026-09-14 · The selection is the smallest part of the window under the pointer, the way Snagit picks a page.
 - 2026-09-14 · The frame's dashes are light on dark, not light on nothing, drawn by hand so they can walk.
+- 2026-09-14 · No tool is in hand when a picture opens, and a chosen one stays until the next picture.
+- 2026-09-14 · The wheel zooms around the pointer, with Ctrl or without, and a sideways wheel still pans.
 
 ---
 
@@ -1106,3 +1108,67 @@ clock at about sixty frames a second, and the one pixel at each dash edge is ble
 the fraction of a pixel walked, so the dashes glide. Two extra brushes per frame is the
 whole cost. The tuned values stand at 2 pixels thick, #00B9F7 on near black, 12 on and 8
 off, 12 pixels a second.
+
+---
+
+## 2026-09-14 · No tool is in hand when a picture opens, and a chosen one stays until the next picture
+
+### Context
+
+Since S3.1 a tool was always in hand, the callout by default, so a capture opened with a
+crosshair over the whole window and a click on the picture started a note (§3.3). Rotem
+asked for the opposite: the ordinary pointer everywhere and a click that does nothing. Two
+things had to be read into that: when the default comes back, and what happens once a
+tool is chosen.
+
+### Options
+
+1. No tool at launch only; a chosen tool stays in hand for every later picture.
+2. No tool whenever a picture is shown: a capture, an opened file, a document from the
+   timeline, history or the trash, a document resumed by Annotate.
+3. No tool after every use: the tool drops back once its note or shape is made.
+
+### Decision
+
+Option 2. The default is Rotem's call; when it comes back is mine. The editor page lives
+for the whole session, hidden between captures, so option 1 would bring the crosshair back
+from the second capture on, which is what Rotem asked to cancel. Option 3 changes what a
+chosen tool does, which was not asked. A chosen tool works as before, crosshair included,
+until another picture is shown. Viewing shows the ordinary pointer as well.
+
+### Consequences
+
+A stray click on a capture creates nothing, the promise viewing already made for files.
+Cost: a key or a button before the first note of every capture. Inside one picture, only
+leaving annotation and coming back puts a tool down; whether Escape or a second click on
+the lit button should do it is Rotem's to say. Revisit if daily use picks the same tool on
+nearly every capture, which would argue for remembering the last one.
+
+---
+
+## 2026-09-14 · The wheel zooms around the pointer, with Ctrl or without, and a sideways wheel still pans
+
+### Context
+
+S1.3 made the wheel pan and Ctrl with the wheel zoom around the pointer. Rotem asked for
+the wheel alone to zoom in and out, centred on the pointer.
+
+### Options
+
+1. The wheel zooms, Ctrl or not, and a sideways wheel does nothing.
+2. The wheel zooms, Ctrl or not, and a sideways wheel, with no up or down in it, still pans.
+3. The wheel zooms, and Shift with the wheel pans.
+
+### Decision
+
+Option 2. The wheel is Rotem's call; the sideways wheel is mine, since he did not mention
+it and it keeps what it did. The step is the one Ctrl with the wheel already had, 25% a
+notch, and the point under the pointer stays put. Option 3 adds a gesture nobody asked for.
+
+### Consequences
+
+The wheel no longer pans up and down. In viewing a drag still pans; in annotation the arrow
+keys are what is left to pan with, since a drag on the picture belongs to the tool in hand
+and does nothing with none. A touchpad's two-finger scroll up or down zooms as well, because
+the page cannot tell it from a wheel. Revisit if panning a zoomed capture in annotation
+proves slow; a drag with no tool in hand could pan, as it does in viewing.
