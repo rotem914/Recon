@@ -1880,8 +1880,9 @@ work rather than a feature count.
       holding none, a failing store shown and recovered from. The S0.5 leg: the GIF's
       third frame, the JPEG upright at 200x300, the profiled PNG converted and the SVG at
       its raster size are each, after the reload, byte for byte the frame decoded afresh
-      from the file. Not run: a real process restart, which the reload stands in for;
-      Rotem's hand closes that one. Frame stepping inside a document stays F79.
+      from the file. A real process restart was Rotem's hand on 2026-09-14: a capture,
+      Annotate, a note, Copy and Return, Save As, then Recon restarted and opened from the
+      tray with the document there. Frame stepping inside a document stays F79.
 - [x] S1.9 History navigation: previous and next through documents, captures and annotated
       files alike, the position indicator, shortcuts to the first and last, and the context
       activation rules in §3.4. Model: Opus 5.
@@ -2247,11 +2248,11 @@ was rated when it was raised.
 | F76 | The content security policy refuses the S0.3 bench's local socket route, so `--bench` needs the policy off to run its third column | 🟡 | S0.3, S1.1 | Open: a closed step's tool; run it with the policy set to null if it is ever needed again |
 | F77 | Registration runs only by the user's hand: the code is tested as data, and whether Explorer's double-click and "Open with" reach Recon on this machine is unverified until Rotem runs it | 🟠 | S1.2, §3.1 | Closed 2026-09-14: Rotem ran the registration, double-clicked an image in Explorer and it opened in Recon, then dropped another on the window and it replaced the first |
 | F78 | Several files dropped at once open the first only; the folder they came from is S1.4's navigation context | 🟡 | S1.2, S1.4 | Open: S1.4 |
-| F79 | A managed document is keyed by path and frame, but stepping frames inside it keeps the document's number while its preserved image is the one frame, so a note placed on frame 3 of a resumed frame-0 document sits on pixels the document does not hold | 🟠 | §3.8, S1.5, S1.8 | Open: S1.8 decides what a document of an animation preserves, one frame or the frame it is asked for |
+| F79 | A managed document is keyed by path and frame, but stepping frames inside it keeps the document's number while its preserved image is the one frame, so a note placed on frame 3 of a resumed frame-0 document sits on pixels the document does not hold | 🟠 | §3.8, S1.5, S1.8 | Backlog, Rotem's call on 2026-09-14 |
 | F80 | The in-memory list of documents is capped at fifty, and an annotated file's document dropped at the cap loses its notes with no store to fall back on | 🟠 | S1.1 decision, S1.5, S1.8 | Closed at S1.8: the cap is gone, every document is on disk from its first moment, and the in-memory list holds paths |
-| F82 | A document read from disk stands without a file behind it, so its frames or pages cannot be stepped and its folder context is none until the file is opened again | 🟡 | §3.3, S1.8, S1.9 | Open: the document names its file, and Ctrl+O or the folder walk reaches the file itself; S1.9 decides whether history navigation reopens the file beside the document |
-| F83 | A note added while Copy and Return is composing can grow the margin, and the host then refuses the layer as the wrong size, so that "moved on" reads as NOT COPIED rather than as copied and staying | 🟡 | §3.3, S1.10 | Open: the page could compose from a snapshot of the composition; today the notice is right that nothing was copied, and a second Ctrl+Enter copies |
-| F81 | When no candidate is both inside the picture and clear of the other bubbles, placement takes a clear one in the margin over an overlapping one inside, so a crowded corner grows the canvas rather than stacking bubbles | 🟡 | §3.5, S1.6 | Open, Rotem's call: the order can prefer inside-and-overlapping instead; one line in `placeCallout` |
+| F82 | A document read from disk stands without a file behind it, so its frames or pages cannot be stepped and its folder context is none until the file is opened again | 🟡 | §3.3, S1.8, S1.9 | Backlog, Rotem's call on 2026-09-14; the document names its file, and Ctrl+O or the folder walk reaches the file itself |
+| F83 | A note added while Copy and Return is composing can grow the margin, and the host then refuses the layer as the wrong size, so that "moved on" reads as NOT COPIED rather than as copied and staying | 🟡 | §3.3, S1.10 | Backlog, Rotem's call on 2026-09-14; today the notice is right that nothing was copied, and a second Ctrl+Enter copies |
+| F81 | When no candidate is both inside the picture and clear of the other bubbles, placement takes a clear one in the margin over an overlapping one inside, so a crowded corner grows the canvas rather than stacking bubbles | 🟡 | §3.5, S1.6 | Backlog, Rotem's call on 2026-09-14; one line in `placeCallout` when it comes |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the
 two things it compares and the failure that would turn it red (`project-os/QA.md` §12), and a

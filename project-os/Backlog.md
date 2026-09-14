@@ -27,6 +27,10 @@ The owner-curated open-items list. One place to see what is still open.
 | Added | Item | Source |
 |---|---|---|
 | 2026-09-13 | The margin colour is written twice, in the host's composer and in the editor page; give it one home and hand it to the page (F68) | Code review 2026-09-13, R7 |
+| 2026-09-14 | Stepping frames inside an annotated animation keeps the document while its preserved image is one frame, so a note placed on another frame sits on pixels the document does not hold (F79) | S1.5, Rotem's Backlog on 2026-09-14 |
+| 2026-09-14 | When no place for a new note is both inside the picture and clear of the others, the canvas grows rather than the bubbles stacking; the order can prefer inside-and-overlapping instead (F81) | S1.6, Rotem's Backlog on 2026-09-14 |
+| 2026-09-14 | A document read from disk stands without its file open behind it, so its frames cannot be stepped and its folder is not active until the file is opened again (F82) | S1.8, Rotem's Backlog on 2026-09-14 |
+| 2026-09-14 | A note added while Copy and Return is composing can grow the margin, and then the copy fails as "NOT COPIED" instead of copying and staying (F83) | S1.10, Rotem's Backlog on 2026-09-14 |
 
 ## Done
 
