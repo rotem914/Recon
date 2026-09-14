@@ -1784,6 +1784,82 @@ export async function runChecks(editor, invoke) {
     editor.layoutScene();
   }
 
+  // ---------------------------------------------------------------- 32. S3.1: the arrow tool
+  say('');
+  say('S3.1: a tool is chosen by key or button, an arrow is drawn by a drag, selected, moved, deleted, undone, saved and exported, and the callout flow is untouched');
+  {
+    const stage = editor.stage;
+    const hud = document.getElementById('hud');
+    await invoke('editor_store_reset');
+    const shot = await invoke('editor_capture_probe', { width: 400, height: 300 });
+    await editor.loadImage(shot);
+    await editor.setZoom(1);
+    const box = stage.getBoundingClientRect();
+    const css = (ix, iy) => ({ x: box.left + model.offset.x + ((ix - model.pan.x) * model.zoom) / editor.ratioOf(), y: box.top + model.offset.y + ((iy - model.pan.y) * model.zoom) / editor.ratioOf() });
+    const pointer = (type, target, ix, iy) => {
+      const at = css(ix, iy);
+      target.dispatchEvent(new PointerEvent(type, { pointerId: 11, button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: at.x, clientY: at.y, bubbles: true, cancelable: true }));
+    };
+    const press = (init) => { const e = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }); window.dispatchEvent(e); return e.defaultPrevented; };
+
+    check('the callout tool is the one in hand at first, and the HUD says so', model.tool === 'callout' && hud.textContent.includes('tool callout'));
+    press({ key: 'l', code: 'KeyL' });
+    const arrowButton = document.querySelector('#tools [data-tool="arrow"]');
+    check('L picks the arrow tool and its button lights', model.tool === 'arrow' && arrowButton.classList.contains('active'));
+
+    pointer('pointerdown', stage, 50, 60);
+    pointer('pointermove', stage, 200, 160);
+    pointer('pointerup', stage, 200, 160);
+    check('a drag draws an arrow from where it began to where it ended, with no callout made', model.shapes.length === 1 && model.shapes[0].kind === 'arrow'
+      && model.shapes[0].a.x === 50 && model.shapes[0].a.y === 60 && model.shapes[0].b.x === 200 && model.shapes[0].b.y === 160 && model.callouts.length === 0,
+      JSON.stringify(model.shapes[0]));
+    const drawn = editor.handles.ownerDocument.querySelector(`[data-shape="${model.shapes[0].id}"]`);
+    check('the arrow is in the scene as a line and a head', !!drawn && drawn.querySelector('line') && drawn.querySelector('polygon'));
+    pointer('pointerdown', stage, 300, 250);
+    pointer('pointerup', stage, 300, 250);
+    check('a click with the tool makes nothing', model.shapes.length === 1 && model.callouts.length === 0);
+
+    const layer = await editor.exportLayer();
+    check('the export carries the arrow and not the handles', layer.markup.includes('data-shape') && layer.markup.includes('<polygon') && !layer.markup.includes('id="handles"') && !layer.markup.includes('<circle'));
+
+    // The scene redraws its shapes on every layout, so the element is looked up afresh.
+    const shapeEl = () => document.querySelector(`[data-shape="${model.shapes[0].id}"]`);
+    pointer('pointerdown', shapeEl(), 120, 110);
+    check('a click on the arrow selects it, with handles at both ends', model.selectedShape === model.shapes[0] && editor.handles.querySelectorAll('circle').length === 2,
+      `selected ${model.selectedShape && model.selectedShape.id}, ${editor.handles.querySelectorAll('circle').length} handles`);
+    pointer('pointermove', stage, 140, 130);
+    pointer('pointerup', stage, 140, 130);
+    check('a drag on it moves both ends', model.shapes[0].a.x === 70 && model.shapes[0].a.y === 80 && model.shapes[0].b.x === 220 && model.shapes[0].b.y === 180, JSON.stringify(model.shapes[0]));
+    press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    check('undo puts it back', model.shapes[0].a.x === 50 && model.shapes[0].b.x === 200);
+    press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    check('undo again removes it', model.shapes.length === 0);
+    press({ key: 'y', code: 'KeyY', ctrlKey: true });
+    check('redo brings it back', model.shapes.length === 1);
+
+    await editor.saveNow();
+    editor.documents.clear();
+    model.shapes = [];
+    model.image = { width: 0, height: 0, source: '' };
+    await editor.loadImage(await invoke('editor_store_reload'));
+    check('after a restart the arrow is back from the disk', model.shapes.length === 1 && model.shapes[0].kind === 'arrow' && model.shapes[0].b.x === 200, JSON.stringify(model.shapes[0]));
+
+    pointer('pointerdown', shapeEl(), 120, 110);
+    pointer('pointerup', stage, 120, 110);
+    press({ key: 'Delete', code: 'Delete' });
+    check('Delete removes the selected arrow', model.shapes.length === 0 && model.selectedShape === null);
+
+    press({ key: 'c', code: 'KeyC' });
+    pointer('pointerdown', stage, 100, 100);
+    pointer('pointerup', stage, 100, 100);
+    check('C brings the callout tool back and a click makes a note as before', model.tool === 'callout' && model.callouts.length === 1 && model.editing === model.callouts[0]);
+    editor.commitEditing();
+    model.callouts = [];
+    model.shapes = [];
+    editor.layoutScene();
+    editor.setTool('callout');
+  }
+
   say('');
   const unrun = notRun ? `, ${notRun} not run` : '';
   if (failures === 0) {

@@ -2017,6 +2017,29 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       a delete, the trash view with the thumbnail, Restore bringing the document back on
       screen with its note, into the list and out of the trash. Provisional look, Rotem's
       to change.
+
+**Stage 3, the secondary tools, begun at Rotem's word on 2026-09-14** before the trial
+said which one daily use wanted first; the plan's own order is taken. Every tool joins the
+same selection, undo, save and export the callouts have (part 10's acceptance), lives
+beside them and never in their numbering, and is chosen by a key and a button both, as
+Annotate and Copy were settled.
+
+- [x] S3.1 The tools and the arrow: a tool in hand, callout by default, chosen by C and L
+      or by the buttons at the top right; the arrow drawn by a drag from tail to head, its
+      head a polygon rather than a marker so the serialized export renders it the same;
+      selected by a click with handles at both ends, moved by a drag, removed by Delete,
+      undone and redone, saved with the notes and back after a restart, in the export
+      layer as it is on screen. A drag shorter than four pixels makes nothing. Model:
+      Fable 5.1, the tool contract is new. **Built 2026-09-14**, checked in section 32 of
+      the editor checks; the callout flow's checks all still pass.
+- [ ] S3.2 Rectangle and highlight: the same drag, a rectangle outlined in the arrow's
+      colour, a highlight as a translucent fill; R and H. Model: Opus 5, the mechanics exist.
+- [ ] S3.3 Text: a note without the number, the bubble or the arrow, typed where it is
+      clicked; T. Model: Opus 5.
+- [ ] S3.4 Blur: a region the composer blurs in the source at export, since the page never
+      holds the pixels (part 5); the layer carries the region and the host does the work,
+      on screen through a blurred region from the region service. Model: Fable 5.1, it
+      changes the composer.
 - [x] S2.6 Export beyond PNG: Save As offering JPEG beside PNG, the same never-overwrite
       path, the quality fixed rather than asked. Model: Opus 5, the path exists.
       **Built 2026-09-14, on Fable at Rotem's word.** The Save As dialog offers JPEG beside

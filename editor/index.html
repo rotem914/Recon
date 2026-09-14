@@ -99,6 +99,11 @@
                      background: #1b1f24; color: #f2f2f2; font: 13px system-ui, sans-serif;
                      cursor: pointer; }
   #controls button:hover { border-color: #7aa7ff; }
+  /* The tools (Stage 3): which one a click on the picture uses. Provisional, Rotem's to restyle. */
+  #tools { display: flex; gap: 2px; margin-right: 8px; }
+  #tools button.active { border-color: #7aa7ff; background: #26303c; }
+  #arrows [data-shape] { pointer-events: visiblePainted; cursor: move; }
+  #handles { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
   body.checking #stage { cursor: progress; }
   #report { position: absolute; inset: 0; display: none; padding: 18px 22px; overflow: auto;
             background: #0c0e10; font-family: ui-monospace, Consolas, monospace;
@@ -111,11 +116,16 @@
   <canvas id="canvas"></canvas>
   <div id="scene">
     <svg id="arrows"></svg>
+    <svg id="handles"></svg>
   </div>
 </div>
 <div id="hud"></div>
 <div id="strip"></div>
 <div id="controls" hidden>
+  <div id="tools">
+    <button type="button" data-tool="callout" title="Callout: a numbered note (C)">Callout</button>
+    <button type="button" data-tool="arrow" title="Arrow: drag from the tail to the head (L)">Arrow</button>
+  </div>
   <button id="copy" type="button" title="Copy the image to the clipboard (Ctrl+C)">Copy</button>
   <button id="saveas" type="button" title="Save As a new PNG file (Ctrl+S)">Save As</button>
   <button id="mode" type="button">Annotate</button>
@@ -146,6 +156,7 @@
   const mat = document.getElementById('mat');
   const scene = document.getElementById('scene');
   const arrows = document.getElementById('arrows');
+  const handles = document.getElementById('handles');
   const hud = document.getElementById('hud');
   const modeButton = document.getElementById('mode');
   const controls = document.getElementById('controls');
@@ -200,6 +211,13 @@
     nextNumber: 1,
     selected: null,
     editing: null,
+    // Stage 3: the tool a click on the picture uses, and the shapes it makes. Shapes live
+    // beside the callouts, in the same undo, the same save and the same export, and never
+    // in the callouts' numbering.
+    tool: 'callout',
+    shapes: [],
+    nextShape: 1,
+    selectedShape: null,
     fullscreen: false,
     // 'view' or 'annotate' (§3.3). A capture opens in annotation; a file opens in viewing,
     // where no click creates anything, and Annotate switches. Leaving annotation keeps
@@ -276,6 +294,8 @@
     documents.set(model.image.document_id, {
       callouts: model.callouts,
       nextNumber: model.nextNumber,
+      shapes: model.shapes,
+      nextShape: model.nextShape,
       margin: { ...model.margin },
       marginFloor: { ...model.marginFloor },
       textSize: model.textSize,
@@ -525,6 +545,8 @@
   const notesOf = () => ({
     callouts: model.callouts,
     nextNumber: model.nextNumber,
+    shapes: model.shapes,
+    nextShape: model.nextShape,
     margin: { ...model.margin },
     textSize: model.textSize,
   });
@@ -570,7 +592,7 @@
   // operation that changed nothing, an empty bubble discarded at commit for one, adds no
   // step. Undo restores a note with the number it had (§3.5); the margin follows the
   // restored notes through settle.
-  const snapshot = () => JSON.stringify({ callouts: model.callouts, nextNumber: model.nextNumber });
+  const snapshot = () => JSON.stringify({ callouts: model.callouts, nextNumber: model.nextNumber, shapes: model.shapes, nextShape: model.nextShape });
 
   const record = () => {
     const h = model.history;
@@ -587,7 +609,10 @@
     const saved = JSON.parse(step);
     model.callouts = saved.callouts;
     model.nextNumber = saved.nextNumber;
+    model.shapes = saved.shapes || [];
+    model.nextShape = saved.nextShape || 1;
     model.selected = null;
+    model.selectedShape = null;
     model.editing = null;
     settle();
     markDirty();
@@ -697,8 +722,62 @@
         `<line x1="${callout.anchor.x}" y1="${callout.anchor.y}" x2="${end.x}" y2="${end.y}"` +
         ` stroke="#7aa7ff" stroke-width="2" stroke-linecap="round" />`;
     }
+    for (const shape of model.shapes) markup += shapeMarkup(shape);
     arrows.innerHTML = markup;
+    handles.setAttribute('width', String(model.image.width || 1));
+    handles.setAttribute('height', String(model.image.height || 1));
+    const s = model.selectedShape;
+    handles.innerHTML = s
+      ? `<circle cx="${s.a.x}" cy="${s.a.y}" r="5" fill="#7aa7ff" stroke="#0d1014" stroke-width="2" /><circle cx="${s.b.x}" cy="${s.b.y}" r="5" fill="#7aa7ff" stroke="#0d1014" stroke-width="2" />`
+      : '';
   };
+
+  // ---------------------------------------------------------------- the shapes (Stage 3)
+  //
+  // An arrow is a line from its tail to its head with the head drawn as a polygon, never
+  // a marker, so the export's serialized SVG renders it the same everywhere. Every number
+  // is in image pixels; the stroke scales with the picture like a note does.
+  const shapeMarkup = (shape) => {
+    const stroke = 'stroke="#ff5252" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"';
+    if (shape.kind === 'arrow') {
+      const dx = shape.b.x - shape.a.x;
+      const dy = shape.b.y - shape.a.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len;
+      const uy = dy / len;
+      const head = 16;
+      const wing = 7;
+      const base = { x: shape.b.x - ux * head, y: shape.b.y - uy * head };
+      const left = { x: base.x - uy * wing, y: base.y + ux * wing };
+      const right = { x: base.x + uy * wing, y: base.y - ux * wing };
+      return `<g data-shape="${shape.id}"><line x1="${shape.a.x}" y1="${shape.a.y}" x2="${base.x.toFixed(1)}" y2="${base.y.toFixed(1)}" ${stroke} />` +
+        `<polygon points="${shape.b.x},${shape.b.y} ${left.x.toFixed(1)},${left.y.toFixed(1)} ${right.x.toFixed(1)},${right.y.toFixed(1)}" fill="#ff5252" stroke="#ff5252" stroke-width="2" stroke-linejoin="round" /></g>`;
+    }
+    return '';
+  };
+
+  const createShape = (kind, at) => {
+    const shape = { id: `s${model.nextShape}`, kind, a: { x: Math.round(at.x), y: Math.round(at.y) }, b: { x: Math.round(at.x), y: Math.round(at.y) } };
+    model.nextShape += 1;
+    model.shapes.push(shape);
+    return shape;
+  };
+
+  const removeShape = (shape) => {
+    model.shapes = model.shapes.filter((s) => s !== shape);
+    if (model.selectedShape === shape) model.selectedShape = null;
+  };
+
+  const setTool = (tool) => {
+    model.tool = tool;
+    for (const button of document.querySelectorAll('#tools button')) {
+      button.classList.toggle('active', button.dataset.tool === tool);
+    }
+    drawHud();
+  };
+  for (const button of document.querySelectorAll('#tools button')) {
+    button.addEventListener('click', (event) => { setTool(button.dataset.tool); event.currentTarget.blur(); });
+  }
 
   /// Where the line from the anchor meets the bubble's edge, so the arrow touches the box
   /// instead of ending under it.
@@ -737,14 +816,14 @@
     const saveText = model.save.state === 'failed' ? `   NOT SAVED: ${model.save.error}`
       : model.save.state === 'saving' ? '   saving' : (model.image.managed ? '   saved' : '');
     const modeLine = model.mode === 'annotate'
-      ? `mode annotate   A to view${model.image.source_changed ? '   the file on disk has changed since; this document keeps its own pixels' : ''}${saveText}`
+      ? `mode annotate   tool ${model.tool}   A to view${model.image.source_changed ? '   the file on disk has changed since; this document keeps its own pixels' : ''}${saveText}`
       : `mode view   A to annotate${model.image.edited_ago_s != null ? `   annotated before, ${ago(model.image.edited_ago_s)}; A resumes it` : ''}`;
     hud.textContent =
       `${model.image.width}x${model.image.height}  ${where}\n` +
       `${modeLine}\n` +
       `zoom ${zoomText}   pan ${Math.round(model.pan.x)},${Math.round(model.pan.y)}   ` +
       `callouts ${model.callouts.length}   text ${sizeShown}px   dpr ${dpr()}\n` +
-      `0 fit  1 actual size  +/- zoom  wheel pan  Ctrl+wheel zoom  F11 fullscreen  PgUp/PgDn previous next  Ctrl +/- text size  arrows pan  ${model.mode === 'annotate' ? 'click to add' : 'drag to pan'}  Esc commit  Del remove  Ctrl+Z/Y undo redo  Ctrl+C copy  Ctrl+Enter copy and return  Ctrl+S save as  Ctrl+Del delete document  Ctrl+O open` +
+      `0 fit  1 actual size  +/- zoom  wheel pan  Ctrl+wheel zoom  F11 fullscreen  PgUp/PgDn previous next  Ctrl +/- text size  arrows pan  ${model.mode === 'annotate' ? 'click to add' : 'drag to pan'}  Esc commit  Del remove  Ctrl+Z/Y undo redo  Ctrl+C copy  Ctrl+Enter copy and return  Ctrl+S save as  Ctrl+Del delete document  Ctrl+O open  C callout  L arrow` +
       (currentNotice ? `\n${currentNotice}` : '');
   };
 
@@ -1024,6 +1103,20 @@
       return;
     }
 
+    const shapeEl = target.closest && target.closest('[data-shape]');
+    if (shapeEl) {
+      const shape = model.shapes.find((s) => s.id === shapeEl.dataset.shape);
+      if (model.editing) commitEditing();
+      model.selected = null;
+      model.selectedShape = shape;
+      const point = toImage(event);
+      drag = { kind: 'shape', shape, dx: shape.a.x - point.x, dy: shape.a.y - point.y, bx: shape.b.x - point.x, by: shape.b.y - point.y, moved: false };
+      try { stage.setPointerCapture(event.pointerId); } catch (e) { /* a synthetic pointer */ }
+      layoutScene();
+      event.preventDefault();
+      return;
+    }
+
     const box = target.closest('.callout');
     if (box) {
       const callout = model.callouts.find((c) => c.id === box.dataset.id);
@@ -1042,9 +1135,18 @@
       commitEditing();
       return;
     }
-    if (model.selected) {
+    if (model.selected || model.selectedShape) {
       model.selected = null;
+      model.selectedShape = null;
       layoutScene();
+      return;
+    }
+    if (model.tool === 'arrow') {
+      const shape = createShape('arrow', toImage(event));
+      drag = { kind: 'draw', shape };
+      try { stage.setPointerCapture(event.pointerId); } catch (e) { /* a synthetic pointer */ }
+      layoutScene();
+      event.preventDefault();
       return;
     }
     const callout = createCallout(toImage(event));
@@ -1061,6 +1163,18 @@
       return;
     }
     const point = toImage(event);
+    if (drag.kind === 'draw') {
+      drag.shape.b = { x: Math.round(point.x), y: Math.round(point.y) };
+      drawArrows();
+      return;
+    }
+    if (drag.kind === 'shape') {
+      drag.shape.a = { x: Math.round(point.x + drag.dx), y: Math.round(point.y + drag.dy) };
+      drag.shape.b = { x: Math.round(point.x + drag.bx), y: Math.round(point.y + drag.by) };
+      drag.moved = true;
+      drawArrows();
+      return;
+    }
     if (drag.kind === 'anchor') {
       drag.callout.anchor.x = Math.round(point.x + drag.dx);
       drag.callout.anchor.y = Math.round(point.y + drag.dy);
@@ -1083,6 +1197,12 @@
   const endDrag = () => {
     if (!drag) return;
     const moved = drag.kind !== 'pan';
+    // A drawn shape with no length is a click, not a shape, and it takes no number, so
+    // nothing of it reaches the history.
+    if (drag.kind === 'draw' && Math.hypot(drag.shape.b.x - drag.shape.a.x, drag.shape.b.y - drag.shape.a.y) < 4) {
+      removeShape(drag.shape);
+      model.nextShape -= 1;
+    }
     drag = null;
     // A dropped bubble takes, or gives back, its margin, and is one step of history.
     settle();
@@ -1184,7 +1304,7 @@
     }
     if (event.key === 'Escape') {
       if (model.editing) { commitEditing(); event.preventDefault(); return; }
-      if (model.selected) { model.selected = null; layoutScene(); event.preventDefault(); return; }
+      if (model.selected || model.selectedShape) { model.selected = null; model.selectedShape = null; layoutScene(); event.preventDefault(); return; }
       // Fullscreen leaves first (§3.6); the hide is the Escape after it.
       if (model.fullscreen) { setFullscreen(false).catch((err) => console.error('fullscreen', err)); event.preventDefault(); return; }
       // The idle editor: pending changes are saved, then hide, and the focus goes back to
@@ -1232,7 +1352,13 @@
     }
     if (event.key === 'Delete' || event.key === 'Backspace') {
       if (model.selected) { removeCallout(model.selected); settle(); record(); drawHud(); event.preventDefault(); }
+      else if (model.selectedShape) { removeShape(model.selectedShape); settle(); record(); drawHud(); event.preventDefault(); }
       return;
+    }
+    // The tools, by physical key, in annotation only (Stage 3).
+    if (model.mode === 'annotate' && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      if (event.code === 'KeyC') { setTool('callout'); event.preventDefault(); return; }
+      if (event.code === 'KeyL') { setTool('arrow'); event.preventDefault(); return; }
     }
     if (event.key === 'Enter' && model.selected) { startEditing(model.selected); event.preventDefault(); return; }
 
@@ -1362,6 +1488,8 @@
         known = {
           callouts: saved.callouts,
           nextNumber: saved.nextNumber || 1,
+          shapes: saved.shapes || [],
+          nextShape: saved.nextShape || 1,
           margin: saved.margin || { left: 0, top: 0, right: 0, bottom: 0 },
           marginFloor: { left: 0, top: 0, right: 0, bottom: 0 },
           textSize: saved.textSize || model.textSize,
@@ -1374,6 +1502,9 @@
     model.marginFloor = known ? { ...known.marginFloor } : { left: 0, top: 0, right: 0, bottom: 0 };
     model.callouts = known ? known.callouts : [];
     model.nextNumber = known ? known.nextNumber : 1;
+    model.shapes = known && known.shapes ? known.shapes : [];
+    model.nextShape = known && known.nextShape ? known.nextShape : 1;
+    model.selectedShape = null;
     if (known) model.textSize = known.textSize;
     model.selected = null;
     model.editing = null;
@@ -1436,6 +1567,7 @@
     try {
       for (const child of scene.children) {
         if (child.classList && child.classList.contains('anchor')) continue; // editing UI
+        if (child.id === 'handles') continue; // editing UI
         const clone = child.cloneNode(true);
         if (child.id === 'arrows') {
           clone.removeAttribute('id');
@@ -1593,6 +1725,10 @@
     strip,
     deleteDocument,
     renderTrash,
+    setTool,
+    createShape,
+    removeShape,
+    handles,
     snapshot,
     copyAndReturn,
     fitMargin,
