@@ -381,7 +381,7 @@ is a contract broken on day one.
 | Fit to window · actual size · zoom in · zoom out | Viewing controls, no effect on export resolution | 1, built: keys, the wheel to pan, Ctrl with the wheel to zoom around the pointer |
 | Fullscreen | Enter fullscreen | 1, built: F11, and the same key or Escape out |
 | Annotate, and back to viewing | Switch the window between viewing, where no click creates anything, and annotation, where the callout tool is live (§3.3). The work stays either way | 1, built at S1.5: the `A` key and a button at the window's top right, both, Rotem's call on 2026-09-14 |
-| `Ctrl+S` | Save As a PNG file, to a new file. Internal saving stays automatic | 1, S1.11; until then the key is taken and does nothing, so the web view's own save page dialog never appears |
+| `Ctrl+S` | Save As a PNG file, to a new file. Internal saving stays automatic | 1, built at S1.11: Windows' own Save As, the last export folder, the suggested name, an available name offered when the chosen one exists |
 | `Ctrl+Shift+Enter` | Send to Rogers, once that exists and is configured | 4 |
 
 Ordinary typing and editing keys are never intercepted to trigger a tool while a text field
@@ -1914,10 +1914,25 @@ work rather than a feature count.
       opened and closed as the target. The return with the stand-in there came back as
       "focus returned to the application the capture began in". A change that grows the margin during the copy makes the copy itself
       fail, since the composition moved under it, and that path reads NOT COPIED, F83.
-- [ ] S1.11 PNG Save As: a new file every time, a suggested name derived from the source and
+- [x] S1.11 PNG Save As: a new file every time, a suggested name derived from the source and
       marked as annotated, no path by which an external original is the default target, and
       an available name offered when the chosen one exists. There is no overwrite path.
       Model: Fable 5.1, it writes files next to originals.
+      **Built 2026-09-14.** Ctrl+S takes the composition as it is, as the copy does, and
+      opens Windows' own Save As on its own thread, on the folder last exported to (the
+      user's Pictures folder until then) with the name filled in: the source file's stem
+      marked "annotated", or "capture <date> <time> annotated" for a capture, never the
+      file's own name. The dialog's own overwrite prompt is off, because the question it
+      asks is never asked here: a chosen name that exists is not written, and the dialog
+      comes back with the first free "name (n)" filled in, until a free one is chosen or
+      the user cancels. The file is created new, never truncated, and a write that fails
+      midway is removed. The outcome is a line under the HUD: saved, nothing saved, NOT
+      SAVED with the reason, or which name was offered. Checked: the suggested names for
+      a file and a capture, the write of a new file, the same name refused with "(2)"
+      offered and the first file's bytes untouched, the offered name writing, the next
+      plan opening on the folder just exported to, Ctrl+S opening the dialog; Escape
+      closing it is sent only when our window is in front. On the way, the HUD's notice
+      became state the HUD draws, so the autosave's redraw no longer wipes it.
 - [ ] S1.12 The trial: thirty captures of real client feedback and a week of using Recon as
       the everyday viewer, with the friction recorded in `project-os/History.md` and anything
       deferred sent to `project-os/Backlog.md`. Model: Opus 5, it records.

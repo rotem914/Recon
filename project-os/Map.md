@@ -52,7 +52,8 @@ Recon/
 │       ├── platform.rs             # what the platform is: each display's HDR state, who owns the foreground window
 │       ├── focus.rs                # the return target: the application the capture began in, back in front on hide
 │       ├── registration.rs         # the file types in "Open with" and Default apps, under the user, never a default taken
-│       ├── dialog.rs               # Ctrl+O: Windows' own picker, owned by the editor, on its own thread
+│       ├── dialog.rs               # Ctrl+O and Ctrl+S: Windows' own picker and Save As, owned by the editor, on their own thread
+│       ├── export.rs               # Save As: the suggested name, the last export folder, a new file only, an available name when one exists
 │       ├── folder.rs               # the folder context: listed once, logical order, previous and next, a gone file skipped
 │       ├── store.rs                # the document store: one folder per document, source.png once, document.json atomically
 │       ├── measure.rs              # --measure and --walk: the thirty-run measurement and memory sample, feature-gated

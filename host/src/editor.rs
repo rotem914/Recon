@@ -992,6 +992,10 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_save_notes,
         editor_notes,
         editor_saves_flushed,
+        editor_save_as,
+        checks::editor_save_as_outcome,
+        checks::editor_save_as_plan,
+        checks::editor_save_as_write,
         checks::editor_window_title,
         checks::editor_store_reset,
         checks::editor_store_list,
@@ -1050,6 +1054,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_save_notes,
         editor_notes,
         editor_saves_flushed,
+        editor_save_as,
     ]);
     builder.register_asynchronous_uri_scheme_protocol("region", |_ctx, request, responder| {
         let query = request.uri().query().unwrap_or_default().to_string();
@@ -1326,6 +1331,187 @@ pub fn editor_open_dialog(app: AppHandle) -> Result<(), String> {
         set_dialog_outcome(&outcome);
     });
     Ok(())
+}
+
+/// Where the document on screen came from, for the suggested name: its file, or none for
+/// a capture.
+fn source_file() -> Option<std::path::PathBuf> {
+    let from_open = state()
+        .document
+        .lock()
+        .ok()
+        .and_then(|slot| slot.as_ref().map(|d| d.opened.path.clone()));
+    from_open.or_else(|| {
+        DOCUMENTS.lock().ok().and_then(|documents| {
+            documents
+                .iter()
+                .find(|d| d.id == current_document_id())
+                .and_then(|d| match &d.source {
+                    Source::File { path, .. } => Some(path.clone()),
+                    Source::Capture => None,
+                })
+        })
+    })
+}
+
+/// Save As (§3.6, S1.11): the composition is taken NOW, as the copy takes it, and the
+/// dialog runs on its own thread with the last export folder and a name derived from the
+/// source, marked as annotated. A chosen name that exists is never written over: the
+/// dialog comes back with an available name filled in, until a free one is chosen or the
+/// user cancels. The outcome reaches the page as an event, and stays readable for the
+/// checks.
+#[tauri::command]
+pub fn editor_save_as(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let margin = request
+        .headers()
+        .get("margin")
+        .and_then(|v| v.to_str().ok())
+        .map(crate::compose::Margin::parse)
+        .transpose()?
+        .unwrap_or_default();
+    let bytes = match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => bytes.clone(),
+        tauri::ipc::InvokeBody::Json(_) => {
+            return Err("the layer arrived as JSON, not as bytes".into())
+        }
+    };
+    let (composite, _, compose_ms) = compose_layer(&bytes, margin)?;
+    let window = app
+        .get_webview_window("editor")
+        .ok_or("there is no editor window")?;
+    let owner = window.hwnd().map_err(|err| err.to_string())?.0 as isize;
+    let folder = crate::export::folder();
+    let name = crate::export::suggested_name(source_file().as_deref());
+    set_save_as_outcome(SaveAsOutcome::open());
+    std::thread::spawn(move || {
+        let started = Instant::now();
+        let mut png = Vec::new();
+        let encoded = image::codecs::png::PngEncoder::new(&mut png).write_image(
+            &composite.rgba,
+            composite.width,
+            composite.height,
+            image::ExtendedColorType::Rgba8,
+        );
+        let outcome = match encoded {
+            Err(err) => SaveAsOutcome::failed(format!("the PNG did not encode: {err}")),
+            Ok(()) => {
+                let owner = windows::Win32::Foundation::HWND(owner as *mut _);
+                let mut folder = folder;
+                let mut name = name;
+                loop {
+                    match crate::dialog::save_png(Some(owner), &folder, &name) {
+                        Ok(None) => break SaveAsOutcome::cancelled(),
+                        Err(err) => break SaveAsOutcome::failed(err),
+                        Ok(Some(chosen)) => match crate::export::write_new(&chosen, &png) {
+                            Ok(crate::export::Written::New(path)) => {
+                                break SaveAsOutcome::saved(path, composite.width, composite.height)
+                            }
+                            Ok(crate::export::Written::Exists { chosen, offered }) => {
+                                crate::log(&format!(
+                                    "Save As: {} exists, offering {}",
+                                    chosen.display(),
+                                    offered.display()
+                                ));
+                                folder =
+                                    offered.parent().map(|p| p.to_path_buf()).unwrap_or(folder);
+                                name = offered
+                                    .file_name()
+                                    .map(|n| n.to_string_lossy().to_string())
+                                    .unwrap_or(name);
+                                set_save_as_outcome(SaveAsOutcome::offered(&chosen, &offered));
+                                let _ = app.emit(
+                                    "save-as-offered",
+                                    SaveAsOutcome::offered(&chosen, &offered),
+                                );
+                            }
+                            Err(err) => break SaveAsOutcome::failed(err),
+                        },
+                    }
+                }
+            }
+        };
+        crate::log(&format!(
+            "Save As: {} (composed in {compose_ms} ms, {} ms in all)",
+            outcome.line,
+            started.elapsed().as_millis()
+        ));
+        set_save_as_outcome(outcome.clone());
+        let _ = app.emit("save-as-done", outcome);
+    });
+    Ok(())
+}
+
+/// What a Save As came to, for the page's notice and for the checks.
+#[derive(serde::Serialize, Clone, Default)]
+pub struct SaveAsOutcome {
+    /// "open", "saved", "cancelled", "failed" or "offered".
+    pub state: String,
+    pub path: String,
+    pub offered: String,
+    pub width: u32,
+    pub height: u32,
+    pub line: String,
+}
+
+impl SaveAsOutcome {
+    fn open() -> Self {
+        Self {
+            state: "open".into(),
+            line: "Save As is open".into(),
+            ..Default::default()
+        }
+    }
+    fn saved(path: std::path::PathBuf, width: u32, height: u32) -> Self {
+        Self {
+            state: "saved".into(),
+            line: format!("saved {}x{} to {}", width, height, path.display()),
+            path: path.display().to_string(),
+            width,
+            height,
+            ..Default::default()
+        }
+    }
+    fn cancelled() -> Self {
+        Self {
+            state: "cancelled".into(),
+            line: "nothing saved".into(),
+            ..Default::default()
+        }
+    }
+    fn failed(err: String) -> Self {
+        Self {
+            state: "failed".into(),
+            line: format!("NOT SAVED: {err}"),
+            ..Default::default()
+        }
+    }
+    fn offered(chosen: &std::path::Path, offered: &std::path::Path) -> Self {
+        Self {
+            state: "offered".into(),
+            line: format!(
+                "{} exists and is not written over; {} is offered",
+                chosen
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default(),
+                offered
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default()
+            ),
+            path: chosen.display().to_string(),
+            offered: offered.display().to_string(),
+            ..Default::default()
+        }
+    }
+}
+
+static SAVE_AS_OUTCOME: Mutex<Option<SaveAsOutcome>> = Mutex::new(None);
+
+fn set_save_as_outcome(outcome: SaveAsOutcome) {
+    if let Ok(mut slot) = SAVE_AS_OUTCOME.lock() {
+        *slot = Some(outcome);
+    }
 }
 
 /// What the last Ctrl+O did, for the checks: empty while the picker is open.
@@ -2705,6 +2891,71 @@ mod checks {
             .lock()
             .map(|l| l.to_string())
             .unwrap_or_default()
+    }
+
+    /// The last Save As, as the checks read it.
+    #[tauri::command]
+    pub fn editor_save_as_outcome() -> SaveAsOutcome {
+        SAVE_AS_OUTCOME
+            .lock()
+            .ok()
+            .and_then(|slot| slot.clone())
+            .unwrap_or_default()
+    }
+
+    #[derive(serde::Serialize)]
+    pub struct SaveAsPlan {
+        pub folder: String,
+        pub name: String,
+        pub source: String,
+    }
+
+    /// The folder and the name the dialog would open with, for the image on screen.
+    #[tauri::command]
+    pub fn editor_save_as_plan() -> SaveAsPlan {
+        let source = source_file();
+        SaveAsPlan {
+            folder: crate::export::folder().display().to_string(),
+            name: crate::export::suggested_name(source.as_deref()),
+            source: source.map(|p| p.display().to_string()).unwrap_or_default(),
+        }
+    }
+
+    /// The write itself, without the dialog: the layer composed as Save As composes it and
+    /// written to the path in the header through the one never-overwrite path.
+    #[tauri::command]
+    pub fn editor_save_as_write(
+        request: tauri::ipc::Request<'_>,
+    ) -> Result<crate::export::Written, String> {
+        let header = |name: &str| {
+            request
+                .headers()
+                .get(name)
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+        };
+        let margin = header("margin")
+            .map(|m| crate::compose::Margin::parse(&m))
+            .transpose()?
+            .unwrap_or_default();
+        let path = header("path").ok_or("no path header")?;
+        let bytes = match request.body() {
+            tauri::ipc::InvokeBody::Raw(bytes) => bytes.clone(),
+            tauri::ipc::InvokeBody::Json(_) => {
+                return Err("the layer arrived as JSON, not as bytes".into())
+            }
+        };
+        let (composite, _, _) = compose_layer(&bytes, margin)?;
+        let mut png = Vec::new();
+        image::codecs::png::PngEncoder::new(&mut png)
+            .write_image(
+                &composite.rgba,
+                composite.width,
+                composite.height,
+                image::ExtendedColorType::Rgba8,
+            )
+            .map_err(|err| err.to_string())?;
+        crate::export::write_new(std::path::Path::new(&path), &png)
     }
 
     /// Whether the window is shown, for the S1.7 Copy and Return check.

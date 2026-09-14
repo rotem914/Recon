@@ -675,6 +675,7 @@
     return { x: centre.x - dx * scale, y: centre.y - dy * scale };
   };
 
+  let currentNotice = '';
   const drawHud = () => {
     const target = model.editing || model.selected;
     const sizeShown = target ? (target.textSize || model.textSize) : model.textSize;
@@ -697,7 +698,8 @@
       `${modeLine}\n` +
       `zoom ${zoomText}   pan ${Math.round(model.pan.x)},${Math.round(model.pan.y)}   ` +
       `callouts ${model.callouts.length}   text ${sizeShown}px   dpr ${dpr()}\n` +
-      `0 fit  1 actual size  +/- zoom  wheel pan  Ctrl+wheel zoom  F11 fullscreen  PgUp/PgDn previous next  Ctrl +/- text size  arrows pan  ${model.mode === 'annotate' ? 'click to add' : 'drag to pan'}  Esc commit  Del remove  Ctrl+Z/Y undo redo  Ctrl+C copy  Ctrl+Enter copy and return  Ctrl+O open`;
+      `0 fit  1 actual size  +/- zoom  wheel pan  Ctrl+wheel zoom  F11 fullscreen  PgUp/PgDn previous next  Ctrl +/- text size  arrows pan  ${model.mode === 'annotate' ? 'click to add' : 'drag to pan'}  Esc commit  Del remove  Ctrl+Z/Y undo redo  Ctrl+C copy  Ctrl+Enter copy and return  Ctrl+S save as  Ctrl+O open` +
+      (currentNotice ? `\n${currentNotice}` : '');
   };
 
   // ---------------------------------------------------------------- the mode
@@ -962,9 +964,15 @@
       event.preventDefault();
       return;
     }
-    // Save As is S1.11 and Send to Rogers is stage 4: the stage column says these keys do
-    // nothing yet, and nothing includes the web view's own save page dialog.
-    if (event.ctrlKey && !event.altKey && (event.code === 'KeyS' || (event.shiftKey && event.key === 'Enter'))) {
+    // Save As, a new PNG file every time (§3.6). Taken while typing too, so the web view's
+    // own save page dialog never appears.
+    if (event.ctrlKey && !event.shiftKey && !event.altKey && event.code === 'KeyS') {
+      saveAs().catch((err) => console.error('save as', err));
+      event.preventDefault();
+      return;
+    }
+    // Send to Rogers is stage 4: the key is taken and does nothing yet.
+    if (event.ctrlKey && event.shiftKey && !event.altKey && event.key === 'Enter') {
       event.preventDefault();
       return;
     }
@@ -1264,14 +1272,15 @@
   // Copy the composed image (§3.6): the layer to the host, which composes it over the
   // untouched source and publishes the clipboard. The success line shows only after the
   // host said it succeeded, and it is a HUD line, not a dialog.
-  let flashTimer = null;
-  // A line under the HUD: for a moment when it is good news, until the next change when it
-  // is not. Never a dialog (§3.3: an actionable message, and the work stays).
+  let noticeTimer = null;
+  // A line under the HUD: for a moment when it is good news, until the next notice when it
+  // is not. Never a dialog (§3.3: an actionable message, and the work stays). The HUD
+  // draws it on every redraw, so a redraw for any other reason cannot wipe it.
   const notice = (text, ms) => {
+    currentNotice = text;
+    clearTimeout(noticeTimer);
+    if (ms) noticeTimer = setTimeout(() => { currentNotice = ''; drawHud(); }, ms);
     drawHud();
-    hud.textContent += `\n${text}`;
-    clearTimeout(flashTimer);
-    if (ms) flashTimer = setTimeout(drawHud, ms);
   };
   const copyComposed = async () => {
     let layer;
@@ -1317,6 +1326,24 @@
     return { ...report, hidden: true, copied: true, returned };
   };
 
+  // Save As (§3.6, S1.11): the composition as it is now goes to the host, which opens
+  // Windows' own Save As with the last export folder and a name derived from the source.
+  // The outcome comes back as an event: saved, nothing saved, or NOT SAVED with the
+  // reason; a name that exists is never written over, and the notice says which name was
+  // offered instead.
+  const saveAs = async () => {
+    if (!model.image.width) return;
+    let layer;
+    try {
+      layer = await exportLayer();
+      await invoke('editor_save_as', layer.bytes, { headers: { margin: layer.margin } });
+      notice('Save As is open', 0);
+    } catch (err) {
+      notice(`NOT SAVED: ${err}`, 0);
+      throw err;
+    }
+  };
+
   window.reconEditor = {
     model,
     loadImage,
@@ -1346,6 +1373,7 @@
     saveNow,
     markDirty,
     notice,
+    saveAs,
     snapshot,
     copyAndReturn,
     fitMargin,
@@ -1382,6 +1410,10 @@
         new Promise((resolve) => setTimeout(() => resolve(false), 3000)),
       ]);
       if (focused) invoke('editor_mark', { name: 'page focused' }).catch(() => {});
+    });
+    await window.__TAURI__.event.listen('save-as-offered', (event) => notice(event.payload.line, 0));
+    await window.__TAURI__.event.listen('save-as-done', (event) => {
+      notice(event.payload.line, event.payload.state === 'failed' ? 0 : 3000);
     });
     await window.__TAURI__.event.listen('save-now', async () => {
       try { await saveNow(); } finally { invoke('editor_saves_flushed').catch(() => {}); }

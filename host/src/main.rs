@@ -20,6 +20,7 @@ mod compose;
 mod config;
 mod dialog;
 mod editor;
+mod export;
 mod focus;
 mod folder;
 mod marks;

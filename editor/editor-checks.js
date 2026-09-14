@@ -1438,23 +1438,43 @@ export async function runChecks(editor, invoke) {
     check('with nothing to return to: copied, saved, hidden', r.copied === true && r.hidden === true && (await visible()) === false && r.returned.includes('no application'), r.returned);
     await invoke('editor_show');
 
-    // The target application has closed since the capture began: hidden, nothing activated.
-    await invoke('editor_stand_in', { on: true });
-    await invoke('editor_stand_in', { on: false });
-    editor.markDirty();
-    r = await editor.copyAndReturn();
-    check('the target has closed: hidden, nothing activated, said in the log line', r.hidden === true && r.returned.includes('has closed'), r.returned);
-    await invoke('editor_show');
+    // The stand-in application needs the foreground to be handed to it, which the system
+    // can refuse to a process nobody is interacting with; then these two are not run.
+    let standIn = true;
+    try {
+      await invoke('editor_stand_in', { on: true });
+    } catch (err) {
+      standIn = false;
+      skipped('the target has closed: hidden, nothing activated', `the stand-in window could not be opened in front: ${err}`);
+      skipped('the target is there: hidden, and the return names its outcome', 'the same');
+    }
+    if (standIn) {
+      // The target application has closed since the capture began: hidden, nothing activated.
+      await invoke('editor_stand_in', { on: false });
+      editor.markDirty();
+      r = await editor.copyAndReturn();
+      check('the target has closed: hidden, nothing activated, said in the log line', r.hidden === true && r.returned.includes('has closed'), r.returned);
+      await invoke('editor_show');
 
-    // The target is there: the focus goes back to it, or the system refuses, and either
-    // way the editor is hidden and the outcome is named, never guessed.
-    await invoke('editor_stand_in', { on: true });
-    editor.markDirty();
-    r = await editor.copyAndReturn();
-    check('the target is there: hidden, and the return names its outcome', r.hidden === true && (r.returned.includes('focus returned') || r.returned.includes('refused')), r.returned);
-    await invoke('editor_stand_in', { on: false });
+      // The target is there: the focus goes back to it, or the system refuses, and either
+      // way the editor is hidden and the outcome is named, never guessed.
+      let there = true;
+      try {
+        await invoke('editor_stand_in', { on: true });
+      } catch (err) {
+        there = false;
+        skipped('the target is there: hidden, and the return names its outcome', `the stand-in window could not be opened in front: ${err}`);
+      }
+      if (there) {
+        editor.markDirty();
+        r = await editor.copyAndReturn();
+        check('the target is there: hidden, and the return names its outcome', r.hidden === true && (r.returned.includes('focus returned') || r.returned.includes('refused')), r.returned);
+        await invoke('editor_stand_in', { on: false });
+        await invoke('editor_show');
+        check('the last return is what the host remembers', (await invoke('editor_last_return')) === r.returned);
+      }
+    }
     await invoke('editor_show');
-    check('the last return is what the host remembers', (await invoke('editor_last_return')) === r.returned);
 
     // The idle Escape: a failing store keeps the editor, a working one hides it.
     await invoke('editor_store_break', { on: true });
@@ -1467,6 +1487,69 @@ export async function runChecks(editor, invoke) {
     for (let i = 0; i < 40 && (await visible()); i += 1) await sleep(50);
     check('Escape with the save landing hides the editor', (await visible()) === false && model.save.state === 'saved');
     await invoke('editor_show');
+    model.callouts = [];
+    editor.layoutScene();
+  }
+
+  // ---------------------------------------------------------------- 26. S1.11: Save As, a new file every time
+  say('');
+  say('S1.11: Save As suggests a name derived from the source and marked as annotated, never the original, writes a new file, and offers a free name when the chosen one exists');
+  {
+    const hud = document.getElementById('hud');
+    const outDir = (await invoke('editor_store_reset')) + '\\exports';
+    const writeTo = async (path) => {
+      const layer = await editor.exportLayer();
+      return invoke('editor_save_as_write', layer.bytes, { headers: { margin: layer.margin, path } });
+    };
+
+    // A file: the name is the file's stem, marked; never the file's own name or folder.
+    const dir = await invoke('editor_make_folder');
+    let info = await invoke('editor_open_path', { path: `${dir}\\img2.png` });
+    await editor.loadImage(info);
+    let plan = await invoke('editor_save_as_plan');
+    check('a file: the suggested name is its stem marked as annotated', plan.name === 'img2 annotated.png', plan.name);
+    check('and never the original: the name differs from the file and is not its path', plan.name !== 'img2.png' && (plan.folder + '\\' + plan.name).toLowerCase() !== plan.source.toLowerCase(),
+      `${plan.folder}\\${plan.name} against ${plan.source}`);
+
+    // A capture: its time, marked.
+    const shot = await invoke('editor_capture_probe', { width: 300, height: 200 });
+    await editor.loadImage(shot);
+    plan = await invoke('editor_save_as_plan');
+    check('a capture: the suggested name is its time marked as annotated', /^capture \d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2} annotated\.png$/.test(plan.name), plan.name);
+
+    // The write: a new file with the composition, then the same name again is refused and
+    // a free one offered, the first file untouched.
+    const note = editor.createCallout({ x: 40, y: 40 });
+    note.text = 'exported';
+    editor.layoutScene();
+    editor.record();
+    const first = await writeTo(outDir + '\\shot annotated.png');
+    check('Save As writes a new file with the composition', first.New !== undefined && first.New.endsWith('shot annotated.png'), JSON.stringify(first).slice(0, 120));
+    const listed = await invoke('editor_store_list').catch(() => []);
+    const again = await writeTo(outDir + '\\shot annotated.png');
+    check('the same name again is not written over, and a free name is offered', again.Exists !== undefined && again.Exists.offered.endsWith('shot annotated (2).png'), JSON.stringify(again).slice(0, 160));
+    const third = await writeTo(again.Exists.offered);
+    check('the offered name writes', third.New !== undefined && third.New.endsWith('shot annotated (2).png'));
+    plan = await invoke('editor_save_as_plan');
+    check('the next Save As opens on the folder last exported to', plan.folder.toLowerCase() === outDir.toLowerCase(), plan.folder);
+
+    // The dialog itself: Ctrl+S opens it, Escape closes it with nothing saved, when ours
+    // is the window in front.
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true, bubbles: true, cancelable: true }));
+    await sleep(1500);
+    let outcome = await invoke('editor_save_as_outcome');
+    check('Ctrl+S opens Save As, and the page says so', outcome.state === 'open' && hud.textContent.includes('Save As is open'), outcome.state);
+    const sent = await invoke('editor_press_escape');
+    for (let i = 0; i < 40 && sent && outcome.state === 'open'; i += 1) {
+      await sleep(100);
+      outcome = await invoke('editor_save_as_outcome');
+    }
+    if (!sent) {
+      skipped('Escape closes Save As with nothing saved', 'another application is in front, so no key was sent; the dialog is left open');
+    } else {
+      check('Escape closes Save As with nothing saved, and the page says so', outcome.state === 'cancelled' && hud.textContent.includes('nothing saved'), outcome.line);
+    }
+    void listed;
     model.callouts = [];
     editor.layoutScene();
   }

@@ -47,6 +47,7 @@ windows = { version = "0.61", features = [
     "Win32_System_Registry",
     "Win32_UI_Shell",
     "Win32_UI_Shell_Common",
+    "Win32_System_SystemInformation",
 ] }
 
 # The one decode route (part 6a): PNG, JPEG, BMP, GIF and WebP here, SVG through resvg,
