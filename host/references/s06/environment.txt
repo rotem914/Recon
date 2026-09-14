@@ -1,6 +1,6 @@
 S0.6 reference environment, written 2026-09-14
 web view: WebView2 152.0.4191.66
-window: 1280x800 physical for 1280x672 css, scale factor 1, window dpi 96 (100%)
+window: 1280x800 physical for 1280x768 css, scale factor 1, window dpi 96 (100%)
 displays: 5120x1440 at 100%
 note font: ui-sans-serif, "Segoe UI", system-ui, sans-serif
 tolerance: a channel difference above 48, premultiplied, counts a pixel as differing; a reference passes at 0.5% or fewer differing pixels, and a wrap or box change fails at any tolerance
