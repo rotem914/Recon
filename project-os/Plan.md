@@ -377,7 +377,7 @@ is a contract broken on day one.
 | Delete outside text editing | Delete the selected annotation | 1, built; Backspace does the same |
 | Undo and redo | While a note is being edited, undo works on the typing and never reaches object operations. Once editing ends, that text change takes its place in document history as one grouped step | 1 |
 | `Ctrl+O` | Open an image file | 1, built at S1.2 |
-| Previous and next image, outside text editing | Walk the active navigation context, folder or Recon history, in the §3.4 order | 1, built at S1.4: PageDown and PageUp, Home and End for the first and last; the ends stop |
+| Previous and next image, outside text editing | Walk the active navigation context, folder or Recon history, in the §3.4 order | 1, built at S1.4 for the folder and at S1.9 for history: PageDown and PageUp, Home and End for the first and last; the ends stop |
 | Fit to window · actual size · zoom in · zoom out | Viewing controls, no effect on export resolution | 1, built: keys, the wheel to pan, Ctrl with the wheel to zoom around the pointer |
 | Fullscreen | Enter fullscreen | 1, built: F11, and the same key or Escape out |
 | Annotate, and back to viewing | Switch the window between viewing, where no click creates anything, and annotation, where the callout tool is live (§3.3). The work stays either way | 1, built at S1.5: the `A` key and a button at the window's top right, both, Rotem's call on 2026-09-14 |
@@ -1882,9 +1882,19 @@ work rather than a feature count.
       its raster size are each, after the reload, byte for byte the frame decoded afresh
       from the file. Not run: a real process restart, which the reload stands in for;
       Rotem's hand closes that one. Frame stepping inside a document stays F79.
-- [ ] S1.9 History navigation: previous and next through documents, captures and annotated
+- [x] S1.9 History navigation: previous and next through documents, captures and annotated
       files alike, the position indicator, shortcuts to the first and last, and the context
       activation rules in §3.4. Model: Opus 5.
+      **Built 2026-09-14, on Fable at Rotem's word to keep running.** Recon history is the
+      documents in creation order, oldest first, captures and annotated files alike; the
+      same PageUp, PageDown, Home and End walk it, the ends stop, and the HUD says "2 of
+      5 in history" for a capture as it says "3 of 4 in folder" for a file. The four
+      activation rules of §3.4 are one flag in the host: a capture sets history, a
+      document shown from history sets history, opening a file sets the folder, and
+      Annotate touches nothing, so the checks see the folder stay active at the same
+      position after Annotate, and a capture after that at 5 of 5 with the annotated file
+      at 4. A document walked to from history stands on its own preserved image, named
+      after its file, with no file open behind it (F82).
 - [ ] S1.10 Copy and Return, including every failure path: a failed clipboard, a failed save,
       a refused activation, a closed target application, and a user who moved on
       mid-operation. Model: Fable 5.1, every branch is a way to lose work.

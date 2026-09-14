@@ -1314,6 +1314,76 @@ export async function runChecks(editor, invoke) {
     editor.layoutScene();
   }
 
+  // ---------------------------------------------------------------- 24. S1.9: history navigation
+  say('');
+  say('S1.9: previous and next through the documents, captures and annotated files alike, the position named, and the two lists never move each other');
+  {
+    const hud = document.getElementById('hud');
+    await invoke('editor_store_reset');
+    const shots = [];
+    for (const [w, h, text] of [[300, 200, 'first capture'], [320, 200, 'second capture'], [340, 200, 'third capture']]) {
+      const info = await invoke('editor_capture_probe', { width: w, height: h });
+      await editor.loadImage(info);
+      const c = editor.createCallout({ x: 50, y: 50 });
+      c.text = text;
+      editor.layoutScene();
+      editor.record();
+      shots.push(info);
+    }
+    check('a capture activates history, and the newest is last', model.image.context === 'history' && model.image.position === 3 && model.image.total === 3,
+      `${model.image.position} of ${model.image.total} in ${JSON.stringify(model.image.context)}`);
+    check('the HUD names it', hud.textContent.includes('3 of 3 in history'));
+
+    let info = await invoke('editor_navigate', { step: 'previous' });
+    await editor.loadImage(info);
+    check('previous is the older document, with its own notes', info.document_id === shots[1].document_id && info.position === 2 && info.width === 320
+      && model.callouts.length === 1 && model.callouts[0].text === 'second capture', `${info.position} of ${info.total}, ${model.callouts[0] && model.callouts[0].text}`);
+    info = await invoke('editor_navigate', { step: 'first' });
+    await editor.loadImage(info);
+    check('first is the oldest', info.document_id === shots[0].document_id && info.position === 1 && model.callouts[0].text === 'first capture');
+    info = await invoke('editor_navigate', { step: 'previous' });
+    check('the start stays', info.document_id === shots[0].document_id && info.position === 1);
+    info = await invoke('editor_navigate', { step: 'last' });
+    await editor.loadImage(info);
+    check('last is the newest', info.document_id === shots[2].document_id && info.position === 3 && model.callouts[0].text === 'third capture');
+    info = await invoke('editor_navigate', { step: 'next' });
+    check('the end stays', info.document_id === shots[2].document_id && info.position === 3);
+
+    // The keys walk it too.
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp', code: 'PageUp', bubbles: true, cancelable: true }));
+    for (let i = 0; i < 40 && model.image.document_id !== shots[1].document_id; i += 1) await sleep(50);
+    check('PageUp walks history', model.image.document_id === shots[1].document_id && model.image.position === 2);
+
+    // Opening a file activates the folder; walking it never moves through history.
+    const dir = await invoke('editor_make_folder');
+    const at = (name) => `${dir}\\${name}`;
+    info = await invoke('editor_open_path', { path: at('img2.png') });
+    await editor.loadImage(info);
+    check('opening a file activates the folder', info.context === 'folder' && info.total > 0 && info.managed === false, `${info.position} of ${info.total} in ${info.context}`);
+    info = await invoke('editor_navigate', { step: 'next' });
+    await editor.loadImage(info);
+    check('next walks the folder, not history', info.context === 'folder' && info.file === 'img10.png' && info.managed === false);
+
+    // Annotating the file creates a document and changes no context; history has grown
+    // by one, but the folder stays active at the same position.
+    const beforeAnnotate = { position: info.position, total: info.total };
+    await editor.setMode('annotate');
+    check('Annotate keeps the folder context and the position', model.image.context === 'folder' && model.image.position === beforeAnnotate.position && model.image.total === beforeAnnotate.total && model.image.managed === true,
+      `${model.image.position} of ${model.image.total} in ${model.image.context}`);
+
+    // A new capture: history again, four documents now, the annotated file among them.
+    const fourth = await invoke('editor_capture_probe', { width: 360, height: 200 });
+    await editor.loadImage(fourth);
+    check('a capture returns to history, which now holds the annotated file too', fourth.context === 'history' && fourth.position === 5 && fourth.total === 5,
+      `${fourth.position} of ${fourth.total}`);
+    info = await invoke('editor_navigate', { step: 'previous' });
+    await editor.loadImage(info);
+    check('previous from the capture is the annotated file, by its document, named', info.file === 'img10.png' && info.managed === true && info.context === 'history' && info.position === 4,
+      `${info.file} ${info.position} of ${info.total} in ${info.context}`);
+    model.callouts = [];
+    editor.layoutScene();
+  }
+
   say('');
   const unrun = notRun ? `, ${notRun} not run` : '';
   if (failures === 0) {

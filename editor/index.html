@@ -681,11 +681,11 @@
     const zoomText = Math.abs(model.zoom - model.fitZoom) < 0.0005
       ? `fit (${(model.zoom * 100).toFixed(0)}%)`
       : `${(model.zoom * 100).toFixed(0)}%`;
-    const where = model.image.file
+    const where = (model.image.file
       ? `${model.image.file}  ${model.image.kind}` +
-        (model.image.count > 1 ? `  ${model.image.index + 1} of ${model.image.count}  [ ] to step` : '') +
-        (model.image.total > 0 ? `  ${model.image.position} of ${model.image.total} in ${model.image.context}` : '')
-      : model.image.source;
+        (model.image.count > 1 ? `  ${model.image.index + 1} of ${model.image.count}  [ ] to step` : '')
+      : model.image.source) +
+      (model.image.total > 0 ? `  ${model.image.position} of ${model.image.total} in ${model.image.context}` : '');
     const ago = (s) => (s < 60 ? 'just now' : s < 3600 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`);
     const saveText = model.save.state === 'failed' ? `   NOT SAVED: ${model.save.error}`
       : model.save.state === 'saving' ? '   saving' : (model.image.managed ? '   saved' : '');
@@ -697,7 +697,7 @@
       `${modeLine}\n` +
       `zoom ${zoomText}   pan ${Math.round(model.pan.x)},${Math.round(model.pan.y)}   ` +
       `callouts ${model.callouts.length}   text ${sizeShown}px   dpr ${dpr()}\n` +
-      `0 fit  1 actual size  +/- zoom  wheel pan  Ctrl+wheel zoom  F11 fullscreen  PgUp/PgDn folder  Ctrl +/- text size  arrows pan  ${model.mode === 'annotate' ? 'click to add' : 'drag to pan'}  Esc commit  Del remove  Ctrl+Z/Y undo redo  Ctrl+C copy  Ctrl+Enter copy and return  Ctrl+O open`;
+      `0 fit  1 actual size  +/- zoom  wheel pan  Ctrl+wheel zoom  F11 fullscreen  PgUp/PgDn previous next  Ctrl +/- text size  arrows pan  ${model.mode === 'annotate' ? 'click to add' : 'drag to pan'}  Esc commit  Del remove  Ctrl+Z/Y undo redo  Ctrl+C copy  Ctrl+Enter copy and return  Ctrl+O open`;
   };
 
   // ---------------------------------------------------------------- the mode

@@ -100,6 +100,10 @@ pub struct Editor {
     document: Mutex<Option<Document>>,
     /// The folder the opened file came from, listed once, for previous and next (S1.4).
     folder: Mutex<Option<crate::folder::Context>>,
+    /// Which list previous and next walk (§3.4): Recon history when true, the folder
+    /// otherwise. A capture, or a document shown from history, sets it; opening a file
+    /// clears it; Annotate never touches it.
+    history_active: std::sync::atomic::AtomicBool,
 }
 
 impl Editor {
@@ -108,6 +112,7 @@ impl Editor {
             image: Mutex::new(None),
             document: Mutex::new(None),
             folder: Mutex::new(None),
+            history_active: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -472,6 +477,8 @@ fn show_document(id: u64) -> Result<(), String> {
     if let Ok(mut slot) = state().folder.lock() {
         *slot = None;
     }
+    // Selecting a document from Recon history activates history navigation (§3.4).
+    state().history_active.store(true, Ordering::SeqCst);
     CURRENT_ID.store(id, Ordering::SeqCst);
     state().set_frame(frame);
     if let Ok(app) = app() {
@@ -750,6 +757,8 @@ pub fn show(app: &AppHandle) -> Result<u128, String> {
 /// and the window is shown. Returns how long the show took.
 pub fn present(frame: Frame) -> Result<u128, String> {
     state().set_document(None);
+    // Taking a capture activates history navigation (§3.4).
+    state().history_active.store(true, Ordering::SeqCst);
     present_frame(frame)
 }
 
@@ -830,6 +839,8 @@ pub fn open_path(path: &std::path::Path) -> Result<u128, String> {
             _ => *slot = crate::folder::build(path),
         }
     }
+    // Opening an external file activates folder navigation (§3.4).
+    state().history_active.store(false, Ordering::SeqCst);
     present_frame(frame_of(decoded, name))
 }
 
@@ -844,6 +855,9 @@ pub fn editor_navigate(step: String) -> Result<ImageInfo, String> {
         "last" => crate::folder::Step::Last,
         other => return Err(format!("{other:?} is not a step")),
     };
+    if state().history_active.load(Ordering::SeqCst) {
+        return navigate_history(step);
+    }
     loop {
         let target = {
             let slot = state()
@@ -873,6 +887,42 @@ pub fn editor_navigate(step: String) -> Result<ImageInfo, String> {
             }
         }
     }
+}
+
+/// Recon history, in creation order, oldest first: every managed document, captures and
+/// annotated files alike (§3.3). Previous is older, next is newer, the ends stop.
+fn history_ids() -> Vec<u64> {
+    let mut ids: Vec<(u64, std::time::SystemTime)> = DOCUMENTS
+        .lock()
+        .map(|documents| documents.iter().map(|d| (d.id, d.created)).collect())
+        .unwrap_or_default();
+    ids.sort_by_key(|(id, created)| (*created, *id));
+    ids.into_iter().map(|(id, _)| id).collect()
+}
+
+/// Where the document on screen sits in history, one-based, and how many there are.
+fn history_position() -> (u32, u32) {
+    let ids = history_ids();
+    let at = ids.iter().position(|id| *id == current_document_id());
+    (at.map(|i| i as u32 + 1).unwrap_or(0), ids.len() as u32)
+}
+
+fn navigate_history(step: crate::folder::Step) -> Result<ImageInfo, String> {
+    let ids = history_ids();
+    let Some(at) = ids.iter().position(|id| *id == current_document_id()) else {
+        return editor_image_info();
+    };
+    let last = ids.len() - 1;
+    let target = match step {
+        crate::folder::Step::Previous => at.checked_sub(1),
+        crate::folder::Step::Next => (at < last).then_some(at + 1),
+        crate::folder::Step::First => (at != 0).then_some(0),
+        crate::folder::Step::Last => (at != last).then_some(last),
+    };
+    if let Some(index) = target {
+        show_document(ids[index])?;
+    }
+    editor_image_info()
 }
 
 fn frame_of(decoded: source::DecodedFrame, name: &'static str) -> Frame {
@@ -1178,15 +1228,24 @@ pub fn editor_image_info() -> Result<ImageInfo, String> {
     } else {
         (file, index)
     };
-    let (position, total, context) = match state().folder.lock() {
-        Ok(slot) => match slot.as_ref() {
-            Some(ctx) if !file.is_empty() => {
-                let (p, t) = ctx.position();
-                (p, t, "folder".to_string())
-            }
-            _ => (0, 0, String::new()),
-        },
-        Err(_) => (0, 0, String::new()),
+    let (position, total, context) = if state().history_active.load(Ordering::SeqCst) {
+        let (p, t) = history_position();
+        if t > 0 {
+            (p, t, "history".to_string())
+        } else {
+            (0, 0, String::new())
+        }
+    } else {
+        match state().folder.lock() {
+            Ok(slot) => match slot.as_ref() {
+                Some(ctx) if !file.is_empty() => {
+                    let (p, t) = ctx.position();
+                    (p, t, "folder".to_string())
+                }
+                _ => (0, 0, String::new()),
+            },
+            Err(_) => (0, 0, String::new()),
+        }
     };
     let standing = standing();
     Ok(ImageInfo {
