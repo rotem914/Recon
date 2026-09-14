@@ -2008,8 +2008,14 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       and keeping the others, a capture after the empty state.
 - [ ] S2.7 Restore from the trash: a way inside Recon to bring a trashed document back
       within its thirty days. Model: Opus 5, the folder moves back the way it went.
-- [ ] S2.6 Export beyond PNG: Save As offering JPEG beside PNG, the same never-overwrite
+- [x] S2.6 Export beyond PNG: Save As offering JPEG beside PNG, the same never-overwrite
       path, the quality fixed rather than asked. Model: Opus 5, the path exists.
+      **Built 2026-09-14, on Fable at Rotem's word.** The Save As dialog offers JPEG beside
+      PNG, PNG first; the name's extension follows the type chosen, and the write encodes
+      by the extension: JPEG at quality 90, flattened over white since JPEG has no alpha,
+      PNG otherwise, through the same never-overwrite path. Checked: a .jpg name writes a
+      JPEG of the composition's size, a .png name a PNG, and the same JPEG name again is
+      offered "(2)".
 
 Stage 1 is the release that replaces both current tools. It ships without the thumbnail
 strip, without export options beyond PNG, and without Rogers.

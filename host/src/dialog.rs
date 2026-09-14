@@ -34,12 +34,22 @@ pub fn save_png(
             let dialog: IFileSaveDialog =
                 CoCreateInstance(&FileSaveDialog, None, CLSCTX_INPROC_SERVER)
                     .map_err(|err| format!("the Save As dialog could not be created: {err}"))?;
+            // PNG first, the default; JPEG beside it (S2.6). The dialog swaps the name's
+            // extension when the type is switched, and the write encodes by the extension.
             let png_name = wide("PNG image");
             let png_spec = wide("*.png");
-            let filters = [COMDLG_FILTERSPEC {
-                pszName: PCWSTR(png_name.as_ptr()),
-                pszSpec: PCWSTR(png_spec.as_ptr()),
-            }];
+            let jpeg_name = wide("JPEG image");
+            let jpeg_spec = wide("*.jpg;*.jpeg");
+            let filters = [
+                COMDLG_FILTERSPEC {
+                    pszName: PCWSTR(png_name.as_ptr()),
+                    pszSpec: PCWSTR(png_spec.as_ptr()),
+                },
+                COMDLG_FILTERSPEC {
+                    pszName: PCWSTR(jpeg_name.as_ptr()),
+                    pszSpec: PCWSTR(jpeg_spec.as_ptr()),
+                },
+            ];
             dialog
                 .SetFileTypes(&filters)
                 .map_err(|err| err.to_string())?;

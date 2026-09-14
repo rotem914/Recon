@@ -80,6 +80,36 @@ pub fn available(folder: &Path, name: &str) -> PathBuf {
     ))
 }
 
+/// The bytes for a path: JPEG for a `.jpg` or `.jpeg` name, at a fixed quality of 90 and
+/// flattened over white since JPEG has no alpha, PNG for anything else (S2.6). The quality
+/// is fixed rather than asked, as the plan says.
+pub fn encode(rgba: &[u8], width: u32, height: u32, path: &Path) -> Result<Vec<u8>, String> {
+    use image::ImageEncoder;
+    let ext = path
+        .extension()
+        .map(|e| e.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    let mut out = Vec::new();
+    if ext == "jpg" || ext == "jpeg" {
+        let count = (width as usize) * (height as usize);
+        let mut rgb = Vec::with_capacity(count * 3);
+        for px in rgba.chunks_exact(4) {
+            let a = px[3] as u32;
+            for c in &px[..3] {
+                rgb.push(((*c as u32 * a + 255 * (255 - a)) / 255) as u8);
+            }
+        }
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 90)
+            .write_image(&rgb, width, height, image::ExtendedColorType::Rgb8)
+            .map_err(|err| format!("the JPEG did not encode: {err}"))?;
+    } else {
+        image::codecs::png::PngEncoder::new(&mut out)
+            .write_image(rgba, width, height, image::ExtendedColorType::Rgba8)
+            .map_err(|err| format!("the PNG did not encode: {err}"))?;
+    }
+    Ok(out)
+}
+
 /// What a write attempt came to.
 #[derive(Debug, PartialEq, Eq, serde::Serialize)]
 pub enum Written {

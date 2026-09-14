@@ -1190,6 +1190,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         checks::editor_trash_age,
         checks::editor_sweep_trash,
         checks::editor_save_as_outcome,
+        checks::editor_file_kind,
         checks::editor_save_as_plan,
         checks::editor_save_as_write,
         checks::editor_window_title,
@@ -1608,16 +1609,8 @@ pub fn editor_save_as(app: AppHandle, request: tauri::ipc::Request<'_>) -> Resul
     set_save_as_outcome(SaveAsOutcome::open());
     std::thread::spawn(move || {
         let started = Instant::now();
-        let mut png = Vec::new();
-        let encoded = image::codecs::png::PngEncoder::new(&mut png).write_image(
-            &composite.rgba,
-            composite.width,
-            composite.height,
-            image::ExtendedColorType::Rgba8,
-        );
-        let outcome = match encoded {
-            Err(err) => SaveAsOutcome::failed(format!("the PNG did not encode: {err}")),
-            Ok(()) => {
+        let outcome = {
+            {
                 let owner = windows::Win32::Foundation::HWND(owner as *mut _);
                 let mut folder = folder;
                 let mut name = name;
@@ -1625,7 +1618,14 @@ pub fn editor_save_as(app: AppHandle, request: tauri::ipc::Request<'_>) -> Resul
                     match crate::dialog::save_png(Some(owner), &folder, &name) {
                         Ok(None) => break SaveAsOutcome::cancelled(),
                         Err(err) => break SaveAsOutcome::failed(err),
-                        Ok(Some(chosen)) => match crate::export::write_new(&chosen, &png) {
+                        Ok(Some(chosen)) => match crate::export::encode(
+                            &composite.rgba,
+                            composite.width,
+                            composite.height,
+                            &chosen,
+                        )
+                        .and_then(|bytes| crate::export::write_new(&chosen, &bytes))
+                        {
                             Ok(crate::export::Written::New(path)) => {
                                 break SaveAsOutcome::saved(path, composite.width, composite.height)
                             }
@@ -3142,6 +3142,29 @@ mod checks {
         crate::store::sweep_trash(crate::store::TRASH_DAYS)
     }
 
+    #[derive(serde::Serialize)]
+    pub struct FileKind {
+        pub format: String,
+        pub width: u32,
+        pub height: u32,
+        pub bytes: u64,
+    }
+
+    /// What a file on disk is, by its bytes: the S2.6 check reads a JPEG back.
+    #[tauri::command]
+    pub fn editor_file_kind(path: String) -> Result<FileKind, String> {
+        let bytes = std::fs::read(&path).map_err(|err| err.to_string())?;
+        let format = image::guess_format(&bytes).map_err(|err| err.to_string())?;
+        let decoded =
+            image::load_from_memory_with_format(&bytes, format).map_err(|err| err.to_string())?;
+        Ok(FileKind {
+            format: format!("{format:?}").to_ascii_lowercase(),
+            width: decoded.width(),
+            height: decoded.height(),
+            bytes: bytes.len() as u64,
+        })
+    }
+
     /// The last Save As, as the checks read it.
     #[tauri::command]
     pub fn editor_save_as_outcome() -> SaveAsOutcome {
@@ -3195,16 +3218,10 @@ mod checks {
             }
         };
         let (composite, _, _) = compose_layer(&bytes, margin)?;
-        let mut png = Vec::new();
-        image::codecs::png::PngEncoder::new(&mut png)
-            .write_image(
-                &composite.rgba,
-                composite.width,
-                composite.height,
-                image::ExtendedColorType::Rgba8,
-            )
-            .map_err(|err| err.to_string())?;
-        crate::export::write_new(std::path::Path::new(&path), &png)
+        let target = std::path::Path::new(&path);
+        let encoded =
+            crate::export::encode(&composite.rgba, composite.width, composite.height, target)?;
+        crate::export::write_new(target, &encoded)
     }
 
     /// Whether the window is shown, for the S1.7 Copy and Return check.

@@ -1716,6 +1716,34 @@ export async function runChecks(editor, invoke) {
     editor.layoutScene();
   }
 
+  // ---------------------------------------------------------------- 30. S2.6: JPEG beside PNG
+  say('');
+  say('S2.6: Save As writes a JPEG when the chosen name says so, flattened over white at a fixed quality, through the same never-overwrite path');
+  {
+    const outDir = (await invoke('editor_store_reset')) + '\\exports';
+    const shot = await invoke('editor_capture_probe', { width: 300, height: 200 });
+    await editor.loadImage(shot);
+    const c = editor.createCallout({ x: 40, y: 40 });
+    c.text = 'both formats';
+    editor.layoutScene();
+    editor.record();
+    const writeTo = async (path) => {
+      const layer = await editor.exportLayer();
+      return invoke('editor_save_as_write', layer.bytes, { headers: { margin: layer.margin, path } });
+    };
+    const jpg = await writeTo(outDir + '\\shot annotated.jpg');
+    const jpgKind = jpg.New ? await invoke('editor_file_kind', { path: jpg.New }) : null;
+    check('a .jpg name writes a JPEG of the composition', !!jpgKind && jpgKind.format === 'jpeg' && jpgKind.width === 300 + model.margin.left + model.margin.right && jpgKind.height === 200 + model.margin.top + model.margin.bottom,
+      jpgKind ? `${jpgKind.format} ${jpgKind.width}x${jpgKind.height}, ${jpgKind.bytes} bytes` : JSON.stringify(jpg));
+    const png = await writeTo(outDir + '\\shot annotated.png');
+    const pngKind = png.New ? await invoke('editor_file_kind', { path: png.New }) : null;
+    check('a .png name still writes a PNG', !!pngKind && pngKind.format === 'png' && pngKind.width === jpgKind.width, pngKind ? pngKind.format : JSON.stringify(png));
+    const again = await writeTo(outDir + '\\shot annotated.jpg');
+    check('the same JPEG name is never written over, a free one is offered', again.Exists !== undefined && again.Exists.offered.endsWith('shot annotated (2).jpg'), JSON.stringify(again).slice(0, 120));
+    model.callouts = [];
+    editor.layoutScene();
+  }
+
   say('');
   const unrun = notRun ? `, ${notRun} not run` : '';
   if (failures === 0) {
