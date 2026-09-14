@@ -94,6 +94,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-14 · The timeline is a window onto the list, with no View More, and its thumbnail file is 320 wide.
 - 2026-09-15 · Start with Windows is one value under the user's Run key, and a logon start shows no window.
 - 2026-09-14 · With no tool in hand a drag pans the picture, and Space held pans it whatever tool is in hand.
+- 2026-09-15 · A pan drag slides the picture already painted and asks for one region at a time.
 
 ---
 
@@ -1092,3 +1093,37 @@ shows on in the tray; revisit if that confuses. The value names the executable t
 wrote it, so a moved or rebuilt-elsewhere Recon needs the tick off and on again. A second
 instance started with `--startup` while one runs hands over to the running one, which
 shows its window, the same as any second start.
+
+---
+
+## 2026-09-15 · A pan drag slides the picture already painted and asks for one region at a time
+
+### Context
+
+Rotem found that a drag moved the picture only when the mouse was released. The page asked
+the host for a region on every move, and part 5's display policy drops an answer that a
+newer request has overtaken; moves come faster than a region comes back, so every answer
+was dropped until the pointer stopped.
+
+### Options
+
+1. Stop dropping late answers during a drag.
+2. Ask for a region at most once a frame.
+3. Slide what is already painted with the pointer, placed by its region's own origin, and
+   ask for one region at a time, the newest pan as each one lands.
+
+### Decision
+
+Option 3, mine, on Rotem's report. Option 1 paints a region under a pan it was not asked
+for, so the picture sits away from the notes by however far the pointer moved meanwhile.
+Option 2 still stalls whenever a round trip takes longer than a frame, which a large capture
+does. The drop stays, and within a drag it never fires, since no newer request is made
+while one is on its way.
+
+### Consequences
+
+The picture and the notes follow the pointer at once, and the leading edge fills in as each
+region lands. While the drag lasts the canvas is placed by its region's origin rather than
+snapped to a physical pixel; the drag's end paints the ordinary way, so the view at rest is
+the one F74 asks for. Other input that keeps coming, a fast spin of the wheel, still asks on
+every step; revisit if that shows the same stall.

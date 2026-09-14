@@ -411,7 +411,10 @@
     canvas.style.height = `${height / dpr()}px`;
     placeComposition(vp);
     context.putImageData(new ImageData(new Uint8ClampedArray(bytes), width, height), 0, 0);
-    lastRegion = { x, y, w: srcW, h: srcH, width, height, ms: Math.round(performance.now() - askedAt) };
+    lastRegion = { x, y, w: srcW, h: srcH, width, height, zoom: model.zoom, ms: Math.round(performance.now() - askedAt) };
+    // A pan drag may have moved on while this region was on its way: it is placed by its own
+    // origin, so it lines up with the notes until the next one lands (Rotem, 2026-09-15).
+    if (drag && drag.kind === 'pan') slideCanvas(lastRegion);
     console.log(`painted ${width}x${height} at zoom ${model.zoom.toFixed(3)} in ${lastRegion.ms} ms`);
     layoutScene();
     drawHud();
@@ -452,6 +455,15 @@
       mat.style.width = `${compW}px`;
       mat.style.height = `${compH}px`;
     }
+  };
+
+  // During a pan drag the picture on the canvas is placed by the origin of the region it
+  // holds, under the pan as it is now, so it slides with the pointer and stays registered
+  // with the notes until the next region lands (Rotem, 2026-09-15).
+  const slideCanvas = (region) => {
+    if (!region || region.zoom !== model.zoom) return;
+    canvas.style.left = `${model.offset.x + ((region.x - model.pan.x) * model.zoom) / dpr()}px`;
+    canvas.style.top = `${model.offset.y + ((region.y - model.pan.y) * model.zoom) / dpr()}px`;
   };
 
   // ---------------------------------------------------------------- the callout layer
@@ -1528,12 +1540,32 @@
     startEditing(callout);
   });
 
+  // A drag moves faster than a region comes back, and every newer request makes the answer
+  // still on its way stale (part 5), so asking on every move painted nothing until the
+  // pointer stopped. During a pan drag one region is asked for at a time, the newest pan as
+  // soon as the last one lands (Rotem, 2026-09-15).
+  let dragRegion = null;
+  let dragRegionAgain = false;
+  const paintWhileDragging = () => {
+    if (dragRegion) { dragRegionAgain = true; return; }
+    dragRegion = paintRegion().catch((err) => console.error('pan', err)).finally(() => {
+      dragRegion = null;
+      if (dragRegionAgain) { dragRegionAgain = false; paintWhileDragging(); }
+    });
+  };
+
   stage.addEventListener('pointermove', (event) => {
     if (!drag) return;
     if (drag.kind === 'pan') {
       model.pan.x = drag.pan.x - ((event.clientX - drag.x) * dpr()) / model.zoom;
       model.pan.y = drag.pan.y - ((event.clientY - drag.y) * dpr()) / model.zoom;
-      paintRegion();
+      // What is already painted, and the notes, follow the pointer at once; the region under
+      // the new pan comes in behind them.
+      clampPan();
+      placeComposition(viewport());
+      slideCanvas(lastRegion);
+      layoutScene();
+      paintWhileDragging();
       return;
     }
     const point = toImage(event);
@@ -1571,6 +1603,9 @@
   const endDrag = () => {
     if (!drag) return;
     const moved = drag.kind !== 'pan';
+    // A pan that moved ends painted the ordinary way, the canvas back on a physical pixel
+    // (F74) after sliding by its region's origin while the drag lasted (Rotem, 2026-09-15).
+    const panned = drag.kind === 'pan' && (model.pan.x !== drag.pan.x || model.pan.y !== drag.pan.y);
     // A drawn shape with no length is a click, not a shape, and it takes no number, so
     // nothing of it reaches the history.
     if (drag.kind === 'draw' && Math.hypot(drag.shape.b.x - drag.shape.a.x, drag.shape.b.y - drag.shape.a.y) < 4) {
@@ -1578,6 +1613,7 @@
       model.nextShape -= 1;
     }
     drag = null;
+    if (panned) paintRegion();
     // A dropped bubble takes, or gives back, its margin, and is one step of history.
     settle();
     if (moved) record();
@@ -2151,6 +2187,7 @@
     setPlain,
     canvas,
     context,
+    lastRegion: () => lastRegion,
   };
 
   const boot = async () => {

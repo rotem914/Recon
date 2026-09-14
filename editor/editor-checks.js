@@ -1852,6 +1852,25 @@ export async function runChecks(editor, invoke) {
     raw('pointerup', mid.x + 40, mid.y + 30);
     check('with no tool a drag on the picture pans it and creates nothing', model.pan.x < panFrom.x && model.pan.y < panFrom.y && model.callouts.length === 0 && model.shapes.length === 0,
       `pan ${panFrom.x.toFixed(1)},${panFrom.y.toFixed(1)} to ${model.pan.x.toFixed(1)},${model.pan.y.toFixed(1)}`);
+    // Rotem, 2026-09-15: the picture moves with the pointer, not on release. At the first
+    // move what is painted has already slid by the move, and while moves keep coming closer
+    // together than a region's round trip, regions under newer pans still land.
+    await editor.paintRegion();
+    const regionBefore = editor.lastRegion();
+    const leftBefore = parseFloat(editor.canvas.style.left) || 0;
+    raw('pointerdown', mid.x, mid.y);
+    raw('pointermove', mid.x + 40, mid.y);
+    const slid = (parseFloat(editor.canvas.style.left) || 0) - leftBefore;
+    for (let i = 1; i <= 60; i += 1) {
+      raw('pointermove', mid.x + 40 + i * 2, mid.y + i);
+      await sleep(8);
+    }
+    const regionDuring = editor.lastRegion();
+    raw('pointerup', mid.x + 160, mid.y + 60);
+    check('a drag moves the picture while the pointer moves, not on release: it slides at the first move, and regions land before the pointer lets go',
+      Math.abs(slid - 40) <= 5 && !!regionDuring && regionDuring !== regionBefore && regionDuring.x !== regionBefore.x,
+      `slid ${slid.toFixed(1)} css px for a 40 px move; region x ${regionBefore && regionBefore.x} then ${regionDuring && regionDuring.x} before the release, a round trip ${regionDuring && regionDuring.ms} ms`);
+    await editor.paintRegion();
     await editor.setZoom(1);
     press({ key: 'l', code: 'KeyL' });
     const arrowButton = document.querySelector('#tools [data-tool="arrow"]');
