@@ -93,7 +93,7 @@ pub fn encode(rgba: &[u8], width: u32, height: u32, path: &Path) -> Result<Vec<u
     if ext == "jpg" || ext == "jpeg" {
         let count = (width as usize) * (height as usize);
         let mut rgb = Vec::with_capacity(count * 3);
-        for px in rgba.chunks_exact(4) {
+        for px in rgba.as_chunks::<4>().0 {
             let a = px[3] as u32;
             for c in &px[..3] {
                 rgb.push(((*c as u32 * a + 255 * (255 - a)) / 255) as u8);
