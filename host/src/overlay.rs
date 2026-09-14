@@ -314,8 +314,8 @@ unsafe fn build_state(
         dim_dc,
         dim_bitmap,
         dim_previous,
-        // The dash is Rotem's blue, #2D41D7; a COLORREF is blue-green-red.
-        border: unsafe { CreateSolidBrush(windows::Win32::Foundation::COLORREF(0x00D7412D)) },
+        // The dash is Rotem's blue, #00B9F7; a COLORREF is blue-green-red.
+        border: unsafe { CreateSolidBrush(windows::Win32::Foundation::COLORREF(0x00F7B900)) },
         ink: unsafe { CreateSolidBrush(windows::Win32::Foundation::COLORREF(0x00202020)) },
         phase: 0,
     })
