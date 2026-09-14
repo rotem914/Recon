@@ -362,26 +362,26 @@ is a contract broken on day one.
 
 | Action or context | Default behavior | Stage |
 |---|---|---|
-| `Ctrl+C` while editing text | Normal text copy. It does not copy an image by surprise | 1 |
-| `Ctrl+C` outside text editing | Copy the full composed image, even with an annotation selected | 1 |
+| `Ctrl+C` while editing text | Normal text copy. It does not copy an image by surprise | 1, built at S1.7: the key is not touched while a note is being typed |
+| `Ctrl+C` outside text editing | Copy the full composed image, even with an annotation selected | 1, built at S1.7 |
 | `Ctrl+Shift+C` anywhere in the editor | Copy the full composed image, current text edits included | 0, built at S0.6 as the one key the clipboard operation needed to be tried by hand |
-| `Ctrl+Enter` anywhere in the editor | Copy the full composed image, then return to the previous application after success | 1 |
-| `Enter` while editing a note | Insert a newline | 1 |
+| `Ctrl+Enter` anywhere in the editor | Copy the full composed image, then return to the previous application after success | 1, built at S1.7: the note being typed is committed first, and the editor stays if the document changed while the copy ran; the save before the hide is S1.8's |
+| `Enter` while editing a note | Insert a newline | 1, built at S0.4 |
 | `Ctrl +` (or `Ctrl =`) in the editor | One text size up, on the note being edited or the selected one, and it becomes the default for the next note | 0 |
 | `Ctrl -` in the editor | One text size down, the same way | 0 |
 | `Esc` during capture | Cancel the capture | 1 |
-| `Esc` during text editing | Leave text editing, keep the text | 1 |
-| `Esc` with an annotation selected | Clear the selection | 1 |
-| `Esc` in fullscreen | Leave fullscreen | 1 |
+| `Esc` during text editing | Leave text editing, keep the text | 1, built |
+| `Esc` with an annotation selected | Clear the selection | 1, built |
+| `Esc` in fullscreen | Leave fullscreen | 1, built at S1.3 |
 | `Esc` in the otherwise idle editor | Save pending changes and hide the editor | 1, the hide and the focus return built at S1.1, the save at S1.8 |
-| Delete outside text editing | Delete the selected annotation | 1 |
+| Delete outside text editing | Delete the selected annotation | 1, built; Backspace does the same |
 | Undo and redo | While a note is being edited, undo works on the typing and never reaches object operations. Once editing ends, that text change takes its place in document history as one grouped step | 1 |
 | `Ctrl+O` | Open an image file | 1, built at S1.2 |
 | Previous and next image, outside text editing | Walk the active navigation context, folder or Recon history, in the §3.4 order | 1, built at S1.4: PageDown and PageUp, Home and End for the first and last; the ends stop |
 | Fit to window · actual size · zoom in · zoom out | Viewing controls, no effect on export resolution | 1, built: keys, the wheel to pan, Ctrl with the wheel to zoom around the pointer |
 | Fullscreen | Enter fullscreen | 1, built: F11, and the same key or Escape out |
 | Annotate, and back to viewing | Switch the window between viewing, where no click creates anything, and annotation, where the callout tool is live (§3.3). The work stays either way | 1, built at S1.5: the `A` key and a button at the window's top right, both, Rotem's call on 2026-09-14 |
-| `Ctrl+S` | Save As a PNG file, to a new file. Internal saving stays automatic | 1 |
+| `Ctrl+S` | Save As a PNG file, to a new file. Internal saving stays automatic | 1, S1.11; until then the key is taken and does nothing, so the web view's own save page dialog never appears |
 | `Ctrl+Shift+Enter` | Send to Rogers, once that exists and is configured | 4 |
 
 Ordinary typing and editing keys are never intercepted to trigger a tool while a text field
@@ -1836,9 +1836,26 @@ work rather than a feature count.
       near the bottom takes 247 below and gives it back when dragged up, a moved bubble
       stays put when another arrives, and the S0.6 references are unchanged. One rule of
       the order is Rotem's to reverse, F81. Recorded in Decisions.
-- [ ] S1.7 The keyboard contract, routed by context, with the stage column honored, the
+- [x] S1.7 The keyboard contract, routed by context, with the stage column honored, the
       viewing and navigation keys inert while a note is being edited, and undo and redo in
       full against the acceptance sequence in §3.6. Model: Opus 5, the contract is written.
+      **Built 2026-09-14, on Fable at Rotem's word to keep running.** Undo and redo are
+      snapshots of the notes, one per completed operation: a note committed with its text,
+      moved, its anchor moved, resized, removed; an operation that changed nothing, an empty
+      bubble discarded at commit for one, adds no step. Ctrl+Z, Ctrl+Y and Ctrl+Shift+Z
+      outside typing; while a note is typed the engine's own undo has the key and the
+      object history is not reached. The acceptance sequence runs in the checks: edit an
+      existing bubble, leave editing, drag it, undo restores the position, undo again
+      restores the previous text, redo and Ctrl+Shift+Z bring both back; a deleted note
+      comes back on undo with its own number and the next note after a redo is 4. Ctrl+C
+      copies the composed image outside typing and is the text copy inside it; Ctrl+Enter
+      commits the note being typed, copies, and hides only when the document did not
+      change meanwhile. Ctrl+S and Ctrl+Shift+Enter are taken and do nothing, the stage
+      column honoured, which also keeps the web view's save dialog away. F11 joined the
+      viewing keys that are inert while typing; the checks press Ctrl+Z, Ctrl+C,
+      Backspace, Delete, 1, A, F11 and PageDown into a note being typed and none is taken.
+      The undo table's own rule in §3.6 is the record; nothing here adds a key it does not
+      name.
 - [ ] S1.8 The document store: the schema from part 5, plus the source path and the page or
       frame for an annotated file, debounced autosave, forced saves on blur, navigation,
       opening another file, hide and quit, reopen after restart, and a visible failure that

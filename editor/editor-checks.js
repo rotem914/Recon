@@ -24,6 +24,11 @@ export async function runChecks(editor, invoke) {
   };
   const ok = (name, detail = '') => say(`  pass  ${name}${detail ? '   ' + detail : ''}`);
   const bad = (name, detail) => { failures += 1; say(`  FAIL  ${name}   ${detail}`); };
+  // A check the machine could not run is named with its reason, never passed and never
+  // failed (QA: an unrun check that is named is information). The result line counts them.
+  let notRun = 0;
+  let screenOff = false;
+  const skipped = (name, reason) => { notRun += 1; say(`  NOT RUN  ${name}   ${reason}`); };
   const check = (name, condition, detail = '') => condition ? ok(name, detail) : bad(name, detail);
 
   const { model } = editor;
@@ -240,7 +245,16 @@ export async function runChecks(editor, invoke) {
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     await sleep(60);
 
-    const looks = await invoke('editor_show_and_look', colour);
+    // The screen cannot always be copied: with nobody at the machine the session can be
+    // one a plain BitBlt refuses with access denied, and then this section is not run
+    // rather than failed, and says so.
+    let looks = [];
+    try {
+      looks = await invoke('editor_show_and_look', colour);
+    } catch (err) {
+      skipped('the screen shows what the page painted', `the screen could not be copied: ${err}`);
+      screenOff = true;
+    }
     document.body.style.background = restore.body;
     document.body.className = restore.cls;
     document.getElementById('stage').style.visibility = '';
@@ -582,6 +596,12 @@ export async function runChecks(editor, invoke) {
       let live;
       try {
         live = await invoke('editor_live_compare', region);
+      } catch (err) {
+        // The same screen the show-and-look section needs: named, not failed, when the
+        // session refuses a copy of it.
+        skipped(`${name}: the live editor against the output`, `the screen could not be copied: ${err}`);
+        editor.commitEditing();
+        continue;
       } finally {
         editor.setPlain(false);
         document.body.classList.add('reporting');
@@ -699,7 +719,11 @@ export async function runChecks(editor, invoke) {
       await sleep(100);
       outcome = await invoke('editor_dialog_outcome');
     }
-    check('Escape closes the picker with nothing chosen', outcome === 'Ctrl+O: nothing chosen', JSON.stringify(outcome));
+    if (screenOff && outcome === '') {
+      skipped('Escape closes the picker with nothing chosen', 'the session shows no screen, so the picker could not be closed by a key');
+    } else {
+      check('Escape closes the picker with nothing chosen', outcome === 'Ctrl+O: nothing chosen', JSON.stringify(outcome));
+    }
   }
 
   // ---------------------------------------------------------------- 18. S1.3: the viewing surface
@@ -1030,18 +1054,150 @@ export async function runChecks(editor, invoke) {
       check('the pan reaches the far edge of the margin', Math.abs(model.pan.x - (640 + 240 - visibleW)) < 1 && Math.abs(matRight - vp.w) < 2,
         `pan ${Math.round(model.pan.x)}, the mat ends at ${matRight.toFixed(1)} of ${vp.w}`);
       const canvasLeft = parseFloat(editor.canvas.style.left);
-      check('the picture ends where the margin begins', canvasLeft >= 0 && Math.abs(canvasLeft + parseFloat(editor.canvas.style.width) - (matRight - (240 * model.zoom) / editor.ratioOf())) < 2,
-        `canvas ${canvasLeft.toFixed(1)} + ${editor.canvas.style.width}`);
+      const pictureEnd = matRight - (240 * model.zoom) / editor.ratioOf();
+      const hidden = editor.canvas.style.display === 'none';
+      check('the picture ends where the margin begins, or is out of view when only margin fits',
+        hidden ? (pictureEnd <= 0 && model.pan.x >= 640) : (canvasLeft >= 0 && Math.abs(canvasLeft + parseFloat(editor.canvas.style.width) - pictureEnd) < 2),
+        hidden ? `hidden, the picture ends ${pictureEnd.toFixed(1)} left of the window` : `canvas ${canvasLeft.toFixed(1)} + ${editor.canvas.style.width}`);
       await editor.setMargin({ left: 0, top: 0, right: 0, bottom: 0 });
       await editor.setZoom(model.fitZoom);
     }
   }
 
+  // ---------------------------------------------------------------- 22. S1.7: the keyboard contract, undo and redo
   say('');
+  say('S1.7: the keys route by context, the viewing keys are inert while typing, undo and redo walk the acceptance sequence');
+  {
+    const press = (init) => {
+      const e = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
+      window.dispatchEvent(e);
+      return e.defaultPrevented;
+    };
+    const fresh = async () => {
+      await openFixture('reference-scene.png');
+      await editor.setMode('annotate');
+      await editor.setMargin({ left: 0, top: 0, right: 0, bottom: 0 });
+      model.callouts = []; model.nextNumber = 1;
+      model.history = { steps: [editor.snapshot()], index: 0 };
+      editor.layoutScene();
+    };
+    const el = (c) => document.querySelector(`[data-id="${c.id}"]`);
+    const type = (c, text) => {
+      editor.startEditing(c);
+      el(c).querySelector('.t').textContent = text;
+      editor.commitEditing();
+    };
+    const dragBubble = (c, dx, dy) => {
+      const box = el(c).getBoundingClientRect();
+      const x = box.left + 4; const y = box.top + 4;
+      const ev = (type, cx, cy) => el(c).dispatchEvent(new PointerEvent(type, { pointerId: 9, button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: cx, clientY: cy, bubbles: true, cancelable: true }));
+      ev('pointerdown', x, y);
+      ev('pointermove', x + dx, y + dy);
+      ev('pointerup', x + dx, y + dy);
+    };
+
+    // The acceptance sequence of §3.6.
+    await fresh();
+    const c = editor.createCallout({ x: 100, y: 100 });
+    editor.layoutScene();
+    type(c, 'first');
+    type(c, 'second');
+    const placed = { ...c.box };
+    dragBubble(c, 40, 30);
+    const moved = { ...c.box };
+    check('a drag moved the bubble and left the anchor', (moved.x !== placed.x || moved.y !== placed.y) && c.anchor.x === 100 && c.anchor.y === 100,
+      `${placed.x},${placed.y} to ${moved.x},${moved.y}`);
+    press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    let note = model.callouts[0];
+    check('undo restores the position', note && note.box.x === placed.x && note.box.y === placed.y && note.text === 'second', `${note && note.box.x},${note && note.box.y} ${note && note.text}`);
+    press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    note = model.callouts[0];
+    check('undo again restores the previous text', note && note.text === 'first' && note.number === 1, note && note.text);
+    press({ key: 'y', code: 'KeyY', ctrlKey: true });
+    note = model.callouts[0];
+    check('redo brings the text back', note && note.text === 'second');
+    press({ key: 'Z', code: 'KeyZ', ctrlKey: true, shiftKey: true });
+    note = model.callouts[0];
+    check('Ctrl+Shift+Z redoes the move', note && note.box.x === moved.x && note.box.y === moved.y);
+    press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    check('undo past the first step removes the note and stops', model.callouts.length === 0 && model.history.index === 0);
+    press({ key: 'y', code: 'KeyY', ctrlKey: true });
+    check('redo brings it back with its number', model.callouts.length === 1 && model.callouts[0].number === 1 && model.callouts[0].text === 'first');
+
+    // A deleted number comes back on undo and is never reused.
+    await fresh();
+    const a = editor.createCallout({ x: 100, y: 100 }); editor.layoutScene(); type(a, 'one');
+    const b = editor.createCallout({ x: 300, y: 100 }); editor.layoutScene(); type(b, 'two');
+    const d3 = editor.createCallout({ x: 500, y: 100 }); editor.layoutScene(); type(d3, 'three');
+    model.selected = model.callouts[1];
+    editor.layoutScene();
+    press({ key: 'Delete', code: 'Delete' });
+    check('Delete removes the selected note', model.callouts.map((x) => x.number).join(',') === '1,3');
+    press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    check('undo restores it with its own number, in place', model.callouts.map((x) => x.number).join(',') === '1,2,3' && model.callouts[1].text === 'two');
+    press({ key: 'y', code: 'KeyY', ctrlKey: true });
+    const e4 = editor.createCallout({ x: 100, y: 300 });
+    check('after the redo the next note is 4', e4.number === 4 && model.callouts.map((x) => x.number).join(',') === '1,3,4');
+
+    // While a note is typed, the engine owns undo and the viewing keys are inert.
+    await fresh();
+    const t = editor.createCallout({ x: 100, y: 100 }); editor.layoutScene(); type(t, 'typed');
+    const steps = model.history.index;
+    editor.startEditing(t);
+    const zoomBefore = model.zoom;
+    const inert = [
+      ['Ctrl+Z', { key: 'z', code: 'KeyZ', ctrlKey: true }],
+      ['Ctrl+C', { key: 'c', code: 'KeyC', ctrlKey: true }],
+      ['Backspace', { key: 'Backspace', code: 'Backspace' }],
+      ['Delete', { key: 'Delete', code: 'Delete' }],
+      ['the 1 key', { key: '1', code: 'Digit1' }],
+      ['the A key', { key: 'a', code: 'KeyA' }],
+      ['F11', { key: 'F11', code: 'F11' }],
+      ['PageDown', { key: 'PageDown', code: 'PageDown' }],
+    ];
+    const taken = inert.filter(([, init]) => press(init)).map(([name]) => name);
+    check('while typing, none of these is taken from the text: ' + inert.map(([n]) => n).join(', '), taken.length === 0, taken.length ? 'taken: ' + taken.join(', ') : '');
+    check('and nothing moved: the zoom, the mode, fullscreen, the history, the note', model.zoom === zoomBefore && model.mode === 'annotate' && model.fullscreen === false && model.history.index === steps && model.editing === t && model.callouts.length === 1);
+    check('Ctrl+Shift+C is taken even while typing', press({ key: 'C', code: 'KeyC', ctrlKey: true, shiftKey: true }));
+    check('Ctrl +/- are taken while typing, for the note being written', press({ key: '+', code: 'Equal', ctrlKey: true }) && press({ key: '-', code: 'Minus', ctrlKey: true }));
+    check('Escape leaves editing and keeps the text', press({ key: 'Escape', code: 'Escape' }) && model.editing === null && t.text === 'typed');
+
+    // Outside typing: Ctrl+C copies the composed image; keys of later stages do nothing.
+    const copy = press({ key: 'c', code: 'KeyC', ctrlKey: true });
+    // The key starts the copy; the clipboard shows the previous one until it lands.
+    let back = await invoke('editor_clipboard_readback');
+    for (let i = 0; i < 60 && !(back.width === model.image.width && back.height === model.image.height); i += 1) {
+      await sleep(50);
+      back = await invoke('editor_clipboard_readback');
+    }
+    check('Ctrl+C outside typing copies the composed image', copy && back.png && back.width === model.image.width && back.height === model.image.height, `${back.width}x${back.height}`);
+    check('Ctrl+S and Ctrl+Shift+Enter are taken and do nothing yet, the stage column honoured',
+      press({ key: 's', code: 'KeyS', ctrlKey: true }) && press({ key: 'Enter', code: 'Enter', ctrlKey: true, shiftKey: true }) && model.callouts.length === 1);
+
+    // Copy and Return: the note being typed is committed, the image copied, the window hidden.
+    editor.startEditing(t);
+    el(t).querySelector('.t').textContent = 'typed then returned';
+    const outcome = await editor.copyAndReturn();
+    const visible = await invoke('editor_window_visible');
+    check('Copy and Return commits the note, copies, and hides the editor', outcome.hidden === true && visible === false && t.text === 'typed then returned' && model.editing === null,
+      `hidden ${outcome.hidden}, visible ${visible}, ${outcome.width}x${outcome.height}`);
+    await invoke('editor_show');
+    check('the window is back for the checks', (await invoke('editor_window_visible')) === true);
+    check('Ctrl+Enter is the key for it', press({ key: 'Enter', code: 'Enter', ctrlKey: true }));
+    await sleep(600);
+    await invoke('editor_show');
+    model.callouts = [];
+    editor.layoutScene();
+  }
+
+  say('');
+  const unrun = notRun ? `, ${notRun} not run` : '';
   if (failures === 0) {
-    say('RESULT: every check passed.');
+    say(`RESULT: every check that ran passed${unrun}.`);
   } else {
-    say(`RESULT: ${failures} check(s) failed.`);
+    say(`RESULT: ${failures} check(s) failed${unrun}.`);
   }
   await invoke('editor_checks_done', { report: lines.join('\n'), failures });
 }

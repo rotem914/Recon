@@ -148,6 +148,10 @@
     // The least margin, under the automatic one. Zero in the product; the checks raise it
     // to build a document with a margin on purpose.
     marginFloor: { left: 0, top: 0, right: 0, bottom: 0 },
+    // Undo and redo over the objects (§3.6): snapshots of the notes, one per completed
+    // operation. Typing has the engine's own undo while a note is being edited; the
+    // committed text change joins this history as one grouped step.
+    history: { steps: [], index: -1 },
     callouts: [],
     nextNumber: 1,
     selected: null,
@@ -230,6 +234,7 @@
       margin: { ...model.margin },
       marginFloor: { ...model.marginFloor },
       textSize: model.textSize,
+      history: model.history,
     });
   };
 
@@ -364,6 +369,7 @@
     model.textSize = next;
     if (target) target.textSize = next;
     settle();
+    if (target && target !== model.editing) record();
     drawHud();
     return next;
   };
@@ -459,6 +465,51 @@
     const wasFit = Math.abs(model.zoom - model.fitZoom) < 0.0005;
     model.fitZoom = computeFit();
     if (wasFit) model.zoom = model.fitZoom;
+    return true;
+  };
+
+  // ---------------------------------------------------------------- undo and redo
+  //
+  // One snapshot per completed operation: a note committed with its text, moved, its anchor
+  // moved, resized, or removed. Recording compares with the step at the cursor, so an
+  // operation that changed nothing, an empty bubble discarded at commit for one, adds no
+  // step. Undo restores a note with the number it had (§3.5); the margin follows the
+  // restored notes through settle.
+  const snapshot = () => JSON.stringify({ callouts: model.callouts, nextNumber: model.nextNumber });
+
+  const record = () => {
+    const h = model.history;
+    const now = snapshot();
+    if (h.steps[h.index] === now) return false;
+    h.steps.splice(h.index + 1);
+    h.steps.push(now);
+    h.index = h.steps.length - 1;
+    return true;
+  };
+
+  const restore = (step) => {
+    const saved = JSON.parse(step);
+    model.callouts = saved.callouts;
+    model.nextNumber = saved.nextNumber;
+    model.selected = null;
+    model.editing = null;
+    settle();
+    drawHud();
+  };
+
+  const undo = () => {
+    const h = model.history;
+    if (h.index <= 0) return false;
+    h.index -= 1;
+    restore(h.steps[h.index]);
+    return true;
+  };
+
+  const redo = () => {
+    const h = model.history;
+    if (h.index >= h.steps.length - 1) return false;
+    h.index += 1;
+    restore(h.steps[h.index]);
     return true;
   };
 
@@ -587,7 +638,7 @@
       `${modeLine}\n` +
       `zoom ${zoomText}   pan ${Math.round(model.pan.x)},${Math.round(model.pan.y)}   ` +
       `callouts ${model.callouts.length}   text ${sizeShown}px   dpr ${dpr()}\n` +
-      `0 fit  1 actual size  +/- zoom  wheel pan  Ctrl+wheel zoom  F11 fullscreen  PgUp/PgDn folder  Ctrl +/- text size  arrows pan  ${model.mode === 'annotate' ? 'click to add' : 'drag to pan'}  Esc commit  Del remove  Ctrl+O open`;
+      `0 fit  1 actual size  +/- zoom  wheel pan  Ctrl+wheel zoom  F11 fullscreen  PgUp/PgDn folder  Ctrl +/- text size  arrows pan  ${model.mode === 'annotate' ? 'click to add' : 'drag to pan'}  Esc commit  Del remove  Ctrl+Z/Y undo redo  Ctrl+C copy  Ctrl+Enter copy and return  Ctrl+O open`;
   };
 
   // ---------------------------------------------------------------- the mode
@@ -669,6 +720,7 @@
       removeCallout(callout);
     }
     settle();
+    record();
     drawHud();
   };
 
@@ -701,7 +753,7 @@
       const callout = model.callouts.find((c) => c.id === target.dataset.anchorFor);
       const point = toImage(event);
       drag = { kind: 'anchor', callout, dx: callout.anchor.x - point.x, dy: callout.anchor.y - point.y };
-      target.setPointerCapture(event.pointerId);
+      try { target.setPointerCapture(event.pointerId); } catch (e) { /* a synthetic pointer */ }
       event.preventDefault();
       return;
     }
@@ -712,7 +764,7 @@
       model.selected = callout;
       const point = toImage(event);
       drag = { kind: 'box', callout, dx: callout.box.x - point.x, dy: callout.box.y - point.y };
-      stage.setPointerCapture(event.pointerId);
+      try { stage.setPointerCapture(event.pointerId); } catch (e) { /* a synthetic pointer */ }
       layoutScene();
       event.preventDefault();
       return;
@@ -764,9 +816,11 @@
 
   const endDrag = () => {
     if (!drag) return;
+    const moved = drag.kind !== 'pan';
     drag = null;
-    // A dropped bubble takes, or gives back, its margin.
+    // A dropped bubble takes, or gives back, its margin, and is one step of history.
     settle();
+    if (moved) record();
   };
   // A note growing as it is typed takes its room as it goes, so nothing it holds is ever
   // outside the composition an export would cut at.
@@ -834,8 +888,15 @@
       event.preventDefault();
       return;
     }
-    if (event.key === 'F11') {
-      setFullscreen(!model.fullscreen).catch((err) => console.error('fullscreen', err));
+    // Copy and Return, from anywhere, a note being typed included (§3.6).
+    if (event.ctrlKey && !event.shiftKey && !event.altKey && event.key === 'Enter') {
+      copyAndReturn().catch((err) => console.error('copy and return failed', err && err.stack ? err.stack : String(err)));
+      event.preventDefault();
+      return;
+    }
+    // Save As is S1.11 and Send to Rogers is stage 4: the stage column says these keys do
+    // nothing yet, and nothing includes the web view's own save page dialog.
+    if (event.ctrlKey && !event.altKey && (event.code === 'KeyS' || (event.shiftKey && event.key === 'Enter'))) {
       event.preventDefault();
       return;
     }
@@ -850,10 +911,32 @@
       event.preventDefault();
       return;
     }
-    if (model.editing) return; // typing owns every other key
+    if (model.editing) return; // typing owns every other key, the engine's undo included
 
+    // Outside text editing, Ctrl+C copies the composed image (§3.6); while editing it is
+    // the text copy it always was, which is why it sits below the line above.
+    if (event.ctrlKey && !event.shiftKey && !event.altKey && event.code === 'KeyC') {
+      copyComposed().catch((err) => console.error('copy failed', err && err.stack ? err.stack : String(err)));
+      event.preventDefault();
+      return;
+    }
+    if (event.ctrlKey && !event.altKey && event.code === 'KeyZ') {
+      if (event.shiftKey) redo(); else undo();
+      event.preventDefault();
+      return;
+    }
+    if (event.ctrlKey && !event.shiftKey && !event.altKey && event.code === 'KeyY') {
+      redo();
+      event.preventDefault();
+      return;
+    }
+    if (event.key === 'F11') {
+      setFullscreen(!model.fullscreen).catch((err) => console.error('fullscreen', err));
+      event.preventDefault();
+      return;
+    }
     if (event.key === 'Delete' || event.key === 'Backspace') {
-      if (model.selected) { removeCallout(model.selected); settle(); drawHud(); event.preventDefault(); }
+      if (model.selected) { removeCallout(model.selected); settle(); record(); drawHud(); event.preventDefault(); }
       return;
     }
     if (event.key === 'Enter' && model.selected) { startEditing(model.selected); event.preventDefault(); return; }
@@ -986,6 +1069,7 @@
     // A capture opens ready for annotation; a file opens in viewing, and a document
     // resumed for it opens where it left off (§3.3).
     model.mode = info.managed ? 'annotate' : 'view';
+    model.history = known && known.history ? known.history : { steps: [snapshot()], index: 0 };
     applyMode();
     model.fitZoom = computeFit();
     model.zoom = model.fitZoom;
@@ -1103,6 +1187,20 @@
     return report;
   };
 
+  // Copy and Return (§3.3): the note being typed is committed, the image is copied, and
+  // the editor hides only after the copy succeeded, unless the document changed meanwhile,
+  // in which case the copy is reported and the work stays on screen. The pending save
+  // before the hide is S1.8's.
+  const copyAndReturn = async () => {
+    if (model.editing) commitEditing();
+    const document_id = model.image.document_id;
+    const before = snapshot();
+    const report = await copyComposed();
+    const changed = model.image.document_id !== document_id || snapshot() !== before || model.editing;
+    if (!changed) await invoke('editor_hide');
+    return { ...report, hidden: !changed };
+  };
+
   window.reconEditor = {
     model,
     loadImage,
@@ -1126,6 +1224,11 @@
     setMode,
     stage,
     settle,
+    record,
+    undo,
+    redo,
+    snapshot,
+    copyAndReturn,
     fitMargin,
     heightOf,
     placeCallout,

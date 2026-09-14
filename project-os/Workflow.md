@@ -254,7 +254,10 @@ Keep it to an index entry, not an essay. Someone reading it later needs to know 
 keep going through the plan and stop only for a question he has to answer or a problem. So
 a finished step is delivered and the next one begins in the same turn, without a GO per
 step; the reply still names the step and its model (Conversations rule 19), and a step
-whose pickup finds a decision that is his stops there, with the question.
+whose pickup finds a decision that is his stops there, with the question. The model the
+plan names for the next step is a suggestion and never a reason to stop: the run continues
+on whichever model is loaded, and the reply says which one the plan wanted. Rotem said so
+on 2026-09-14, after a stop at the S1.6 to S1.7 boundary asked him to switch.
 
 Close with a short summary:
 

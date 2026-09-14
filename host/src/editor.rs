@@ -711,6 +711,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_navigate,
         editor_annotate,
         checks::editor_window_title,
+        checks::editor_window_visible,
         checks::editor_managed,
         checks::editor_replace_in_folder,
         checks::editor_make_folder,
@@ -2185,6 +2186,15 @@ mod checks {
         app.get_webview_window("editor")
             .ok_or("there is no editor window")?
             .title()
+            .map_err(|err| err.to_string())
+    }
+
+    /// Whether the window is shown, for the S1.7 Copy and Return check.
+    #[tauri::command]
+    pub fn editor_window_visible(app: AppHandle) -> Result<bool, String> {
+        app.get_webview_window("editor")
+            .ok_or("there is no editor window")?
+            .is_visible()
             .map_err(|err| err.to_string())
     }
 
