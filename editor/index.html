@@ -69,6 +69,10 @@
                     background: rgba(10,12,14,.8); color: #f2f2f2; font: 11px system-ui, sans-serif; cursor: pointer; }
   .thumb .restore:hover { background: #2e7d32; }
   #canvas { position: absolute; left: 0; top: 0; display: block; image-rendering: pixelated; }
+  /* A small copy of the whole picture under the canvas, shown only while a pan drag lasts,
+     so an edge the drag uncovers is never empty (Rotem, 2026-09-15). */
+  #backdrop { position: absolute; left: 0; top: 0; display: none; }
+  body.panning #backdrop { display: block; }
   /* The annotation margin, drawn under the picture in the same colour the host puts in the
      output, so what is on screen is what a copy contains (§3.5, §3.6). */
   #mat { position: absolute; left: 0; top: 0; display: none; background: #e9eaec; }
@@ -175,6 +179,7 @@
 </div>
 <div id="stage">
   <div id="mat"></div>
+  <canvas id="backdrop"></canvas>
   <canvas id="canvas"></canvas>
   <div id="scene">
     <svg id="arrows"></svg>
@@ -216,6 +221,20 @@
   const controls = document.getElementById('controls');
   const strip = document.getElementById('strip');
   const context = canvas.getContext('2d', { alpha: false });
+  // A small copy of the whole picture, taken whenever the whole picture is painted and shown
+  // under the canvas while a pan drag lasts, so an edge the drag uncovers shows the picture at
+  // once and sharpens when its region lands (Rotem, 2026-09-15). Two megapixels at most.
+  const backdrop = document.getElementById('backdrop');
+  const backdropContext = backdrop.getContext('2d');
+  let backdropFor = null;
+  const imageKey = () => `${model.image.document_id}:${model.image.index || 0}`;
+  const captureBackdrop = (width, height) => {
+    const scale = Math.min(1, Math.sqrt(2000000 / (width * height)));
+    backdrop.width = Math.max(1, Math.round(width * scale));
+    backdrop.height = Math.max(1, Math.round(height * scale));
+    backdropContext.drawImage(canvas, 0, 0, backdrop.width, backdrop.height);
+    backdropFor = imageKey();
+  };
 
   // ---------------------------------------------------------------- the scene
   //
@@ -411,6 +430,10 @@
     canvas.style.height = `${height / dpr()}px`;
     placeComposition(vp);
     context.putImageData(new ImageData(new Uint8ClampedArray(bytes), width, height), 0, 0);
+    // The whole picture on the canvas is copied under it for the next drag, and an ordinary
+    // paint landing ends the copy's showing (Rotem, 2026-09-15).
+    if (x === 0 && y === 0 && srcW === model.image.width && srcH === model.image.height) captureBackdrop(width, height);
+    if (!drag) document.body.classList.remove('panning');
     lastRegion = { x, y, w: srcW, h: srcH, width, height, zoom: model.zoom, ms: Math.round(performance.now() - askedAt) };
     // A pan drag may have moved on while this region was on its way: it is placed by its own
     // origin, so it lines up with the notes until the next one lands (Rotem, 2026-09-15).
@@ -447,6 +470,11 @@
     // image's origin or at the viewport's edge, whichever is further right or down.
     canvas.style.left = `${Math.max(0, snap(model.offset.x - (model.pan.x * model.zoom) / dpr()))}px`;
     canvas.style.top = `${Math.max(0, snap(model.offset.y - (model.pan.y * model.zoom) / dpr()))}px`;
+    // The copy of the whole picture sits where the notes' layer puts the image, at its size.
+    backdrop.style.left = `${model.offset.x - (model.pan.x * model.zoom) / dpr()}px`;
+    backdrop.style.top = `${model.offset.y - (model.pan.y * model.zoom) / dpr()}px`;
+    backdrop.style.width = `${(model.image.width * model.zoom) / dpr()}px`;
+    backdrop.style.height = `${(model.image.height * model.zoom) / dpr()}px`;
     const hasMargin = comp.w !== model.image.width || comp.h !== model.image.height;
     mat.style.display = hasMargin ? 'block' : 'none';
     if (hasMargin) {
@@ -1430,6 +1458,8 @@
   // with no tool in hand, and any drag while Space is held.
   const startPan = (event) => {
     drag = { kind: 'pan', x: event.clientX, y: event.clientY, pan: { ...model.pan } };
+    // The copy of the whole picture shows under the canvas for the drag, when it is this picture's.
+    if (backdropFor === imageKey()) document.body.classList.add('panning');
     try { stage.setPointerCapture(event.pointerId); } catch (e) { /* a synthetic pointer */ }
     event.preventDefault();
   };
@@ -1610,6 +1640,7 @@
     }
     drag = null;
     if (panned) paintRegion();
+    else document.body.classList.remove('panning');
     // A dropped bubble takes, or gives back, its margin, and is one step of history.
     settle();
     if (moved) record();

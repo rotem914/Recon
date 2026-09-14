@@ -1871,6 +1871,39 @@ export async function runChecks(editor, invoke) {
       Math.abs(slid - 40) <= 5 && !!regionDuring && regionDuring !== regionBefore && regionDuring.x !== regionBefore.x,
       `slid ${slid.toFixed(1)} css px for a 40 px move; region x ${regionBefore && regionBefore.x} then ${regionDuring && regionDuring.x} before the release, a round trip ${regionDuring && regionDuring.ms} ms`);
     await editor.paintRegion();
+    // Rotem, 2026-09-15: an edge a drag uncovers is never empty. A note anchored at a point of
+    // the picture marks where the picture is; a move of 300 px leaves the viewport's left part
+    // outside the sharp canvas, and before any region can land the copy of the whole picture
+    // must be shown there, lined up with the note, and hidden again once the drag has painted.
+    const copyCanvas = document.getElementById('backdrop');
+    const ratioNow = editor.ratioOf();
+    const markAt = { x: Math.round(model.pan.x - (200 * ratioNow) / model.zoom), y: Math.round(model.pan.y + ((box.height / 2) * ratioNow) / model.zoom) };
+    const marker = editor.createCallout(markAt);
+    editor.layoutScene();
+    const markerAnchor = document.querySelector(`[data-anchor-for="${marker.id}"]`);
+    const copyKept = copyCanvas.width > 0;
+    raw('pointerdown', mid.x, mid.y);
+    raw('pointermove', mid.x + 300, mid.y);
+    const copyShown = getComputedStyle(copyCanvas).display !== 'none';
+    const sharpLeft = editor.canvas.getBoundingClientRect().left;
+    const copyBox = copyCanvas.getBoundingClientRect();
+    const noteBox = markerAnchor.getBoundingClientRect();
+    const noteX = noteBox.left + noteBox.width / 2;
+    const noteY = noteBox.top + noteBox.height / 2;
+    const copyX = copyBox.left + (markAt.x * copyBox.width) / model.image.width;
+    const copyY = copyBox.top + (markAt.y * copyBox.height) / model.image.height;
+    const edgeUncovered = sharpLeft > box.left + 1 && copyBox.left <= box.left && copyBox.right >= sharpLeft;
+    raw('pointerup', mid.x + 300, mid.y);
+    await editor.paintRegion();
+    // The drag's own last region may still be on its way and land after this one, so the copy
+    // is given a second to hide.
+    for (let i = 0; i < 40 && getComputedStyle(copyCanvas).display !== 'none'; i += 1) await sleep(25);
+    const copyHiddenAfter = getComputedStyle(copyCanvas).display === 'none';
+    editor.removeCallout(marker);
+    editor.layoutScene();
+    check('an edge a drag uncovers shows the whole picture at once, lined up with the notes, and the copy hides once the drag has painted',
+      copyKept && copyShown && edgeUncovered && Math.abs(noteX - copyX) <= 2 && Math.abs(noteY - copyY) <= 2 && copyHiddenAfter,
+      `copy ${copyCanvas.width}x${copyCanvas.height}, shown ${copyShown}, the sharp canvas from ${(sharpLeft - box.left).toFixed(1)} px, the note at ${noteX.toFixed(1)},${noteY.toFixed(1)} and the copy's point at ${copyX.toFixed(1)},${copyY.toFixed(1)}, hidden after ${copyHiddenAfter}`);
     await editor.setZoom(1);
     press({ key: 'l', code: 'KeyL' });
     const arrowButton = document.querySelector('#tools [data-tool="arrow"]');

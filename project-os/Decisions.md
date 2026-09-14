@@ -96,6 +96,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-14 · With no tool in hand a drag pans the picture, and Space held pans it whatever tool is in hand.
 - 2026-09-15 · A pan drag slides the picture already painted and asks for one region at a time.
 - 2026-09-15 · The store is read on a thread at startup, newest first, not by month.
+- 2026-09-15 · Under a pan drag lies a small copy of the whole picture, taken whenever the whole picture is painted.
 
 ---
 
@@ -1000,3 +1001,37 @@ annotated last with more than fifty newer ones is not the one reopened; Rotem's 
 Revisit if the thread's seconds are ever felt, or if a lookup other than Annotate's turns
 out to need the whole list.
 
+---
+
+## 2026-09-15 · Under a pan drag lies a small copy of the whole picture, taken whenever the whole picture is painted
+
+### Context
+
+With the drag sliding what is already painted, Rotem found the edges it uncovers empty for
+a moment, filling in as each region came back from the host. A region holds only what was
+on screen, and on his wide display each one is large, so the empty strip was plain to see.
+
+### Options
+
+1. Ask for a sharp margin around the view, so a slide uncovers pixels already held.
+2. Keep a small copy of the whole picture under the sharp one, shown while a drag lasts, so
+   an uncovered edge shows the picture softly at once and sharpens when its region lands.
+3. Paint only the strips a drag uncovers, as small regions of their own, into a larger
+   canvas.
+
+### Decision
+
+Option 2, mine, on Rotem's report. Option 1 multiplies every region on a wide display and
+slows each one, and a fast drag still outruns it. Option 3 is a tile system in all but
+name. The copy is taken from the canvas itself whenever the whole picture is painted,
+which every picture's first view is, and kept at two megapixels at most, so it costs the
+host nothing and the page a few megabytes.
+
+### Consequences
+
+A drag never shows an empty edge; for a moment the edge is softer, then sharp. The copy
+shows only while a pan drag lasts and hides when an ordinary paint lands, so the view at
+rest and every screen comparison are untouched. Cost: a picture shown already zoomed in,
+such as another frame of a file stepped at a high zoom, has no fresh copy until its whole
+picture is next painted, and its drag shows the old empty edge until then. Revisit if that
+case is met in use, or if the softness itself is noticed.
