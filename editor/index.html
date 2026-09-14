@@ -13,6 +13,18 @@
                overflow: hidden; }
 
   #stage { position: absolute; inset: 0; overflow: hidden; cursor: crosshair; }
+  /* The timeline (S2.1): every document along the bottom, newest last, the current one
+     marked. The stage ends above it while it is shown; fullscreen puts it away. */
+  body.strip #stage { bottom: 96px; }
+  #strip { position: absolute; left: 0; right: 0; bottom: 0; height: 96px; display: none;
+           gap: 8px; padding: 8px; overflow-x: auto; overflow-y: hidden;
+           background: #14171b; border-top: 1px solid #2a3037; }
+  body.strip #strip { display: flex; }
+  .thumb { flex: 0 0 auto; height: 78px; width: 124px; border-radius: 4px; overflow: hidden;
+           border: 2px solid transparent; background: #1b1f24; cursor: pointer;
+           display: grid; place-items: center; color: #6b7480; font-size: 11px; }
+  .thumb img { max-width: 100%; max-height: 100%; display: block; }
+  .thumb.current { border-color: #7aa7ff; }
   #canvas { position: absolute; left: 0; top: 0; display: block; image-rendering: pixelated; }
   /* The annotation margin, drawn under the picture in the same colour the host puts in the
      output, so what is on screen is what a copy contains (§3.5, §3.6). */
@@ -83,6 +95,7 @@
   </div>
 </div>
 <div id="hud"></div>
+<div id="strip"></div>
 <button id="mode" type="button" hidden>Annotate</button>
 <div id="report"></div>
 
@@ -112,6 +125,7 @@
   const arrows = document.getElementById('arrows');
   const hud = document.getElementById('hud');
   const modeButton = document.getElementById('mode');
+  const strip = document.getElementById('strip');
   const context = canvas.getContext('2d', { alpha: false });
 
   // ---------------------------------------------------------------- the scene
@@ -702,6 +716,56 @@
       (currentNotice ? `\n${currentNotice}` : '');
   };
 
+  // ---------------------------------------------------------------- the timeline
+  //
+  // S2.1: the documents, oldest first, as thumbnails the host makes once and keeps beside
+  // each document. A click shows that document with its notes; the keys walk the same list
+  // as history. Refreshed whenever a document is loaded or created.
+  const thumbUrls = new Map();
+  const thumbFor = async (id) => {
+    if (thumbUrls.has(id)) return thumbUrls.get(id);
+    const response = await fetch(`http://region.localhost/?thumb=${id}`, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`thumbnail ${id}: ${response.status}`);
+    const url = URL.createObjectURL(await response.blob());
+    thumbUrls.set(id, url);
+    return url;
+  };
+  const refreshStrip = async () => {
+    const docs = await invoke('editor_documents').catch(() => []);
+    document.body.classList.toggle('strip', docs.length > 0 && !model.fullscreen);
+    const seen = new Set();
+    for (const doc of docs) {
+      seen.add(doc.id);
+      let el = strip.querySelector(`[data-id="${doc.id}"]`);
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'thumb';
+        el.dataset.id = String(doc.id);
+        el.textContent = `${doc.width}x${doc.height}`;
+        el.addEventListener('click', () => {
+          invoke('editor_show_document', { id: doc.id }).then((info) => loadImage(info)).catch((err) => console.error('timeline', err));
+        });
+        strip.appendChild(el);
+        thumbFor(doc.id).then((url) => {
+          const img = document.createElement('img');
+          img.src = url;
+          img.alt = '';
+          el.textContent = '';
+          el.appendChild(img);
+        }).catch((err) => console.warn(String(err)));
+      }
+      const when = new Date(doc.created_ms);
+      el.title = `${doc.file || 'capture'}  ${doc.width}x${doc.height}  ${when.toLocaleString()}`;
+      el.classList.toggle('current', doc.current);
+      strip.appendChild(el); // in list order
+    }
+    for (const el of [...strip.children]) {
+      if (!seen.has(Number(el.dataset.id))) el.remove();
+    }
+    const current = strip.querySelector('.thumb.current');
+    if (current) current.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+  };
+
   // ---------------------------------------------------------------- the mode
   //
   // §3.3: viewing arms no tool, annotation arms the callout. The mode is the page's; the
@@ -734,6 +798,7 @@
         await paintRegion();
       }
       model.mode = 'annotate';
+      refreshStrip().catch(() => {});
     } else {
       if (model.editing) commitEditing();
       model.selected = null;
@@ -914,6 +979,7 @@
 
   const setFullscreen = async (on) => {
     model.fullscreen = await invoke('editor_fullscreen', { on });
+    document.body.classList.toggle('strip', strip.children.length > 0 && !model.fullscreen);
     await measureRatio();
     model.fitZoom = computeFit();
     await paintRegion();
@@ -1171,6 +1237,7 @@
     model.fitZoom = computeFit();
     model.zoom = model.fitZoom;
     model.pan = { x: 0, y: 0 };
+    refreshStrip().catch(() => {});
     await paintRegion();
   };
 
@@ -1374,6 +1441,8 @@
     markDirty,
     notice,
     saveAs,
+    refreshStrip,
+    strip,
     snapshot,
     copyAndReturn,
     fitMargin,

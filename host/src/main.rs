@@ -43,7 +43,7 @@ use overlay::Outcome;
 
 use tauri::image::Image;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
-use tauri::tray::TrayIconBuilder;
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, RunEvent, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
@@ -551,7 +551,24 @@ fn main() {
                 .icon(icon)
                 .tooltip(format!("Recon, capture with {hotkey_label}"))
                 .menu(&menu)
-                .show_menu_on_left_click(true)
+                // A click on the icon opens the editor with the latest document (Rotem,
+                // 2026-09-14); the menu is the right button's.
+                .show_menu_on_left_click(false)
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        match editor::show(tray.app_handle()) {
+                            Ok(ms) => {
+                                log(&format!("editor opened by a click on the icon in {ms} ms"))
+                            }
+                            Err(err) => log(&format!("EDITOR NOT SHOWN by the icon click: {err}")),
+                        }
+                    }
+                })
                 .on_menu_event(|app, event| {
                     if event.id() == "quit" {
                         log("quit chosen in the tray menu");

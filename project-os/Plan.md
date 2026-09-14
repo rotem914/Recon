@@ -1937,6 +1937,43 @@ work rather than a feature count.
 - [ ] S1.12 The trial: thirty captures of real client feedback and a week of using Recon as
       the everyday viewer, with the friction recorded in `project-os/History.md` and anything
       deferred sent to `project-os/Backlog.md`. Model: Opus 5, it records.
+      **Started 2026-09-14, and stopped at once:** Rotem's first day said the environment is
+      not ready for daily use without three things, which are Stage 2's first steps pulled
+      forward, below. The trial resumes when they are in.
+
+**Stage 2, pulled forward.** The three things daily use could not start without, at
+Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
+
+- [x] S2.1 The timeline: a strip of thumbnails along the bottom of the window, every
+      document, captures and annotated files alike, newest last, the current one marked,
+      a click showing that document with its notes, the keys walking it as they walk
+      history, the strip out of the way in fullscreen. Thumbnails are made once per
+      document on a thread, kept beside the document, and never the full image, so old
+      history costs no memory (part 10's acceptance). Model: Fable 5.1, it is a design.
+      **Built 2026-09-14.** A 96-pixel strip along the bottom, shown whenever there is a
+      document, the stage ending above it; a thumbnail per document at most 160 by 100,
+      the shape of its picture, oldest first so the newest is at the right, the current
+      one outlined and scrolled into view, the file's name or "capture" with the time on
+      hover. The host makes each thumbnail once, on a thread of its own per request,
+      from the document's own image, and keeps it as `thumb.png` beside the document;
+      the strip fetches it through the region scheme. A click shows that document with
+      its notes and history active; the keys walk the same list. Fullscreen puts the
+      strip away and the stage takes the whole window. Checked: three captures listed
+      oldest first with the third current, three thumbnails at 133x100, 75x100 and
+      160x50, kept on disk, a click on the first showing it at 1 of 3 with its note, the
+      mark following, fullscreen and back. The look is provisional and Rotem's to change.
+- [x] S2.2 The icon opens the window: a click on the tray icon shows the editor with the
+      latest document and the timeline; the menu stays on the right button; starting
+      Recon again, from the Start menu or the taskbar, does the same through the single
+      instance. Model: Opus 5, wired as documented.
+      **Built 2026-09-14, on Fable at Rotem's word.** The left button on the tray icon
+      shows the editor as it is, the latest document reopened at startup and the timeline
+      under it; the menu is the right button's. A second start with no file was already
+      showing the editor since S1.2. The click itself is Rotem's to try; nothing here can
+      press a tray icon.
+- [ ] S2.3 Copy and Save As on an annotated image: what Rotem met on the first day; the
+      cause decides the step, a fix if the keys failed on an annotated file, visible
+      controls if the keys were not the way in. Model: Fable 5.1 once the cause is known.
 
 Stage 1 is the release that replaces both current tools. It ships without the thumbnail
 strip, without export options beyond PNG, and without Rogers.

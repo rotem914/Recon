@@ -1554,6 +1554,53 @@ export async function runChecks(editor, invoke) {
     editor.layoutScene();
   }
 
+  // ---------------------------------------------------------------- 27. S2.1: the timeline
+  say('');
+  say('S2.1: the timeline along the bottom lists every document as a small thumbnail, the current one marked; a click shows that document with its notes; fullscreen puts it away');
+  {
+    const strip = editor.strip;
+    const stage = document.getElementById('stage');
+    await invoke('editor_store_reset');
+    const shots = [];
+    for (const [w, h, text] of [[400, 300, 'first'], [300, 400, 'second'], [640, 200, 'third']]) {
+      const info = await invoke('editor_capture_probe', { width: w, height: h });
+      await editor.loadImage(info);
+      const c = editor.createCallout({ x: 30, y: 30 });
+      c.text = text;
+      editor.layoutScene();
+      editor.record();
+      shots.push(info);
+    }
+    await editor.refreshStrip();
+    const docs = await invoke('editor_documents');
+    check('the host lists the documents oldest first, one of them current', docs.length === 3 && docs.map((d) => d.id).join() === shots.map((s) => s.document_id).join() && docs.filter((d) => d.current).length === 1 && docs[2].current,
+      docs.map((d) => `${d.width}x${d.height}${d.current ? '*' : ''}`).join(' '));
+    check('the strip is shown with one thumbnail per document, the current one marked', document.body.classList.contains('strip') && strip.children.length === 3 && strip.children[2].classList.contains('current') && !strip.children[0].classList.contains('current'));
+    check('the stage ends above the strip', stage.clientHeight === window.innerHeight - 96, `stage ${stage.clientHeight} of ${window.innerHeight}`);
+    for (let i = 0; i < 100 && [...strip.querySelectorAll('img')].filter((img) => img.complete && img.naturalWidth > 0).length < 3; i += 1) await sleep(50);
+    const imgs = [...strip.querySelectorAll('img')];
+    check('every thumbnail is a small picture, at most 160 by 100, the shape of its document', imgs.length === 3 && imgs.every((img) => img.naturalWidth > 0 && img.naturalWidth <= 160 && img.naturalHeight <= 100)
+      && imgs[0].naturalWidth === 133 && imgs[0].naturalHeight === 100 && imgs[1].naturalWidth === 75 && imgs[2].naturalWidth === 160 && imgs[2].naturalHeight === 50,
+      imgs.map((img) => `${img.naturalWidth}x${img.naturalHeight}`).join(' '));
+    const kept = await invoke('editor_store_list');
+    check('the thumbnails are kept beside their documents on disk', kept.length === 3 && kept.every((l) => l.json && l.thumb), `${kept.filter((l) => l.thumb).length} of ${kept.length} folders hold one`);
+
+    strip.children[0].click();
+    for (let i = 0; i < 60 && model.image.document_id !== shots[0].document_id; i += 1) await sleep(50);
+    await sleep(100);
+    check('a click on a thumbnail shows that document, with its notes, in history', model.image.document_id === shots[0].document_id && model.callouts.length === 1 && model.callouts[0].text === 'first' && model.image.context === 'history' && model.image.position === 1,
+      `${model.image.position} of ${model.image.total} in ${model.image.context}, ${model.callouts[0] && model.callouts[0].text}`);
+    await editor.refreshStrip();
+    check('the mark moved to it', strip.children[0].classList.contains('current') && !strip.children[2].classList.contains('current'));
+
+    await editor.setFullscreen(true);
+    check('fullscreen puts the strip away and gives the stage the whole window', !document.body.classList.contains('strip') && stage.clientHeight === window.innerHeight, `stage ${stage.clientHeight} of ${window.innerHeight}`);
+    await editor.setFullscreen(false);
+    check('and it comes back', document.body.classList.contains('strip') && strip.children.length === 3);
+    model.callouts = [];
+    editor.layoutScene();
+  }
+
   say('');
   const unrun = notRun ? `, ${notRun} not run` : '';
   if (failures === 0) {

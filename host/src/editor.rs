@@ -546,6 +546,100 @@ pub fn flush_saves(app: &AppHandle) {
     }
 }
 
+/// The timeline's thumbnail of one document (S2.1): at most 160 by 100, made once from the
+/// document's own image and kept as `thumb.png` beside it, so old history costs a small
+/// file each and never a decoded image in memory. A document whose folder is not on disk
+/// yet is thumbnailed from what it holds and kept in memory only.
+const THUMB_W: u32 = 160;
+const THUMB_H: u32 = 100;
+
+fn thumbnail(id: u64) -> Result<Vec<u8>, String> {
+    let cached = crate::store::folder(id)
+        .ok()
+        .map(|dir| dir.join("thumb.png"))
+        .filter(|path| path.is_file());
+    if let Some(path) = cached {
+        return std::fs::read(&path).map_err(|err| format!("{}: {err}", path.display()));
+    }
+    let frame = {
+        let documents = DOCUMENTS.lock().map_err(|_| "the documents are poisoned")?;
+        let document = documents
+            .iter()
+            .find(|d| d.id == id)
+            .ok_or_else(|| format!("document {id} is not in the list"))?;
+        document.frame("thumbnail")?
+    };
+    let (w, h) = (frame.width(), frame.height());
+    let scale = (THUMB_W as f64 / w as f64)
+        .min(THUMB_H as f64 / h as f64)
+        .min(1.0);
+    let tw = ((w as f64 * scale).round() as u32).max(1);
+    let th = ((h as f64 * scale).round() as u32).max(1);
+    let small = recon_pixels::resample(&frame.rgba, w, h, tw, th)
+        .ok_or_else(|| format!("document {id}: the thumbnail did not resample"))?;
+    let mut png = Vec::new();
+    image::codecs::png::PngEncoder::new(&mut png)
+        .write_image(&small, tw, th, image::ExtendedColorType::Rgba8)
+        .map_err(|err| format!("document {id}: the thumbnail did not encode: {err}"))?;
+    if let Ok(dir) = crate::store::folder(id) {
+        if dir.is_dir() {
+            if let Err(err) = crate::store::write_atomic(&dir.join("thumb.png"), &png) {
+                crate::log(&format!("document {id}: thumbnail not kept: {err}"));
+            }
+        }
+    }
+    Ok(png)
+}
+
+/// One document as the timeline lists it.
+#[derive(serde::Serialize)]
+pub struct DocumentLine {
+    pub id: u64,
+    pub width: u32,
+    pub height: u32,
+    /// The file's name for an annotated file, empty for a capture.
+    pub file: String,
+    pub created_ms: u64,
+    pub current: bool,
+}
+
+/// Every document, oldest first, the one on screen marked (S2.1).
+#[tauri::command]
+pub fn editor_documents() -> Vec<DocumentLine> {
+    let current = current_document_id();
+    let ids = history_ids();
+    let documents = match DOCUMENTS.lock() {
+        Ok(documents) => documents,
+        Err(_) => return Vec::new(),
+    };
+    ids.iter()
+        .filter_map(|id| documents.iter().find(|d| d.id == *id))
+        .map(|d| DocumentLine {
+            id: d.id,
+            width: d.width,
+            height: d.height,
+            file: match &d.source {
+                Source::File { path, .. } => path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default(),
+                Source::Capture => String::new(),
+            },
+            created_ms: crate::store::millis(d.created),
+            current: d.id == current,
+        })
+        .collect()
+}
+
+/// A document chosen from the timeline: shown from its own image, history active (§3.4).
+#[tauri::command]
+pub fn editor_show_document(id: u64) -> Result<ImageInfo, String> {
+    if id != current_document_id() {
+        show_document(id)?;
+    }
+    editor_image_info()
+}
+
 /// What the page needs about the document on screen against the managed list (§3.3):
 /// whether it IS a managed document, when a document that exists for this file was last
 /// annotated (the route to its saved edit, shown only while the file itself is on screen),
@@ -993,6 +1087,8 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_notes,
         editor_saves_flushed,
         editor_save_as,
+        editor_documents,
+        editor_show_document,
         checks::editor_save_as_outcome,
         checks::editor_save_as_plan,
         checks::editor_save_as_write,
@@ -1055,9 +1151,33 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_notes,
         editor_saves_flushed,
         editor_save_as,
+        editor_documents,
+        editor_show_document,
     ]);
     builder.register_asynchronous_uri_scheme_protocol("region", |_ctx, request, responder| {
         let query = request.uri().query().unwrap_or_default().to_string();
+        // The timeline's thumbnails (S2.1) share the scheme and nothing else: each one is
+        // made or read on a thread of its own, never through the one region worker, so a
+        // strip of thirty thumbnails cannot delay the view the user is looking at.
+        if let Some(id) = query
+            .strip_prefix("thumb=")
+            .and_then(|s| s.parse::<u64>().ok())
+        {
+            std::thread::spawn(move || {
+                let response = match thumbnail(id) {
+                    Ok(png) => tauri::http::Response::builder()
+                        .header("Content-Type", "image/png")
+                        .header("Access-Control-Allow-Origin", APP_ORIGIN)
+                        .body(png),
+                    Err(err) => tauri::http::Response::builder()
+                        .status(404)
+                        .header("Access-Control-Allow-Origin", APP_ORIGIN)
+                        .body(err.into_bytes()),
+                };
+                responder.respond(response.expect("a thumbnail response"));
+            });
+            return;
+        }
         serve_region(query, responder);
     })
 }
@@ -2730,6 +2850,7 @@ mod checks {
         pub modified_ms: u64,
         pub notes: String,
         pub leftovers: u32,
+        pub thumb: bool,
     }
 
     /// What is on disk, folder by folder, as the S1.8 check reads it.
@@ -2765,6 +2886,7 @@ mod checks {
                 modified_ms: record.as_ref().map(|r| r.modified_ms).unwrap_or(0),
                 notes: record.map(|r| r.notes.to_string()).unwrap_or_default(),
                 leftovers,
+                thumb: dir.join("thumb.png").is_file(),
             });
         }
         lines.sort_by_key(|l| l.id);

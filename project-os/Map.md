@@ -117,7 +117,7 @@ Where state lives and who is allowed to write it.
 | The process docs | `CLAUDE.md`, `project-os/*.md` | Markdown | the assistant, under the rules each file states |
 | The hooks setting | `.claude/settings.local.json` | JSON | `project-os/install-hooks.mjs` only. Machine-local, not committed. |
 | The hotkey setting | `%APPDATA%\Recon\recon.json` | JSON | nobody yet. Recon only reads it, and says in its log where the value came from. |
-| Managed documents | `%LOCALAPPDATA%\Recon\documents\<number>\` | `source.png`, the preserved image, written once; `document.json`, schema 1, the size, the source and the page's notes, rewritten whole through a temporary file | the host only: the record and the image at a capture or at Annotate, the notes on every save the page sends. The checks use `host/target/debug/s18-store` instead, never this folder |
+| Managed documents | `%LOCALAPPDATA%\Recon\documents\<number>\` | `source.png`, the preserved image, written once; `document.json`, schema 1, the size, the source and the page's notes, rewritten whole through a temporary file; `thumb.png`, the timeline's thumbnail, made once | the host only: the record and the image at a capture or at Annotate, the notes on every save the page sends. The checks use `host/target/debug/s18-store` instead, never this folder |
 
 ## Ownership
 
