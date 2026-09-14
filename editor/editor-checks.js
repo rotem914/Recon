@@ -1860,6 +1860,61 @@ export async function runChecks(editor, invoke) {
     editor.setTool('callout');
   }
 
+  // ---------------------------------------------------------------- 33. S3.2: rectangle and highlight
+  say('');
+  say('S3.2: R and H pick the rectangle and the highlight; a drag either way makes the rectangle it crossed; both select, move, undo and export like the arrow');
+  {
+    const stage = editor.stage;
+    await invoke('editor_store_reset');
+    const shot = await invoke('editor_capture_probe', { width: 400, height: 300 });
+    await editor.loadImage(shot);
+    await editor.setZoom(1);
+    const box = stage.getBoundingClientRect();
+    const css = (ix, iy) => ({ x: box.left + model.offset.x + ((ix - model.pan.x) * model.zoom) / editor.ratioOf(), y: box.top + model.offset.y + ((iy - model.pan.y) * model.zoom) / editor.ratioOf() });
+    const pointer = (type, target, ix, iy) => {
+      const at = css(ix, iy);
+      target.dispatchEvent(new PointerEvent(type, { pointerId: 12, button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: at.x, clientY: at.y, bubbles: true, cancelable: true }));
+    };
+    const press = (init) => { const e = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }); window.dispatchEvent(e); return e.defaultPrevented; };
+    const shapeEl = (shape) => document.querySelector(`[data-shape="${shape.id}"]`);
+
+    press({ key: 'r', code: 'KeyR' });
+    check('R picks the rectangle', model.tool === 'rect' && document.querySelector('#tools [data-tool="rect"]').classList.contains('active'));
+    pointer('pointerdown', stage, 220, 200);
+    pointer('pointermove', stage, 60, 40);
+    pointer('pointerup', stage, 60, 40);
+    const rect = model.shapes[0];
+    const r = rect && editor.rectOfShape(rect);
+    check('a drag up and to the left still makes the rectangle it crossed', !!rect && rect.kind === 'rect' && r.x === 60 && r.y === 40 && r.w === 160 && r.h === 160, JSON.stringify(r));
+    check('it is an outline in the scene', !!shapeEl(rect) && shapeEl(rect).querySelector('rect').getAttribute('fill') === 'none');
+
+    press({ key: 'h', code: 'KeyH' });
+    check('H picks the highlight', model.tool === 'highlight');
+    pointer('pointerdown', stage, 250, 100);
+    pointer('pointermove', stage, 380, 140);
+    pointer('pointerup', stage, 380, 140);
+    const high = model.shapes[1];
+    check('a drag makes a highlight over what it crossed, a translucent fill', !!high && high.kind === 'highlight' && editor.rectOfShape(high).w === 130 && shapeEl(high).querySelector('rect').getAttribute('fill').startsWith('rgba(255,235,59'), JSON.stringify(high));
+
+    const layer = await editor.exportLayer();
+    check('the export carries both rectangles', (layer.markup.match(/<rect /g) || []).length === 2);
+
+    pointer('pointerdown', shapeEl(rect), 100, 100);
+    pointer('pointermove', stage, 110, 120);
+    pointer('pointerup', stage, 110, 120);
+    check('the rectangle is selected and moved whole', model.selectedShape === rect && editor.rectOfShape(rect).x === 70 && editor.rectOfShape(rect).y === 60 && editor.rectOfShape(rect).w === 160, JSON.stringify(editor.rectOfShape(rect)));
+    press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    // Undo rebuilds the list, so the shape is read from it, not from the old object.
+    check('undo puts it back', editor.rectOfShape(model.shapes[0]).x === 60 && editor.rectOfShape(model.shapes[0]).y === 40, JSON.stringify(editor.rectOfShape(model.shapes[0])));
+    press({ key: 'Escape', code: 'Escape' });
+    check('Escape clears the selection', model.selectedShape === null);
+    press({ key: 'c', code: 'KeyC' });
+    model.callouts = [];
+    model.shapes = [];
+    editor.layoutScene();
+    editor.setTool('callout');
+  }
+
   say('');
   const unrun = notRun ? `, ${notRun} not run` : '';
   if (failures === 0) {

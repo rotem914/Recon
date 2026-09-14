@@ -2032,8 +2032,13 @@ Annotate and Copy were settled.
       layer as it is on screen. A drag shorter than four pixels makes nothing. Model:
       Fable 5.1, the tool contract is new. **Built 2026-09-14**, checked in section 32 of
       the editor checks; the callout flow's checks all still pass.
-- [ ] S3.2 Rectangle and highlight: the same drag, a rectangle outlined in the arrow's
+- [x] S3.2 Rectangle and highlight: the same drag, a rectangle outlined in the arrow's
       colour, a highlight as a translucent fill; R and H. Model: Opus 5, the mechanics exist.
+      **Built 2026-09-14, on Fable at Rotem's word.** A drag in any direction makes the
+      rectangle it crossed; the rectangle is a rounded outline in the arrow's red, the
+      highlight a translucent yellow fill; both are selected by a click, moved whole,
+      undone, saved and exported as the arrow is. Checked in section 33 of the editor
+      checks.
 - [ ] S3.3 Text: a note without the number, the bubble or the arrow, typed where it is
       clicked; T. Model: Opus 5.
 - [ ] S3.4 Blur: a region the composer blurs in the source at export, since the page never

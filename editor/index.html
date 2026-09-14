@@ -125,6 +125,8 @@
   <div id="tools">
     <button type="button" data-tool="callout" title="Callout: a numbered note (C)">Callout</button>
     <button type="button" data-tool="arrow" title="Arrow: drag from the tail to the head (L)">Arrow</button>
+    <button type="button" data-tool="rect" title="Rectangle: drag across what to frame (R)">Rectangle</button>
+    <button type="button" data-tool="highlight" title="Highlight: drag across what to mark (H)">Highlight</button>
   </div>
   <button id="copy" type="button" title="Copy the image to the clipboard (Ctrl+C)">Copy</button>
   <button id="saveas" type="button" title="Save As a new PNG file (Ctrl+S)">Save As</button>
@@ -753,8 +755,23 @@
       return `<g data-shape="${shape.id}"><line x1="${shape.a.x}" y1="${shape.a.y}" x2="${base.x.toFixed(1)}" y2="${base.y.toFixed(1)}" ${stroke} />` +
         `<polygon points="${shape.b.x},${shape.b.y} ${left.x.toFixed(1)},${left.y.toFixed(1)} ${right.x.toFixed(1)},${right.y.toFixed(1)}" fill="#ff5252" stroke="#ff5252" stroke-width="2" stroke-linejoin="round" /></g>`;
     }
+    const r = rectOfShape(shape);
+    if (shape.kind === 'rect') {
+      return `<g data-shape="${shape.id}"><rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" rx="2" fill="none" ${stroke} /></g>`;
+    }
+    if (shape.kind === 'highlight') {
+      return `<g data-shape="${shape.id}"><rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" fill="rgba(255,235,59,0.35)" stroke="none" /></g>`;
+    }
     return '';
   };
+
+  // The rectangle a drag from a to b describes, whichever way it was dragged.
+  const rectOfShape = (shape) => ({
+    x: Math.min(shape.a.x, shape.b.x),
+    y: Math.min(shape.a.y, shape.b.y),
+    w: Math.abs(shape.b.x - shape.a.x),
+    h: Math.abs(shape.b.y - shape.a.y),
+  });
 
   const createShape = (kind, at) => {
     const shape = { id: `s${model.nextShape}`, kind, a: { x: Math.round(at.x), y: Math.round(at.y) }, b: { x: Math.round(at.x), y: Math.round(at.y) } };
@@ -823,7 +840,7 @@
       `${modeLine}\n` +
       `zoom ${zoomText}   pan ${Math.round(model.pan.x)},${Math.round(model.pan.y)}   ` +
       `callouts ${model.callouts.length}   text ${sizeShown}px   dpr ${dpr()}\n` +
-      `0 fit  1 actual size  +/- zoom  wheel pan  Ctrl+wheel zoom  F11 fullscreen  PgUp/PgDn previous next  Ctrl +/- text size  arrows pan  ${model.mode === 'annotate' ? 'click to add' : 'drag to pan'}  Esc commit  Del remove  Ctrl+Z/Y undo redo  Ctrl+C copy  Ctrl+Enter copy and return  Ctrl+S save as  Ctrl+Del delete document  Ctrl+O open  C callout  L arrow` +
+      `0 fit  1 actual size  +/- zoom  wheel pan  Ctrl+wheel zoom  F11 fullscreen  PgUp/PgDn previous next  Ctrl +/- text size  arrows pan  ${model.mode === 'annotate' ? 'click to add' : 'drag to pan'}  Esc commit  Del remove  Ctrl+Z/Y undo redo  Ctrl+C copy  Ctrl+Enter copy and return  Ctrl+S save as  Ctrl+Del delete document  Ctrl+O open  C callout  L arrow  R rectangle  H highlight` +
       (currentNotice ? `\n${currentNotice}` : '');
   };
 
@@ -1141,8 +1158,8 @@
       layoutScene();
       return;
     }
-    if (model.tool === 'arrow') {
-      const shape = createShape('arrow', toImage(event));
+    if (model.tool === 'arrow' || model.tool === 'rect' || model.tool === 'highlight') {
+      const shape = createShape(model.tool, toImage(event));
       drag = { kind: 'draw', shape };
       try { stage.setPointerCapture(event.pointerId); } catch (e) { /* a synthetic pointer */ }
       layoutScene();
@@ -1359,6 +1376,8 @@
     if (model.mode === 'annotate' && !event.ctrlKey && !event.altKey && !event.metaKey) {
       if (event.code === 'KeyC') { setTool('callout'); event.preventDefault(); return; }
       if (event.code === 'KeyL') { setTool('arrow'); event.preventDefault(); return; }
+      if (event.code === 'KeyR') { setTool('rect'); event.preventDefault(); return; }
+      if (event.code === 'KeyH') { setTool('highlight'); event.preventDefault(); return; }
     }
     if (event.key === 'Enter' && model.selected) { startEditing(model.selected); event.preventDefault(); return; }
 
@@ -1726,6 +1745,7 @@
     deleteDocument,
     renderTrash,
     setTool,
+    rectOfShape,
     createShape,
     removeShape,
     handles,
