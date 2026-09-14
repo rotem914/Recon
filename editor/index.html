@@ -983,7 +983,7 @@
   const CELL_MAX_W = 320;
   const CELL_MAX_H = 200;
   const CELL_RATIO = CELL_MAX_W / CELL_MAX_H;
-  const STRIP_SHARE = 0.6;     // the most of the window the strip may take
+  const STRIP_SHARE = 0.96;    // the most of the window the strip may take (96%, Rotem's word on 2026-09-15; 60% before)
   const FETCHES_AT_ONCE = 8;
 
   // The pictures: at most eight fetched at once, each held only while its cell exists.
@@ -2219,6 +2219,17 @@
     });
     await window.__TAURI__.event.listen('save-now', async () => {
       try { await saveNow(); } finally { invoke('editor_saves_flushed').catch(() => {}); }
+    });
+    // The startup read finished on its thread (S2.8): the timeline takes the whole list,
+    // and the HUD's "n of m" is read again for the document on screen.
+    await window.__TAURI__.event.listen('store-loaded', async () => {
+      await refreshStrip().catch(() => {});
+      const info = await invoke('editor_image_info').catch(() => null);
+      if (info && info.document_id === model.image.document_id && info.total > 0) {
+        model.image.position = info.position;
+        model.image.total = info.total;
+        drawHud();
+      }
     });
     invoke('editor_mark', { name: 'page booted' }).catch(() => {});
     try {

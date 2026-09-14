@@ -91,10 +91,11 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-14 · No tool is in hand when a picture opens, and a chosen one stays until the next picture.
 - 2026-09-14 · The wheel zooms around the pointer, with Ctrl or without, and a sideways wheel still pans.
 - 2026-09-14 · The window's top bar is Recon's own, not Windows' frame recoloured.
-- 2026-09-14 · The timeline is a window onto the list, with no View More, and its thumbnail file is 320 wide.
+- 2026-09-14 · _The timeline is a window onto the list, with no View More, and its thumbnail file is 320 wide._ (its startup clause is superseded below; the rest stands)
 - 2026-09-15 · Start with Windows is one value under the user's Run key, and a logon start shows no window.
 - 2026-09-14 · With no tool in hand a drag pans the picture, and Space held pans it whatever tool is in hand.
 - 2026-09-15 · A pan drag slides the picture already painted and asks for one region at a time.
+- 2026-09-15 · The store is read on a thread at startup, newest first, not by month.
 
 ---
 
@@ -1127,3 +1128,41 @@ region lands. While the drag lasts the canvas is placed by its region's origin r
 snapped to a physical pixel; the drag's end paints the ordinary way, so the view at rest is
 the one F74 asks for. Other input that keeps coming, a fast spin of the wheel, still asks on
 every step; revisit if that shows the same stall.
+
+## 2026-09-15 · The store is read on a thread at startup, newest first, not by month
+
+### Context
+
+Rotem said BUILD on the read-by-month startup list proposed under S2.8, so a year of
+thousands of captures a month would not cost two seconds at every boot. Building it found
+that a list read by month cannot serve the one lookup that must see every document:
+Annotate on a file resumes that file's one document (§3.3), and would have to read every
+month to know there is none. The storage figure in the HUD turned out to walk every folder
+on every timeline refresh as well, a larger cost at that size than the startup read.
+
+### Options
+
+1. A lazy list read by month, with Annotate's lookup reading the rest on demand.
+2. The whole list read at startup, the newest fifty records first so the latest document
+   reopens at once, and the rest on a thread, newest first; the page told when it is whole.
+3. An index file beside the folders, maintained on every write.
+
+### Decision
+
+Option 2, by the assistant, delivering what was asked for, a startup that costs the same
+at thirty thousand documents as at fifty, without a list that can be partial in every path
+that walks it. Only Annotate's resume waits for the thread; the timeline and the history
+keys show what has arrived and refresh when the rest lands. With it, the storage figure
+comes from a ledger in the store, one entry per folder, filled as folders are read and
+corrected by whatever writes, moves or removes one. Option 3 was not taken because an index
+can disagree with the folders, and the folders are the index (S1.8). This supersedes the
+startup clause of "The timeline is a window onto the list"; the rest of that entry stands.
+
+### Consequences
+
+The window shows at once at any library size, and the list is whole a second or two later
+on a warm disk. Cost: for those seconds the history keys stop at the loaded end, and "the
+latest reopens" is the last-modified of the fifty newest by creation, so an old document
+annotated last with more than fifty newer ones is not the one reopened; Rotem's to veto.
+Revisit if the thread's seconds are ever felt, or if a lookup other than Annotate's turns
+out to need the whole list.

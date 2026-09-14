@@ -2074,7 +2074,8 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       wide today to 320 wide at most. A strip taller than one row of 320 stops growing them
       and wraps instead: a second row, a third, as many as the height holds, newest first
       in reading order, and the strip then scrolls vertically rather than sideways. The
-      strip can take at most 60% of the window's height, so the picture always keeps the
+      strip can take at most 96% of the window's height (60% as first specified, 96% at
+      Rotem's word on 2026-09-15), so the picture always keeps the
       rest. The height is remembered by the page across restarts, one number; fullscreen
       puts the strip away as it does and brings it back at that height. The trash view
       uses the same rows. The current document stays scrolled into view through a resize,
@@ -2091,7 +2092,7 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       of megabytes, and a 96-pixel strip is a few. The page's pixel is the screen's pixel
       today (the window is not DPI-scaled, S0.4), so 320 means 320 on the screen; the day
       the window scales, the file is made at 320 times that scale and nothing else moves.
-      **Rotem's calls, proposed here and open:** the 60% ceiling; the 96 minimum, which
+      **Rotem's calls, proposed here and open:** the ceiling, 60% as proposed and 96% at Rotem's word on 2026-09-15; the 96 minimum, which
       keeps the drag one-directional; and whether the drag needs a keyboard twin, which
       QA §6 flags on any pointer-only control.
       **Folded in at Rotem's word on 2026-09-14, for thousands of captures a month:** the
@@ -2103,7 +2104,7 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       size of the whole list, so there is no element per picture at any count; thirty
       documents in a 1280-wide strip make nineteen elements, and a scroll to the end drops
       the newest and makes the oldest. The top edge is the handle, 96 the floor and the
-      default, 216 the one row of 320 by 200, then whole rows, 60% of the window the
+      default, 216 the one row of 320 by 200, then whole rows, 96% of the window the
       ceiling, a double-click the reset, the height remembered by the page. The host makes
       `thumb.png` at 320 by 200 and remakes a 160 by 100 one it finds, once, under a rule
       unit-tested on sizes. Two things differ from the spec above. The kept file is served
@@ -2115,6 +2116,26 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       hand), paid once per boot since Recon lives in the tray. Reading by month is a
       lazy document list through every path that walks history, delete and restore, so
       it waits on Rotem's word with the number in hand rather than being built on a guess.
+      **The startup read, built 2026-09-15 at Rotem's word ("BUILD").** Not by month, and
+      here is why: Annotate on a file must find that file's one document (§3.3), so the
+      list has to be whole before that lookup, and a list read by month would have to
+      read every month for it. What was asked for is the effect, a startup that costs the
+      same at thirty thousand documents as at fifty, and that is what is built: the folder
+      names are listed once, the newest fifty records are read before the window shows and
+      the last-modified of them reopens, and every older record is read on a thread,
+      newest first, in chunks; the page is told with `store-loaded` when the list is whole,
+      refreshes the timeline and reads "n of m" again. The one lookup that must see
+      everything, Annotate's resume, waits for the thread; the timeline and the history
+      keys show what has arrived. Checked: sixty documents, the latest reopened 8 ms after
+      the reload with fifty listed, the rest arriving on the thread, the page told, sixty
+      cells and "60 of 60". Found on the way, and fixed in the same step: the storage
+      figure in the HUD walked every folder and every file on every timeline refresh,
+      which at thirty thousand documents is seconds per refresh; it now comes from a
+      ledger in the store, one entry per folder, filled as folders are read and corrected
+      by the write, move or removal that changed one, and checked byte for byte against a
+      walk. One behaviour differs, Rotem's to veto: "the latest reopens" is now the
+      last-modified of the fifty newest by creation, so an old document annotated last,
+      with more than fifty newer ones, would not be the one reopened.
 
 **Stage 3, the secondary tools, begun at Rotem's word on 2026-09-14** before the trial
 said which one daily use wanted first; the plan's own order is taken. Every tool joins the

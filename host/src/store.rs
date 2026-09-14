@@ -26,6 +26,107 @@ pub fn set_root(path: PathBuf) {
     if let Ok(mut slot) = ROOT.lock() {
         *slot = Some(path);
     }
+    if let Ok(mut sizes) = SIZES.lock() {
+        sizes.clear();
+    }
+}
+
+/// The size ledger (S2.8): each document folder's bytes on disk, by number, kept in memory
+/// so the storage figure never walks the store. Filled as the folders are read at startup,
+/// and corrected by the one write, move or removal that changed a folder, each of which
+/// reads that folder alone. A walk of thirty thousand folders on every timeline refresh is
+/// what this replaces.
+static SIZES: Mutex<std::collections::BTreeMap<u64, u64>> =
+    Mutex::new(std::collections::BTreeMap::new());
+
+/// Measures one document folder into the ledger: the sum of its files when it holds a
+/// `document.json`, else gone from the ledger. A folder outside the store root, the trash
+/// among them, is never entered.
+pub fn note_folder(dir: &Path) {
+    let Ok(root) = root() else {
+        return;
+    };
+    if dir.parent() != Some(root.as_path()) {
+        return;
+    }
+    let Some(id) = dir
+        .file_name()
+        .and_then(|n| n.to_string_lossy().parse::<u64>().ok())
+    else {
+        return;
+    };
+    let bytes = dir.join("document.json").is_file().then(|| {
+        std::fs::read_dir(dir)
+            .map(|files| {
+                files
+                    .flatten()
+                    .filter_map(|f| f.metadata().ok())
+                    .filter(|m| m.is_file())
+                    .map(|m| m.len())
+                    .sum::<u64>()
+            })
+            .unwrap_or(0)
+    });
+    if let Ok(mut sizes) = SIZES.lock() {
+        match bytes {
+            Some(bytes) => {
+                sizes.insert(id, bytes);
+            }
+            None => {
+                sizes.remove(&id);
+            }
+        }
+    }
+}
+
+/// What the store holds, from the ledger: how many documents and their bytes together.
+pub fn storage() -> (u32, u64) {
+    SIZES
+        .lock()
+        .map(|sizes| (sizes.len() as u32, sizes.values().sum()))
+        .unwrap_or((0, 0))
+}
+
+/// Every document folder's number, oldest first, from the folder names alone: one read of
+/// the store's root, whatever it holds, and no record opened. A number is a creation time
+/// (S1.8), so this order is the order of creation.
+pub fn folder_ids() -> Vec<u64> {
+    let Ok(root) = root() else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir(&root) else {
+        return Vec::new();
+    };
+    let mut ids: Vec<u64> = entries
+        .flatten()
+        .filter(|entry| entry.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .filter_map(|entry| entry.file_name().to_string_lossy().parse::<u64>().ok())
+        .collect();
+    ids.sort_unstable();
+    ids
+}
+
+/// One document's record and its image's path, the folder measured into the ledger on
+/// the way. A folder that does not parse, or has no image, is named on the log and left
+/// where it is, never deleted.
+pub fn read_one(id: u64) -> Option<(Record, PathBuf)> {
+    let dir = folder(id).ok()?;
+    note_folder(&dir);
+    match read_record(&dir) {
+        Ok(record) => {
+            let source = dir.join("source.png");
+            if source.is_file() {
+                Some((record, source))
+            } else {
+                println!("store: {} has no source.png, left alone", dir.display());
+                None
+            }
+        }
+        Err(err) => {
+            println!("store: skipped {err}");
+            None
+        }
+    }
 }
 
 pub fn root() -> Result<PathBuf, String> {
@@ -68,6 +169,7 @@ pub fn trash(id: u64) -> Result<Option<PathBuf>, String> {
     }
     std::fs::rename(&from, &to)
         .map_err(|err| format!("{} could not be moved to the trash: {err}", from.display()))?;
+    note_folder(&from);
     let stamp = format!("{}", millis(SystemTime::now()));
     write_atomic(&to.join("trashed"), stamp.as_bytes())?;
     Ok(Some(to))
@@ -90,6 +192,7 @@ pub fn restore(id: u64) -> Result<PathBuf, String> {
     std::fs::rename(&from, &to)
         .map_err(|err| format!("{} could not be moved back: {err}", from.display()))?;
     let _ = std::fs::remove_file(to.join("trashed"));
+    note_folder(&to);
     Ok(to)
 }
 
@@ -196,7 +299,9 @@ pub fn write_atomic(target: &Path, bytes: &[u8]) -> Result<(), String> {
     std::fs::rename(&temporary, target).map_err(|err| {
         let _ = std::fs::remove_file(&temporary);
         format!("{} could not be put in place: {err}", target.display())
-    })
+    })?;
+    note_folder(parent);
+    Ok(())
 }
 
 /// The preserved image, written once. A second call for the same document changes nothing
@@ -231,33 +336,11 @@ pub fn read_record(dir: &Path) -> Result<Record, String> {
     Ok(record)
 }
 
-/// Every document on disk that parses, with its image's path; one that does not parse is
-/// named on the log and left where it is, never deleted.
+/// Every document on disk that parses, with its image's path, last modified last: what the
+/// startup read did whole until S2.8, kept for the tests that measure it.
+#[cfg(test)]
 pub fn scan() -> Vec<(Record, PathBuf)> {
-    let Ok(root) = root() else {
-        return Vec::new();
-    };
-    let Ok(entries) = std::fs::read_dir(&root) else {
-        return Vec::new();
-    };
-    let mut found = Vec::new();
-    for entry in entries.flatten() {
-        let dir = entry.path();
-        if !dir.is_dir() {
-            continue;
-        }
-        match read_record(&dir) {
-            Ok(record) => {
-                let source = dir.join("source.png");
-                if source.is_file() {
-                    found.push((record, source));
-                } else {
-                    println!("store: {} has no source.png, left alone", dir.display());
-                }
-            }
-            Err(err) => println!("store: skipped {err}"),
-        }
-    }
+    let mut found: Vec<(Record, PathBuf)> = folder_ids().into_iter().filter_map(read_one).collect();
     found.sort_by_key(|(record, _)| record.modified_ms);
     found
 }

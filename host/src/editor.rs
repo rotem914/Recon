@@ -412,27 +412,126 @@ pub fn history_summary() -> Vec<(u64, u32, u32, usize)> {
         .unwrap_or_default()
 }
 
-/// Reads every document on disk into the list, then reopens the latest one (§3.8: after a
-/// restart, the latest document reopens). The image is not decoded until it is shown.
-pub fn load_store() {
-    let found = crate::store::scan();
-    let count = found.len();
-    let latest = found.last().map(|(record, _)| record.id);
-    if let Ok(mut documents) = DOCUMENTS.lock() {
-        for (record, source) in found {
-            if documents.iter().any(|d| d.id == record.id) {
-                continue;
-            }
-            documents.push(managed_from_record(record, source));
+/// How many of the newest records the startup reads before the window is shown (S2.8).
+/// The last-modified one among them reopens at once; the rest of the store follows on a
+/// thread, so a startup costs the same at thirty thousand documents as at fifty.
+const EAGER_READ: usize = 50;
+
+/// Which startup read is current: a reset or a reload bumps it, and a thread from before
+/// stops pushing into a list that is no longer its own.
+static STORE_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+/// Whether the whole store is in the list. What must see every document, the one-
+/// document-per-file lookup at Annotate (§3.3), waits on it; the timeline and the history
+/// keys show what has arrived and are told when the rest has.
+static STORE_LOADED: (Mutex<bool>, Condvar) = (Mutex::new(true), Condvar::new());
+
+fn set_store_loaded(loaded: bool) {
+    if let Ok(mut flag) = STORE_LOADED.0.lock() {
+        *flag = loaded;
+        STORE_LOADED.1.notify_all();
+    }
+}
+
+/// Blocks until the startup read has the whole store in the list; at once when it has.
+pub fn wait_store_loaded() {
+    if let Ok(mut flag) = STORE_LOADED.0.lock() {
+        while !*flag {
+            flag = match STORE_LOADED.1.wait(flag) {
+                Ok(flag) => flag,
+                Err(_) => return,
+            };
         }
     }
-    crate::log(&format!("store: {count} documents read"));
+}
+
+/// Puts records into the list, those already there left alone, and says how many went in.
+fn add_records(found: Vec<(crate::store::Record, std::path::PathBuf)>) -> usize {
+    let Ok(mut documents) = DOCUMENTS.lock() else {
+        return 0;
+    };
+    let mut added = 0;
+    for (record, source) in found {
+        if documents.iter().any(|d| d.id == record.id) {
+            continue;
+        }
+        documents.push(managed_from_record(record, source));
+        added += 1;
+    }
+    added
+}
+
+/// Reads the store into the list and reopens the latest document (§3.8: after a restart,
+/// the latest document reopens). Since S2.8 the folder names are listed once, the newest
+/// `EAGER_READ` records are read here, and the last-modified of them is shown before this
+/// returns; every older record is read on a thread, newest first, and the page is told
+/// with `store-loaded` when the list is whole. The image is not decoded until it is shown.
+pub fn load_store() {
+    let generation = STORE_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    let ids = crate::store::folder_ids();
+    let count = ids.len();
+    let (rest, head) = ids.split_at(count.saturating_sub(EAGER_READ));
+    let head: Vec<(crate::store::Record, std::path::PathBuf)> = head
+        .iter()
+        .rev()
+        .filter_map(|id| crate::store::read_one(*id))
+        .collect();
+    let latest = head
+        .iter()
+        .max_by_key(|(record, _)| (record.modified_ms, record.id))
+        .map(|(record, _)| record.id);
+    let read = add_records(head);
+    set_store_loaded(rest.is_empty());
     if let Some(id) = latest {
         match show_document(id) {
             Ok(()) => crate::log(&format!("store: document {id} reopened")),
             Err(err) => crate::log(&format!("store: document {id} NOT reopened: {err}")),
         }
     }
+    if rest.is_empty() {
+        crate::log(&format!("store: {read} documents read"));
+        return;
+    }
+    crate::log(&format!(
+        "store: {read} of {count} documents read, the rest on a thread"
+    ));
+    let rest: Vec<u64> = rest.iter().rev().copied().collect();
+    std::thread::spawn(move || {
+        // Whatever ends this thread, a panic included, the wait in editor_annotate is
+        // released: a list that stopped short is shown short, never waited on forever.
+        struct Whole(u64);
+        impl Drop for Whole {
+            fn drop(&mut self) {
+                if STORE_GENERATION.load(Ordering::SeqCst) == self.0 {
+                    set_store_loaded(true);
+                }
+            }
+        }
+        let _whole = Whole(generation);
+        let started = Instant::now();
+        let mut read = 0;
+        for chunk in rest.chunks(256) {
+            if STORE_GENERATION.load(Ordering::SeqCst) != generation {
+                return;
+            }
+            let found = chunk
+                .iter()
+                .filter_map(|id| crate::store::read_one(*id))
+                .collect();
+            read += add_records(found);
+        }
+        if STORE_GENERATION.load(Ordering::SeqCst) != generation {
+            return;
+        }
+        set_store_loaded(true);
+        crate::log(&format!(
+            "store: {read} more documents read in {} ms, the list is whole",
+            started.elapsed().as_millis()
+        ));
+        if let Ok(app) = app() {
+            let _ = app.emit("store-loaded", ());
+        }
+    });
 }
 
 /// A record read from disk as the list holds it; the number counter moves past it.
@@ -777,32 +876,10 @@ pub struct Storage {
 
 #[tauri::command]
 pub fn editor_storage() -> Storage {
-    let mut storage = Storage {
-        documents: 0,
-        bytes: 0,
-    };
-    let Ok(root) = crate::store::root() else {
-        return storage;
-    };
-    let Ok(entries) = std::fs::read_dir(&root) else {
-        return storage;
-    };
-    for entry in entries.flatten() {
-        let dir = entry.path();
-        if !dir.is_dir() || !dir.join("document.json").is_file() {
-            continue;
-        }
-        storage.documents += 1;
-        if let Ok(files) = std::fs::read_dir(&dir) {
-            storage.bytes += files
-                .flatten()
-                .filter_map(|f| f.metadata().ok())
-                .filter(|m| m.is_file())
-                .map(|m| m.len())
-                .sum::<u64>();
-        }
-    }
-    storage
+    // From the store's ledger (S2.8), never a walk: a folder is measured when it is read
+    // at startup and again by whatever writes, moves or removes it.
+    let (documents, bytes) = crate::store::storage();
+    Storage { documents, bytes }
 }
 
 /// Deletes a document (§3.8, S2.5): out of the list, its folder into Recon's trash for
@@ -953,6 +1030,9 @@ pub fn editor_annotate() -> Result<ImageInfo, String> {
     let Some((path, frame, name)) = key else {
         return editor_image_info();
     };
+    // One document per file (§3.3): the lookup below must see every document, so it waits
+    // for the startup read when Annotate comes within its first seconds (S2.8).
+    wait_store_loaded();
     // The list is read under its lock and the lock is released here, before the image info
     // is built: that reads the list too, and a lock held across it would wait on itself.
     let (own, existing) = {
@@ -3109,9 +3189,12 @@ mod checks {
         if let Ok(trash) = crate::store::trash_root() {
             let _ = std::fs::remove_dir_all(trash);
         }
+        // A startup read still running belongs to the store that was; it stops (S2.8).
+        STORE_GENERATION.fetch_add(1, Ordering::SeqCst);
         if let Ok(mut documents) = DOCUMENTS.lock() {
             documents.clear();
         }
+        set_store_loaded(true);
         Ok(dir.display().to_string())
     }
 
@@ -3125,6 +3208,8 @@ mod checks {
         pub notes: String,
         pub leftovers: u32,
         pub thumb: bool,
+        /// Every file in the folder together, as a walk counts it: what the ledger must say.
+        pub bytes: u64,
     }
 
     /// What is on disk, folder by folder, as the S1.8 check reads it.
@@ -3161,6 +3246,15 @@ mod checks {
                 notes: record.map(|r| r.notes.to_string()).unwrap_or_default(),
                 leftovers,
                 thumb: dir.join("thumb.png").is_file(),
+                bytes: std::fs::read_dir(&dir)
+                    .map(|d| {
+                        d.flatten()
+                            .filter_map(|e| e.metadata().ok())
+                            .filter(|m| m.is_file())
+                            .map(|m| m.len())
+                            .sum()
+                    })
+                    .unwrap_or(0),
             });
         }
         lines.sort_by_key(|l| l.id);
@@ -3178,6 +3272,7 @@ mod checks {
     /// store is read again from disk, and the latest document reopens as at startup.
     #[tauri::command]
     pub fn editor_store_reload() -> Result<ImageInfo, String> {
+        STORE_GENERATION.fetch_add(1, Ordering::SeqCst);
         if let Ok(mut documents) = DOCUMENTS.lock() {
             documents.clear();
         }

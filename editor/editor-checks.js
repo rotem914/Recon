@@ -2217,7 +2217,7 @@ export async function runChecks(editor, invoke) {
       && strip.scrollHeight === 16 + Math.ceil(30 / cols) * 208 - 8 && stage.clientHeight === window.innerHeight - 32 - 424,
       `${h2} tall, ${layout.rows} rows of ${layout.cols}, cell ${cols} at ${second.x},${second.y}, scroll height ${strip.scrollHeight}`);
     const h3 = editor.setStripHeight(100000);
-    check('the strip never takes more than 60% of the window', h3 <= Math.floor(window.innerHeight * 0.6) && h3 >= 216, `${h3} of ${window.innerHeight}`);
+    check('the strip never takes more than 96% of the window', h3 <= Math.floor(window.innerHeight * 0.96) && h3 >= 216, `${h3} of ${window.innerHeight}`);
 
     // The handle itself, with pointer events: up by 200 from the default, then a double-click.
     editor.setStripHeight(96);
@@ -2254,6 +2254,62 @@ export async function runChecks(editor, invoke) {
 
     try { if (remembered === null) localStorage.removeItem('recon.strip-height'); else localStorage.setItem('recon.strip-height', remembered); } catch (_) { /* none */ }
     editor.setStripHeight(96);
+    model.callouts = [];
+    editor.layoutScene();
+  }
+
+  // ---------------------------------------------------------------- 38. S2.8: the startup read
+  say('');
+  say('S2.8: a startup reads the newest fifty records and shows the latest before the rest of the store is read on a thread; the list becomes whole and the page is told; the storage figure comes from a ledger, never a walk');
+  {
+    const strip = editor.strip;
+    await invoke('editor_store_reset');
+    editor.setStripHeight(96);
+    const shots = [];
+    for (let i = 0; i < 60; i += 1) shots.push(await invoke('editor_capture_probe', { width: 300, height: 200 }));
+    await editor.loadImage(shots[59]);
+    await editor.saveNow();
+    const before = await invoke('editor_storage');
+    check('sixty documents on disk, and the ledger says so without a walk', before.documents === 60 && before.bytes > 0, `${before.documents} documents, ${before.bytes} bytes`);
+
+    // A restart: the newest fifty are read before the latest reopens, the ten oldest follow.
+    editor.documents.clear();
+    model.callouts = [];
+    model.image = { width: 0, height: 0, source: '' };
+    let loaded = false;
+    const unlisten = await window.__TAURI__.event.listen('store-loaded', () => { loaded = true; });
+    const started = performance.now();
+    const back = await invoke('editor_store_reload');
+    const reopened = performance.now() - started;
+    const partial = await invoke('editor_documents');
+    check('the latest document reopens at once, from the newest fifty', back.document_id === shots[59].document_id && back.width === 300 && partial.length >= 50 && partial.length <= 60,
+      `document ${back.document_id}, ${partial.length} listed after ${reopened.toFixed(0)} ms`);
+    await editor.loadImage(back);
+    for (let i = 0; i < 100 && !loaded; i += 1) await sleep(50);
+    for (let i = 0; i < 60 && editor.stripCells().length !== 60; i += 1) await sleep(50);
+    unlisten();
+    const whole = await invoke('editor_documents');
+    const info = await invoke('editor_image_info');
+    check('the rest arrives on a thread, the page is told, the timeline takes all sixty and the position reads 60 of 60', loaded && whole.length === 60 && editor.stripCells().length === 60 && info.position === 60 && info.total === 60 && model.image.total === 60,
+      `told ${loaded}, ${whole.length} listed, ${editor.stripCells().length} cells, ${info.position} of ${info.total}, hud ${model.image.position} of ${model.image.total}`);
+    // Thumbnails are written as cells show, so the ledger is read against a walk, not
+    // against the earlier figure.
+    const walk = async () => (await invoke('editor_store_list')).reduce((sum, l) => sum + (l.json ? l.bytes : 0), 0);
+    const after = await invoke('editor_storage');
+    const walked = await walk();
+    check('the ledger holds every folder after the read, byte for byte with a walk', after.documents === 60 && after.bytes === walked, `${after.documents} documents, ${after.bytes} bytes, a walk says ${walked}`);
+
+    // The ledger follows a delete and a restore.
+    await editor.deleteDocument(shots[0].document_id);
+    const less = await invoke('editor_storage');
+    const lessWalked = await walk();
+    await editor.loadImage(await invoke('editor_trash_restore', { id: shots[0].document_id }));
+    const same = await invoke('editor_storage');
+    const sameWalked = await walk();
+    check('a delete takes its folder out of the ledger and a restore puts it back', less.documents === 59 && less.bytes === lessWalked && same.documents === 60 && same.bytes === sameWalked && same.bytes > less.bytes,
+      `${less.documents} then ${same.documents} documents, ${less.bytes} (walk ${lessWalked}) then ${same.bytes} (walk ${sameWalked}) bytes`);
+    await editor.refreshStrip();
+    check('the timeline agrees', editor.stripCells().filter((c) => c.kind === 'doc').length === 60 && !strip.querySelector('#trash-chip'));
     model.callouts = [];
     editor.layoutScene();
   }
