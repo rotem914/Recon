@@ -1592,6 +1592,7 @@ export async function runChecks(editor, invoke) {
     const strip = editor.strip;
     const stage = document.getElementById('stage');
     await invoke('editor_store_reset');
+    editor.setStripHeight(96); // whatever a drag left remembered (S2.8), this section reads the default
     const shots = [];
     for (const [w, h, text] of [[400, 300, 'first'], [300, 400, 'second'], [640, 200, 'third']]) {
       const info = await invoke('editor_capture_probe', { width: w, height: h });
@@ -1606,23 +1607,25 @@ export async function runChecks(editor, invoke) {
     const docs = await invoke('editor_documents');
     check('the host lists the documents oldest first, one of them current', docs.length === 3 && docs.map((d) => d.id).join() === shots.map((s) => s.document_id).join() && docs.filter((d) => d.current).length === 1 && docs[2].current,
       docs.map((d) => `${d.width}x${d.height}${d.current ? '*' : ''}`).join(' '));
-    check('the strip is shown with one thumbnail per document, the current one marked', document.body.classList.contains('strip') && strip.children.length === 3 && strip.children[2].classList.contains('current') && !strip.children[0].classList.contains('current'));
-    check('the stage ends above the strip', stage.clientHeight === window.innerHeight - 96, `stage ${stage.clientHeight} of ${window.innerHeight}`);
+    check('the strip is shown with one thumbnail per document, the newest at the left and current', document.body.classList.contains('strip') && strip.children.length === 3 && strip.children[0].classList.contains('current') && !strip.children[2].classList.contains('current')
+      && Number(strip.children[0].dataset.id) === shots[2].document_id && Number(strip.children[2].dataset.id) === shots[0].document_id);
+    check('the stage ends above the strip, below the top bar', stage.clientHeight === window.innerHeight - 32 - 96, `stage ${stage.clientHeight} of ${window.innerHeight}`);
     for (let i = 0; i < 100 && [...strip.querySelectorAll('img')].filter((img) => img.complete && img.naturalWidth > 0).length < 3; i += 1) await sleep(50);
     const imgs = [...strip.querySelectorAll('img')];
-    check('every thumbnail is a small picture, at most 160 by 100, the shape of its document', imgs.length === 3 && imgs.every((img) => img.naturalWidth > 0 && img.naturalWidth <= 160 && img.naturalHeight <= 100)
-      && imgs[0].naturalWidth === 133 && imgs[0].naturalHeight === 100 && imgs[1].naturalWidth === 75 && imgs[2].naturalWidth === 160 && imgs[2].naturalHeight === 50,
+    // 320 by 200 since S2.8, so a thumbnail grown to 320 wide in the strip is not blurry.
+    check('every thumbnail is a small picture, at most 320 by 200, the shape of its document', imgs.length === 3 && imgs.every((img) => img.naturalWidth > 0 && img.naturalWidth <= 320 && img.naturalHeight <= 200)
+      && imgs[2].naturalWidth === 267 && imgs[2].naturalHeight === 200 && imgs[1].naturalWidth === 150 && imgs[0].naturalWidth === 320 && imgs[0].naturalHeight === 100, // newest first
       imgs.map((img) => `${img.naturalWidth}x${img.naturalHeight}`).join(' '));
     const kept = await invoke('editor_store_list');
     check('the thumbnails are kept beside their documents on disk', kept.length === 3 && kept.every((l) => l.json && l.thumb), `${kept.filter((l) => l.thumb).length} of ${kept.length} folders hold one`);
 
-    strip.children[0].click();
+    strip.children[2].click();
     for (let i = 0; i < 60 && model.image.document_id !== shots[0].document_id; i += 1) await sleep(50);
     await sleep(100);
     check('a click on a thumbnail shows that document, with its notes, in history', model.image.document_id === shots[0].document_id && model.callouts.length === 1 && model.callouts[0].text === 'first' && model.image.context === 'history' && model.image.position === 1,
       `${model.image.position} of ${model.image.total} in ${model.image.context}, ${model.callouts[0] && model.callouts[0].text}`);
     await editor.refreshStrip();
-    check('the mark moved to it', strip.children[0].classList.contains('current') && !strip.children[2].classList.contains('current'));
+    check('the mark moved to it', strip.children[2].classList.contains('current') && !strip.children[0].classList.contains('current'));
 
     await editor.setFullscreen(true);
     check('fullscreen puts the strip away and gives the stage the whole window', !document.body.classList.contains('strip') && stage.clientHeight === window.innerHeight, `stage ${stage.clientHeight} of ${window.innerHeight}`);
@@ -1640,8 +1643,10 @@ export async function runChecks(editor, invoke) {
     const controls = document.getElementById('controls');
     const copyButton = document.getElementById('copy');
     const saveButton = document.getElementById('saveas');
-    check('the three controls are shown with an image, in one row at the top right', !controls.hidden && copyButton && saveButton && document.getElementById('mode')
-      && copyButton.getBoundingClientRect().top < 40 && copyButton.getBoundingClientRect().right > window.innerWidth - 200);
+    const winButtons = document.getElementById('winbtns').getBoundingClientRect();
+    check('the three controls are shown with an image, in the top bar, left of the window buttons', !controls.hidden && copyButton && saveButton && document.getElementById('mode')
+      && copyButton.getBoundingClientRect().top >= 0 && copyButton.getBoundingClientRect().bottom <= 32 && copyButton.getBoundingClientRect().right < winButtons.left,
+      `copy at ${Math.round(copyButton.getBoundingClientRect().right)}, the window buttons from ${Math.round(winButtons.left)}`);
 
     const c = editor.createCallout({ x: 50, y: 50 });
     c.text = 'copied by the button';
@@ -1698,14 +1703,14 @@ export async function runChecks(editor, invoke) {
     }
     await editor.refreshStrip();
     for (let i = 0; i < 100 && [...strip.querySelectorAll('img')].length < 3; i += 1) await sleep(50);
-    check('three documents on the timeline, the newest current', strip.children.length === 3 && strip.children[2].classList.contains('current'));
+    check('three documents on the timeline, the newest at the left and current', strip.children.length === 3 && strip.children[0].classList.contains('current'));
 
     // The thumbnail's delete on a document that is not on screen: gone from the timeline,
     // in the trash, the one on screen unchanged, the external file untouched.
     // Since S2.7 the strip ends with a Trash chip once something is in the trash, so the
     // documents are counted by their thumbnails.
     const thumbs = () => strip.querySelectorAll('.thumb:not(.trashed)').length;
-    strip.children[0].querySelector('.x').click();
+    strip.children[2].querySelector('.x').click(); // the oldest, the file's document, at the right
     for (let i = 0; i < 60 && thumbs() !== 2; i += 1) await sleep(50);
     let trash = await invoke('editor_trash_list');
     check('deleted from its thumbnail: off the timeline, into the trash, the one on screen unchanged', thumbs() === 2 && trash.some(([id]) => id === fileDoc) && model.image.document_id === shots[1].document_id && hud.textContent.includes('trash for 30 days'),
@@ -2100,6 +2105,138 @@ export async function runChecks(editor, invoke) {
     model.callouts = [];
     editor.layoutScene();
     editor.setTool(null);
+  }
+
+  // ---------------------------------------------------------------- 36. the top bar
+  say('');
+  say('the top bar: Recon draws its own, the title on the left, the controls in it, minimize, maximize and close on the right; fullscreen puts it away');
+  {
+    const win = window.__TAURI__.window.getCurrentWindow();
+    const stage = document.getElementById('stage');
+    const bar = document.getElementById('bar');
+    const buttons = [...document.querySelectorAll('#winbtns button')];
+    const info = await invoke('editor_open_fixture', { name: 'reference-scene.png' });
+    await editor.loadImage(info);
+    check('the window has no frame of Windows\' own', (await win.isDecorated()) === false);
+    const barBox = bar.getBoundingClientRect();
+    const stageTop = () => Math.round(stage.getBoundingClientRect().top);
+    check('the bar runs across the top, 32 px tall, and the stage starts below it', barBox.top === 0 && barBox.height === 32 && Math.round(barBox.width) === window.innerWidth && stageTop() === 32,
+      `bar ${barBox.height} tall, ${Math.round(barBox.width)} of ${window.innerWidth} wide, the stage from ${stageTop()}`);
+    check('the bar is the drag region, the title included', bar.hasAttribute('data-tauri-drag-region') && document.getElementById('title').hasAttribute('data-tauri-drag-region'));
+    check('the title names the file, as the window title does', document.getElementById('title').textContent === 'reference-scene.png - Recon' && (await invoke('editor_window_title')) === 'reference-scene.png - Recon',
+      document.getElementById('title').textContent);
+    const boxes = buttons.map((b) => b.getBoundingClientRect());
+    // 46 wide, the bar's whole height above its bottom line: what Windows draws.
+    check('minimize, maximize and close sit in that order at the right edge, 46 wide and the bar tall', buttons.map((b) => b.id).join() === 'win-min,win-max,win-close'
+      && boxes.every((b) => Math.round(b.width) === 46 && Math.round(b.height) === bar.clientHeight && b.top === 0) && Math.round(boxes[2].right) === window.innerWidth && boxes[0].right <= boxes[1].left && boxes[1].right <= boxes[2].left,
+      boxes.map((b) => `${Math.round(b.left)}-${Math.round(b.right)}, ${Math.round(b.height)} tall`).join(' '));
+    check('every window button has a name', buttons.every((b) => b.title.length > 0), buttons.map((b) => b.title).join(', '));
+
+    const before = { w: window.innerWidth, h: window.innerHeight, maximized: await win.isMaximized() };
+    document.getElementById('win-max').click();
+    for (let i = 0; i < 40 && !(await win.isMaximized()); i += 1) await sleep(50);
+    await sleep(200);
+    check('the maximize button maximizes the window, and becomes Restore', !before.maximized && (await win.isMaximized()) && window.innerWidth >= before.w && window.innerHeight >= before.h && document.getElementById('win-max').title === 'Restore',
+      `${before.w}x${before.h} to ${window.innerWidth}x${window.innerHeight}, ${document.getElementById('win-max').title}`);
+    check('a maximized window still has the bar at the top and the stage below it', stageTop() === 32 && Math.round(document.getElementById('winbtns').getBoundingClientRect().right) === window.innerWidth);
+    document.getElementById('win-max').click();
+    for (let i = 0; i < 40 && (await win.isMaximized()); i += 1) await sleep(50);
+    await sleep(200);
+    check('and restores it', !(await win.isMaximized()) && window.innerWidth === before.w && window.innerHeight === before.h && document.getElementById('win-max').title === 'Maximize',
+      `${window.innerWidth}x${window.innerHeight}`);
+    check('the keys are still the page\'s after a click on a window button', document.activeElement !== document.getElementById('win-max'));
+
+    await editor.setFullscreen(true);
+    check('fullscreen puts the bar away and the stage starts at the top', getComputedStyle(bar).display === 'none' && stageTop() === 0 && stage.clientHeight === window.innerHeight, `the stage from ${stageTop()}`);
+    await editor.setFullscreen(false);
+    check('and it comes back', getComputedStyle(bar).display !== 'none' && stageTop() === 32, `the stage from ${stageTop()}`);
+  }
+
+  // ---------------------------------------------------------------- 37. S2.8: the timeline at scale
+  say('');
+  say('S2.8: the strip holds a screenful of cells whatever the library holds; its top edge drags it taller, the thumbnails growing to 320 wide and then wrapping into rows of 320; the height is remembered');
+  {
+    const strip = editor.strip;
+    const stage = document.getElementById('stage');
+    const handle = document.getElementById('strip-handle');
+    let remembered = null;
+    try { remembered = localStorage.getItem('recon.strip-height'); } catch (_) { /* none */ }
+    await invoke('editor_store_reset');
+    editor.setStripHeight(96);
+    const shots = [];
+    for (let i = 0; i < 30; i += 1) shots.push(await invoke('editor_capture_probe', { width: 300, height: 200 }));
+    await editor.loadImage(shots[29]);
+    await editor.refreshStrip();
+    let layout = editor.stripLayout();
+    const cellsOf = () => strip.querySelectorAll('.thumb').length;
+    check('thirty documents, one row of 128 by 80 cells, the newest first and current', editor.stripCells().length === 30 && layout.rows === 1 && layout.w === 128 && layout.h === 80
+      && strip.children[0].classList.contains('current') && Number(strip.children[0].dataset.id) === shots[29].document_id,
+      `${editor.stripCells().length} cells, ${layout.rows} row(s) of ${layout.w}x${layout.h}`);
+    const rendered = cellsOf();
+    check('only the screen and a screen either side exist as elements, not the thirty', rendered > 0 && rendered < 30 && rendered >= Math.floor(strip.clientWidth / 136),
+      `${rendered} of 30 in a strip ${strip.clientWidth} wide`);
+    check('the strip scrolls the whole row all the same', strip.scrollWidth === 16 + 30 * 136 - 8, `scroll width ${strip.scrollWidth}`);
+    strip.scrollLeft = strip.scrollWidth;
+    await sleep(100);
+    check('scrolled to the end: the oldest cell exists, the newest is dropped', !!strip.querySelector(`[data-id="${shots[0].document_id}"]`) && !strip.querySelector(`[data-id="${shots[29].document_id}"]`) && cellsOf() < 30,
+      `${cellsOf()} cells, scrollLeft ${strip.scrollLeft}`);
+    strip.scrollLeft = 0;
+    await sleep(100);
+    for (let i = 0; i < 100 && ![...strip.querySelectorAll('img')].some((img) => img.complete && img.naturalWidth > 0); i += 1) await sleep(50);
+    check('and back: the newest is there again, with its picture', !!strip.querySelector(`[data-id="${shots[29].document_id}"] img`), `${cellsOf()} cells`);
+
+    // The drag: taller, and the cells grow to 320 wide, then whole rows.
+    const h1 = editor.setStripHeight(300);
+    layout = editor.stripLayout();
+    check('dragged past one row of 320: the strip snaps to that row, 216 tall, cells 320 by 200', h1 === 216 && layout.rows === 1 && layout.w === 320 && layout.h === 200 && stage.clientHeight === window.innerHeight - 32 - 216,
+      `${h1} tall, ${layout.rows} row(s) of ${layout.w}x${layout.h}, stage ${stage.clientHeight}`);
+    const h2 = editor.setStripHeight(500);
+    layout = editor.stripLayout();
+    const cols = Math.floor((strip.clientWidth - 16 + 8) / 328);
+    const second = editor.cellRect(cols);
+    check('taller still: two rows of 320, as many columns as fit, scrolled vertically', h2 === 424 && layout.rows === 2 && layout.cols === cols && strip.classList.contains('grid') && second.x === 8 && second.y === 216
+      && strip.scrollHeight === 16 + Math.ceil(30 / cols) * 208 - 8 && stage.clientHeight === window.innerHeight - 32 - 424,
+      `${h2} tall, ${layout.rows} rows of ${layout.cols}, cell ${cols} at ${second.x},${second.y}, scroll height ${strip.scrollHeight}`);
+    const h3 = editor.setStripHeight(100000);
+    check('the strip never takes more than 60% of the window', h3 <= Math.floor(window.innerHeight * 0.6) && h3 >= 216, `${h3} of ${window.innerHeight}`);
+
+    // The handle itself, with pointer events: up by 200 from the default, then a double-click.
+    editor.setStripHeight(96);
+    const pointer = (type, y) => handle.dispatchEvent(new PointerEvent(type, { clientY: y, clientX: 100, button: 0, pointerId: 1, bubbles: true, cancelable: true }));
+    pointer('pointerdown', 700);
+    pointer('pointermove', 500);
+    pointer('pointerup', 500);
+    let kept = null;
+    try { kept = localStorage.getItem('recon.strip-height'); } catch (_) { /* none */ }
+    check('a drag on the top edge resizes the strip and the page remembers the height', editor.stripHeightOf() === 216 && kept === '216' && getComputedStyle(handle).cursor === 'ns-resize',
+      `${editor.stripHeightOf()} tall, remembered ${kept}, cursor ${getComputedStyle(handle).cursor}`);
+    handle.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    try { kept = localStorage.getItem('recon.strip-height'); } catch (_) { /* none */ }
+    check('a double-click on the edge returns the strip to its default', editor.stripHeightOf() === 96 && kept === '96' && stage.clientHeight === window.innerHeight - 32 - 96, `${editor.stripHeightOf()} tall, remembered ${kept}`);
+
+    // The trash view lays out the same way.
+    await editor.deleteDocument(shots[0].document_id);
+    // The chip is the last cell, so with twenty-nine documents it exists only near the end.
+    check('the Trash chip is the last cell, past the screen until the strip is scrolled there', editor.stripCells()[29].key === 'chip:trash' && !strip.querySelector('#trash-chip'));
+    strip.scrollLeft = strip.scrollWidth;
+    await sleep(100);
+    check('scrolled to the end, it is there', !!strip.querySelector('#trash-chip'),
+      `${cellsOf()} cells of ${editor.stripCells().length}, scrollLeft ${strip.scrollLeft} of ${strip.scrollWidth}, ${JSON.stringify(editor.stripLayout())}, last child ${strip.lastChild && strip.lastChild.className} ${strip.lastChild && strip.lastChild.dataset.id}`);
+    const chipEl = strip.querySelector('#trash-chip');
+    if (chipEl) chipEl.click();
+    for (let i = 0; i < 60 && !strip.querySelector('.thumb.trashed'); i += 1) await sleep(50);
+    const backEl = strip.querySelector('#trash-back');
+    check('the trash view is the same cells: the Back chip first, the trashed document after it', strip.children.length === 2 && !!backEl && strip.children[0].contains(backEl) && strip.children[1].classList.contains('trashed'),
+      `${strip.children.length} children, first ${strip.children[0] && strip.children[0].className}`);
+    if (backEl) backEl.click();
+    for (let i = 0; i < 60 && editor.stripCells().length !== 30; i += 1) await sleep(50);
+    check('and Back returns to the documents, scrolled to the current one', !document.body.classList.contains('trash') && editor.stripCells().length === 30 && editor.stripCells()[29].key === 'chip:trash' && !!strip.querySelector('.thumb.current'),
+      `trash ${document.body.classList.contains('trash')}, ${editor.stripCells().length} cells, last ${editor.stripCells()[editor.stripCells().length - 1].key}, current ${!!strip.querySelector('.thumb.current')}`);
+
+    try { if (remembered === null) localStorage.removeItem('recon.strip-height'); else localStorage.setItem('recon.strip-height', remembered); } catch (_) { /* none */ }
+    editor.setStripHeight(96);
+    model.callouts = [];
+    editor.layoutScene();
   }
 
   say('');

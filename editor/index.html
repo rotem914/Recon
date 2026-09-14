@@ -6,26 +6,53 @@
      No toolbar, no document strip, no persistence, no export. Those are later steps, and
      this file has to stay small enough to be the thing the composition contract is proved
      on rather than the thing it is buried in. */
-  :root { color-scheme: dark; --ink: #f0f0f0; --paper: #101214; }
+  :root { color-scheme: dark; --ink: #f0f0f0; --paper: #111217; }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; background: var(--paper); color: var(--ink);
                font: 13px/1.45 ui-sans-serif, "Segoe UI", system-ui, sans-serif;
                overflow: hidden; }
 
-  #stage { position: absolute; inset: 0; overflow: hidden; cursor: crosshair; }
-  /* The timeline (S2.1): every document along the bottom, newest last, the current one
-     marked. The stage ends above it while it is shown; fullscreen puts it away. */
-  body.strip #stage { bottom: 96px; }
-  #strip { position: absolute; left: 0; right: 0; bottom: 0; height: 96px; display: none;
-           gap: 8px; padding: 8px; overflow-x: auto; overflow-y: hidden;
+  /* The top bar (Rotem's call, 2026-09-14): Recon draws its own in place of Windows'
+     frame. The title on the left, the controls in the middle, and minimize, maximize and
+     close on the right at the size Windows draws them, 46 by 32. The bar itself is the
+     drag region; fullscreen puts it away. Provisional look, Rotem's to restyle. */
+  #bar { position: absolute; left: 0; right: 0; top: 0; height: 32px; display: flex;
+         align-items: center; user-select: none; }
+  #title { flex: 1 1 auto; min-width: 0; padding: 0 12px; font-size: 12px; color: #cfd4da;
+           white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #winbtns { display: flex; flex: 0 0 auto; height: 100%; }
+  #winbtns button { width: 46px; height: 100%; border: none; padding: 0; background: transparent;
+                    color: #cfd4da; display: grid; place-items: center; cursor: default; }
+  #winbtns button:hover { background: rgba(255,255,255,.09); color: #f2f2f2; }
+  #winbtns #win-close:hover { background: #c42b1c; color: #fff; }
+  #winbtns svg { width: 10px; height: 10px; stroke: currentColor; fill: none; stroke-width: 1; }
+  body.fullscreen #bar { display: none; }
+
+  #stage { position: absolute; inset: 32px 0 0 0; overflow: hidden; cursor: crosshair; }
+  body.fullscreen #stage { top: 0; }
+  /* The timeline (S2.1): every document along the bottom, newest first, the current one
+     marked. The stage ends above it while it is shown; fullscreen puts it away.
+     S2.8: its height is the page's --strip-h, dragged by the handle on its top edge; the
+     cells are placed by arithmetic, only the ones near the screen exist, and the ::after
+     block, the size of the whole list, gives the strip its scroll length without an
+     element for it. */
+  body.strip #stage { bottom: var(--strip-h, 96px); }
+  #strip { position: absolute; left: 0; right: 0; bottom: 0; height: var(--strip-h, 96px); display: none;
+           overflow-x: auto; overflow-y: hidden;
            background: #14171b; border-top: 1px solid #2a3037; }
-  body.strip #strip { display: flex; }
-  .thumb { flex: 0 0 auto; height: 78px; width: 124px; border-radius: 4px; overflow: hidden;
+  body.strip #strip { display: block; }
+  #strip.grid { overflow-x: hidden; overflow-y: auto; }
+  #strip::after { content: ''; display: block; width: var(--extent-x, 0px); height: var(--extent-y, 0px); }
+  #strip-handle { position: absolute; left: 0; right: 0; bottom: calc(var(--strip-h, 96px) - 3px); height: 6px;
+                  cursor: ns-resize; display: none; z-index: 2; }
+  body.strip #strip-handle { display: block; }
+  body.fullscreen #strip-handle { display: none; }
+  .thumb, .chip-cell { position: absolute; box-sizing: border-box; }
+  .thumb { border-radius: 4px; overflow: hidden;
            border: 2px solid transparent; background: #1b1f24; cursor: pointer;
            display: grid; place-items: center; color: #6b7480; font-size: 11px; }
   .thumb img { max-width: 100%; max-height: 100%; display: block; }
   .thumb.current { border-color: #7aa7ff; }
-  .thumb { position: relative; }
   .thumb .x { position: absolute; right: 2px; top: 2px; width: 18px; height: 18px; border-radius: 9px;
               border: none; background: rgba(10,12,14,.75); color: #f2f2f2; font: 13px/18px system-ui, sans-serif;
               cursor: pointer; display: none; padding: 0; }
@@ -33,7 +60,8 @@
   .thumb .x:hover { background: #c0392b; }
   /* The trash (S2.7): a chip at the end of the timeline opens it in the same strip, each
      trashed document with a way back; another chip returns. Provisional, Rotem's to restyle. */
-  .chip { flex: 0 0 auto; align-self: center; padding: 6px 10px; border-radius: 6px; border: 1px solid #3a4149;
+  .chip-cell { display: grid; place-items: center; }
+  .chip { padding: 6px 10px; border-radius: 6px; border: 1px solid #3a4149;
           background: #1b1f24; color: #cfd4da; font: 12px system-ui, sans-serif; cursor: pointer; }
   .chip:hover { border-color: #7aa7ff; }
   body.trash #strip { background: #1a1416; }
@@ -97,9 +125,9 @@
      Rotem's call on 2026-09-14, both. Outside the stage so a click on it reaches no
      canvas handler. */
   /* The controls (§3.3, S1.5, S2.3): the mode, and the two ways out that daily use asked
-     for by hand, beside the keys that do the same. Outside the stage so a click on them
+     for by hand, beside the keys that do the same. In the top bar, so a click on them
      reaches no canvas handler. Provisional, Rotem's to restyle. */
-  #controls { position: absolute; right: 12px; top: 10px; display: flex; gap: 6px; }
+  #controls { display: flex; flex: 0 0 auto; gap: 6px; margin-right: 8px; }
   #controls button { padding: 6px 12px; border-radius: 6px; border: 1px solid #3a4149;
                      background: #1b1f24; color: #f2f2f2; font: 13px system-ui, sans-serif;
                      cursor: pointer; }
@@ -124,6 +152,27 @@
   body.reporting #report { display: block; }
 </style>
 
+<div id="bar" data-tauri-drag-region>
+  <div id="title" data-tauri-drag-region>Recon</div>
+  <div id="controls" hidden>
+    <div id="tools">
+      <button type="button" data-tool="callout" title="Callout: a numbered note (C)">Callout</button>
+      <button type="button" data-tool="arrow" title="Arrow: drag from the tail to the head (L)">Arrow</button>
+      <button type="button" data-tool="rect" title="Rectangle: drag across what to frame (R)">Rectangle</button>
+      <button type="button" data-tool="highlight" title="Highlight: drag across what to mark (H)">Highlight</button>
+      <button type="button" data-tool="text" title="Text: type where you click, no bubble (T)">Text</button>
+      <button type="button" data-tool="blur" title="Blur: drag across what to hide (B)">Blur</button>
+    </div>
+    <button id="copy" type="button" title="Copy the image to the clipboard (Ctrl+C)">Copy</button>
+    <button id="saveas" type="button" title="Save As a new PNG file (Ctrl+S)">Save As</button>
+    <button id="mode" type="button">Annotate</button>
+  </div>
+  <div id="winbtns">
+    <button id="win-min" type="button" title="Minimize"><svg viewBox="0 0 10 10"><path d="M0 5.5h10"/></svg></button>
+    <button id="win-max" type="button" title="Maximize"><svg viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9"/></svg></button>
+    <button id="win-close" type="button" title="Close"><svg viewBox="0 0 10 10"><path d="M.5 .5l9 9M9.5 .5l-9 9"/></svg></button>
+  </div>
+</div>
 <div id="stage">
   <div id="mat"></div>
   <canvas id="canvas"></canvas>
@@ -134,19 +183,7 @@
 </div>
 <div id="hud"></div>
 <div id="strip"></div>
-<div id="controls" hidden>
-  <div id="tools">
-    <button type="button" data-tool="callout" title="Callout: a numbered note (C)">Callout</button>
-    <button type="button" data-tool="arrow" title="Arrow: drag from the tail to the head (L)">Arrow</button>
-    <button type="button" data-tool="rect" title="Rectangle: drag across what to frame (R)">Rectangle</button>
-    <button type="button" data-tool="highlight" title="Highlight: drag across what to mark (H)">Highlight</button>
-    <button type="button" data-tool="text" title="Text: type where you click, no bubble (T)">Text</button>
-    <button type="button" data-tool="blur" title="Blur: drag across what to hide (B)">Blur</button>
-  </div>
-  <button id="copy" type="button" title="Copy the image to the clipboard (Ctrl+C)">Copy</button>
-  <button id="saveas" type="button" title="Save As a new PNG file (Ctrl+S)">Save As</button>
-  <button id="mode" type="button">Annotate</button>
-</div>
+<div id="strip-handle" title="Drag to resize the timeline; double-click to reset"></div>
 <div id="report"></div>
 
 <script>
@@ -883,6 +920,7 @@
   let currentNotice = '';
   let emptyText = '';
   const drawHud = () => {
+    drawTitle();
     if (!model.image.width) {
       hud.textContent = emptyText + (currentNotice ? `\n${currentNotice}` : '');
       return;
@@ -916,99 +954,210 @@
 
   // ---------------------------------------------------------------- the timeline
   //
-  // S2.1: the documents, oldest first, as thumbnails the host makes once and keeps beside
+  // S2.1: the documents, newest first, as thumbnails the host makes once and keeps beside
   // each document. A click shows that document with its notes; the keys walk the same list
   // as history. Refreshed whenever a document is loaded or created.
+  //
+  // S2.8: the strip is a window onto the list, never the list. Every document has a cell
+  // of one size, placed by arithmetic, and only the cells on screen plus one screen's worth
+  // on either side exist as elements and hold their picture; a cell that scrolls further
+  // away is dropped with its picture, so the page holds a screenful whatever the library
+  // holds, and a startup asks for a screenful. The strip's top edge is a handle: dragged
+  // up, the cells grow to 320 wide; past that the strip snaps to whole rows of 320 and
+  // scrolls vertically. The height is remembered by the page.
+  const STRIP_MIN = 96;        // today's strip: the default and the floor
+  const STRIP_PAD = 8;
+  const STRIP_GAP = 8;
+  const CELL_MAX_W = 320;
+  const CELL_MAX_H = 200;
+  const CELL_RATIO = CELL_MAX_W / CELL_MAX_H;
+  const STRIP_SHARE = 0.6;     // the most of the window the strip may take
+  const FETCHES_AT_ONCE = 8;
+
+  // The pictures: at most eight fetched at once, each held only while its cell exists.
   const thumbUrls = new Map();
-  const thumbFor = async (id) => {
-    if (thumbUrls.has(id)) return thumbUrls.get(id);
-    const response = await fetch(`http://region.localhost/?thumb=${id}`, { cache: 'no-store' });
-    if (!response.ok) throw new Error(`thumbnail ${id}: ${response.status}`);
-    const url = URL.createObjectURL(await response.blob());
-    thumbUrls.set(id, url);
-    return url;
+  let fetching = 0;
+  const fetchQueue = [];
+  const pumpFetches = () => {
+    while (fetching < FETCHES_AT_ONCE && fetchQueue.length > 0) {
+      const job = fetchQueue.shift();
+      fetching += 1;
+      job().catch(() => {}).finally(() => { fetching -= 1; pumpFetches(); });
+    }
   };
+  const thumbFor = (id, still) => new Promise((resolve, reject) => {
+    fetchQueue.push(async () => {
+      if (!still()) return resolve(null);
+      try {
+        if (!thumbUrls.has(id)) {
+          const response = await fetch(`http://region.localhost/?thumb=${id}`, { cache: 'no-store' });
+          if (!response.ok) throw new Error(`thumbnail ${id}: ${response.status}`);
+          const url = URL.createObjectURL(await response.blob());
+          if (!still()) { URL.revokeObjectURL(url); return resolve(null); }
+          thumbUrls.set(id, url);
+        }
+        resolve(thumbUrls.get(id));
+      } catch (err) { reject(err); }
+    });
+    pumpFetches();
+  });
+  const dropThumb = (id) => {
+    const url = thumbUrls.get(id);
+    if (url) { URL.revokeObjectURL(url); thumbUrls.delete(id); }
+  };
+
+  // The cells, in strip order, and the ones that exist on screen.
   let stripMode = 'documents';
-  const refreshStrip = async () => {
-    if (stripMode === 'trash') return renderTrash();
-    document.body.classList.remove('trash');
-    const docs = await invoke('editor_documents').catch(() => []);
-    const trashed = await invoke('editor_trash_documents').catch(() => []);
-    model.storage = await invoke('editor_storage').catch(() => model.storage);
-    document.body.classList.toggle('strip', (docs.length > 0 || trashed.length > 0) && !model.fullscreen);
-    for (const el of [...strip.querySelectorAll('.chip, .thumb.trashed')]) el.remove();
-    const seen = new Set();
-    for (const doc of docs) {
-      seen.add(doc.id);
-      let el = strip.querySelector(`[data-id="${doc.id}"]`);
-      if (!el) {
-        el = document.createElement('div');
-        el.className = 'thumb';
-        el.dataset.id = String(doc.id);
-        el.textContent = `${doc.width}x${doc.height}`;
-        el.addEventListener('click', () => {
-          invoke('editor_show_document', { id: doc.id }).then((info) => loadImage(info)).catch((err) => console.error('timeline', err));
-        });
-        // The delete (§3.8, S2.5): into Recon's trash for thirty days; one click, no dialog.
-        const x = document.createElement('button');
-        x.className = 'x';
-        x.type = 'button';
-        x.textContent = '×';
-        x.title = 'Delete this document (Recon keeps it in its trash for 30 days)';
-        x.addEventListener('click', (event) => {
-          event.stopPropagation();
-          deleteDocument(doc.id).catch((err) => console.error('delete', err));
-        });
-        el.appendChild(x);
-        strip.appendChild(el);
-        thumbFor(doc.id).then((url) => {
-          const img = document.createElement('img');
-          img.src = url;
-          img.alt = '';
-          el.insertBefore(img, el.firstChild);
-          for (const node of [...el.childNodes]) if (node.nodeType === Node.TEXT_NODE) node.remove();
-        }).catch((err) => console.warn(String(err)));
+  let cells = [];              // { key, kind: 'doc' | 'trashed' | 'chip', doc?, chip? }
+  const rendered = new Map();  // key -> element
+  let stripHeight = STRIP_MIN;
+  const layout = { rows: 1, cols: 0, w: 0, h: 0 };
+  const stripLayout = () => ({ ...layout });
+
+  const stripMax = () => Math.max(STRIP_MIN, Math.floor(window.innerHeight * STRIP_SHARE));
+  // A wanted height made lawful: the floor, the share of the window, and past one row of
+  // 320 by 200 snapped down to whole rows.
+  const snapStripHeight = (wanted) => {
+    const h = Math.max(STRIP_MIN, Math.min(stripMax(), Math.round(wanted)));
+    const inner = h - 2 * STRIP_PAD;
+    if (inner <= CELL_MAX_H) return h;
+    const rows = Math.floor((inner + STRIP_GAP) / (CELL_MAX_H + STRIP_GAP));
+    return rows * (CELL_MAX_H + STRIP_GAP) - STRIP_GAP + 2 * STRIP_PAD;
+  };
+  const setStripHeight = (wanted) => {
+    stripHeight = snapStripHeight(wanted);
+    document.documentElement.style.setProperty('--strip-h', `${stripHeight}px`);
+    layoutStrip();
+    return stripHeight;
+  };
+  const rememberStripHeight = () => { try { localStorage.setItem('recon.strip-height', String(stripHeight)); } catch (_) { /* no storage: the default each start */ } };
+  const recallStripHeight = () => { try { return Number(localStorage.getItem('recon.strip-height')) || STRIP_MIN; } catch (_) { return STRIP_MIN; } };
+
+  const cellRect = (i) => {
+    const { rows, cols, w, h } = layout;
+    const col = rows === 1 ? i : i % cols;
+    const row = rows === 1 ? 0 : Math.floor(i / cols);
+    return { x: STRIP_PAD + col * (w + STRIP_GAP), y: STRIP_PAD + row * (h + STRIP_GAP), w, h };
+  };
+  const layoutStrip = () => {
+    const inner = stripHeight - 2 * STRIP_PAD;
+    const rows = inner <= CELL_MAX_H ? 1 : Math.floor((inner + STRIP_GAP) / (CELL_MAX_H + STRIP_GAP));
+    const h = rows === 1 ? inner : CELL_MAX_H;
+    const w = Math.round(h * CELL_RATIO);
+    const cols = rows === 1 ? Math.max(1, cells.length)
+      : Math.max(1, Math.floor((strip.clientWidth - 2 * STRIP_PAD + STRIP_GAP) / (w + STRIP_GAP)));
+    Object.assign(layout, { rows, cols, w, h });
+    const n = cells.length;
+    const extentX = rows === 1 && n > 0 ? 2 * STRIP_PAD + n * (w + STRIP_GAP) - STRIP_GAP : 0;
+    const extentY = rows > 1 && n > 0 ? 2 * STRIP_PAD + Math.ceil(n / cols) * (h + STRIP_GAP) - STRIP_GAP : 0;
+    strip.style.setProperty('--extent-x', `${extentX}px`);
+    strip.style.setProperty('--extent-y', `${extentY}px`);
+    strip.classList.toggle('grid', rows > 1);
+    renderStrip();
+  };
+  // The cells worth having as elements: the screen, and one screen's worth on either side.
+  const cellRange = () => {
+    const { rows, cols, w, h } = layout;
+    if (cells.length === 0) return [0, 0];
+    if (rows === 1) {
+      const pitch = w + STRIP_GAP;
+      const span = Math.max(1, strip.clientWidth);
+      const first = Math.floor((strip.scrollLeft - span) / pitch);
+      const last = Math.ceil((strip.scrollLeft + 2 * span) / pitch);
+      return [Math.max(0, first), Math.min(cells.length, last)];
+    }
+    const pitch = h + STRIP_GAP;
+    const span = Math.max(1, strip.clientHeight);
+    const firstRow = Math.floor((strip.scrollTop - span) / pitch);
+    const lastRow = Math.ceil((strip.scrollTop + 2 * span) / pitch);
+    return [Math.max(0, firstRow * cols), Math.min(cells.length, lastRow * cols)];
+  };
+  const dropCell = (key, el) => {
+    el.remove();
+    rendered.delete(key);
+    if (el.dataset.id) dropThumb(Number(el.dataset.id));
+  };
+  const renderStrip = () => {
+    const [from, to] = cellRange();
+    const keep = new Set();
+    for (let i = from; i < to; i += 1) keep.add(cells[i].key);
+    for (const [key, el] of [...rendered]) if (!keep.has(key)) dropCell(key, el);
+    let previous = null;
+    for (let i = from; i < to; i += 1) {
+      const cell = cells[i];
+      let el = rendered.get(cell.key);
+      const fresh = !el;
+      if (fresh) {
+        el = makeCell(cell);
+        rendered.set(cell.key, el);
       }
-      const when = new Date(doc.created_ms);
-      el.title = `${doc.file || 'capture'}  ${doc.width}x${doc.height}  ${when.toLocaleString()}`;
-      el.classList.toggle('current', doc.current);
-      strip.appendChild(el); // in list order
+      const r = cellRect(i);
+      el.style.left = `${r.x}px`;
+      el.style.top = `${r.y}px`;
+      el.style.width = `${r.w}px`;
+      el.style.height = `${r.h}px`;
+      if (cell.kind === 'doc') {
+        const when = new Date(cell.doc.created_ms);
+        el.title = `${cell.doc.file || 'capture'}  ${cell.doc.width}x${cell.doc.height}  ${when.toLocaleString()}`;
+        el.classList.toggle('current', !!cell.doc.current);
+      } else if (cell.kind === 'chip') {
+        el.firstChild.textContent = cell.chip.text;
+      }
+      // Kept in strip order, so the first child is the newest, as the checks read it.
+      const wanted = previous ? previous.nextSibling : strip.firstChild;
+      if (wanted !== el) strip.insertBefore(el, wanted);
+      previous = el;
+      // The picture is asked for once the cell is in the strip, since a cell that has
+      // left the strip by its turn is not worth a fetch.
+      if (fresh && cell.kind !== 'chip') loadThumb(cell.doc.id, el);
     }
-    for (const el of [...strip.children]) {
-      if (!seen.has(Number(el.dataset.id))) el.remove();
-    }
-    if (trashed.length > 0) {
+  };
+  const loadThumb = (id, el) => {
+    thumbFor(id, () => el.isConnected).then((url) => {
+      if (!url) return;
+      const img = document.createElement('img');
+      img.src = url;
+      img.alt = '';
+      el.insertBefore(img, el.firstChild);
+      for (const node of [...el.childNodes]) if (node.nodeType === Node.TEXT_NODE) node.remove();
+    }).catch((err) => console.warn(String(err)));
+  };
+  const makeCell = (cell) => {
+    if (cell.kind === 'chip') {
+      const wrap = document.createElement('div');
+      wrap.className = 'chip-cell';
       const chip = document.createElement('button');
       chip.className = 'chip';
       chip.type = 'button';
-      chip.id = 'trash-chip';
-      chip.textContent = `Trash · ${trashed.length}`;
-      chip.title = 'What was deleted in the last 30 days';
-      chip.addEventListener('click', () => { stripMode = 'trash'; renderTrash().catch(() => {}); chip.blur(); });
-      strip.appendChild(chip);
+      chip.id = cell.chip.id;
+      chip.textContent = cell.chip.text;
+      if (cell.chip.title) chip.title = cell.chip.title;
+      chip.addEventListener('click', () => { cell.chip.onClick(); chip.blur(); });
+      wrap.appendChild(chip);
+      return wrap;
     }
-    const current = strip.querySelector('.thumb.current');
-    if (current) current.scrollIntoView({ inline: 'nearest', block: 'nearest' });
-  };
-
-  const renderTrash = async () => {
-    const trashed = await invoke('editor_trash_documents').catch(() => []);
-    document.body.classList.add('trash');
-    document.body.classList.toggle('strip', !model.fullscreen);
-    strip.replaceChildren();
-    const back = document.createElement('button');
-    back.className = 'chip';
-    back.type = 'button';
-    back.id = 'trash-back';
-    back.textContent = trashed.length ? 'Back' : 'The trash is empty; back';
-    back.addEventListener('click', () => { stripMode = 'documents'; refreshStrip().catch(() => {}); back.blur(); });
-    strip.appendChild(back);
-    for (const doc of trashed) {
-      const el = document.createElement('div');
-      el.className = 'thumb trashed';
-      el.dataset.id = String(doc.id);
+    const doc = cell.doc;
+    const el = document.createElement('div');
+    el.className = cell.kind === 'trashed' ? 'thumb trashed' : 'thumb';
+    el.dataset.id = String(doc.id);
+    el.textContent = `${doc.width}x${doc.height}`;
+    if (cell.kind === 'doc') {
+      el.addEventListener('click', () => {
+        invoke('editor_show_document', { id: doc.id }).then((info) => loadImage(info)).catch((err) => console.error('timeline', err));
+      });
+      // The delete (§3.8, S2.5): into Recon's trash for thirty days; one click, no dialog.
+      const x = document.createElement('button');
+      x.className = 'x';
+      x.type = 'button';
+      x.textContent = '×';
+      x.title = 'Delete this document (Recon keeps it in its trash for 30 days)';
+      x.addEventListener('click', (event) => {
+        event.stopPropagation();
+        deleteDocument(doc.id).catch((err) => console.error('delete', err));
+      });
+      el.appendChild(x);
+    } else {
       el.title = `${doc.file || 'capture'}  ${doc.width}x${doc.height}  deleted ${doc.days} day${doc.days === 1 ? '' : 's'} ago; gone for good after 30`;
-      el.textContent = `${doc.width}x${doc.height}`;
       const restore = document.createElement('button');
       restore.className = 'restore';
       restore.type = 'button';
@@ -1023,16 +1172,90 @@
         }).catch((err) => { notice(`NOT RESTORED: ${err}`, 0); });
       });
       el.appendChild(restore);
-      strip.appendChild(el);
-      thumbFor(doc.id).then((url) => {
-        const img = document.createElement('img');
-        img.src = url;
-        img.alt = '';
-        el.insertBefore(img, el.firstChild);
-        for (const node of [...el.childNodes]) if (node.nodeType === Node.TEXT_NODE) node.remove();
-      }).catch(() => {});
     }
+    return el;
   };
+  const dropCellsNotIn = (list) => {
+    const keys = new Set(list.map((c) => c.key));
+    for (const [key, el] of [...rendered]) if (!keys.has(key)) dropCell(key, el);
+  };
+  // The current document's cell brought onto the screen, the nearest way.
+  const scrollToCurrent = () => {
+    const i = cells.findIndex((c) => c.kind === 'doc' && c.doc.current);
+    if (i < 0) return;
+    const r = cellRect(i);
+    if (layout.rows === 1) {
+      if (r.x - STRIP_PAD < strip.scrollLeft) strip.scrollLeft = r.x - STRIP_PAD;
+      else if (r.x + r.w + STRIP_PAD > strip.scrollLeft + strip.clientWidth) strip.scrollLeft = r.x + r.w + STRIP_PAD - strip.clientWidth;
+    } else if (r.y - STRIP_PAD < strip.scrollTop) strip.scrollTop = r.y - STRIP_PAD;
+    else if (r.y + r.h + STRIP_PAD > strip.scrollTop + strip.clientHeight) strip.scrollTop = r.y + r.h + STRIP_PAD - strip.clientHeight;
+    renderStrip();
+  };
+  strip.addEventListener('scroll', renderStrip);
+
+  const refreshStrip = async () => {
+    if (stripMode === 'trash') return renderTrash();
+    document.body.classList.remove('trash');
+    const docs = await invoke('editor_documents').catch(() => []);
+    const trashed = await invoke('editor_trash_documents').catch(() => []);
+    model.storage = await invoke('editor_storage').catch(() => model.storage);
+    document.body.classList.toggle('strip', (docs.length > 0 || trashed.length > 0) && !model.fullscreen);
+    // Newest first, at the left (Rotem's word, 2026-09-14); the host lists oldest first.
+    cells = [...docs].reverse().map((doc) => ({ key: `doc:${doc.id}`, kind: 'doc', doc }));
+    if (trashed.length > 0) {
+      cells.push({ key: 'chip:trash', kind: 'chip', chip: {
+        id: 'trash-chip', text: `Trash · ${trashed.length}`, title: 'What was deleted in the last 30 days',
+        onClick: () => { stripMode = 'trash'; renderTrash().catch(() => {}); },
+      } });
+    }
+    dropCellsNotIn(cells);
+    layoutStrip();
+    scrollToCurrent();
+  };
+
+  const renderTrash = async () => {
+    const trashed = await invoke('editor_trash_documents').catch(() => []);
+    document.body.classList.add('trash');
+    document.body.classList.toggle('strip', !model.fullscreen);
+    cells = [{ key: 'chip:back', kind: 'chip', chip: {
+      id: 'trash-back', text: trashed.length ? 'Back' : 'The trash is empty; back', title: '',
+      onClick: () => { stripMode = 'documents'; refreshStrip().catch(() => {}); },
+    } }];
+    for (const doc of trashed) cells.push({ key: `trashed:${doc.id}`, kind: 'trashed', doc });
+    dropCellsNotIn(cells);
+    strip.scrollLeft = 0;
+    strip.scrollTop = 0;
+    layoutStrip();
+  };
+
+  // The handle on the strip's top edge (S2.8): a drag resizes, a double-click resets.
+  const stripHandle = document.getElementById('strip-handle');
+  let stripDrag = null;
+  stripHandle.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    stripDrag = { y: event.clientY, h: stripHeight };
+    try { stripHandle.setPointerCapture(event.pointerId); } catch (_) { /* a synthetic pointer has no capture */ }
+    event.preventDefault();
+  });
+  stripHandle.addEventListener('pointermove', (event) => {
+    if (!stripDrag) return;
+    const before = stripHeight;
+    setStripHeight(stripDrag.h + (stripDrag.y - event.clientY));
+    if (stripHeight !== before) stageResized();
+  });
+  const endStripDrag = () => {
+    if (!stripDrag) return;
+    stripDrag = null;
+    rememberStripHeight();
+  };
+  stripHandle.addEventListener('pointerup', endStripDrag);
+  stripHandle.addEventListener('pointercancel', endStripDrag);
+  stripHandle.addEventListener('dblclick', () => {
+    setStripHeight(STRIP_MIN);
+    rememberStripHeight();
+    stageResized();
+  });
+  setStripHeight(recallStripHeight());
 
   // A document deleted: out of the timeline and, when it was the one on screen, the
   // neighbour shows or the editor is empty. The host says what remains.
@@ -1061,6 +1284,41 @@
     const hotkey = await invoke('editor_hotkey').catch(() => '');
     emptyText = emptyStateText(hotkey);
     drawHud();
+  };
+
+  // ---------------------------------------------------------------- the top bar
+  //
+  // Recon draws its own (Rotem's call, 2026-09-14). The three buttons do what Windows'
+  // did: close goes through the host's close handler, so it hides rather than quits
+  // (§3.1). Dragging the bar moves the window and a double-click on it toggles maximize,
+  // both the runtime's own from the drag-region attribute. The title is the window's.
+  const currentWindow = window.__TAURI__.window.getCurrentWindow();
+  const titleLine = document.getElementById('title');
+  const maxButton = document.getElementById('win-max');
+  const maxGlyph = {
+    maximize: '<svg viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9"/></svg>',
+    restore: '<svg viewBox="0 0 10 10"><path d="M2.5 2.5v-2h7v7h-2"/><rect x=".5" y="2.5" width="7" height="7"/></svg>',
+  };
+  const refreshMaxButton = async () => {
+    const maximized = await currentWindow.isMaximized().catch(() => false);
+    maxButton.title = maximized ? 'Restore' : 'Maximize';
+    maxButton.innerHTML = maximized ? maxGlyph.restore : maxGlyph.maximize;
+  };
+  const windowButton = (id, action) => {
+    const button = document.getElementById(id);
+    button.addEventListener('click', () => {
+      action().catch((err) => console.error(id, err));
+      // The keys stay the page's: a focused button would swallow Space and Enter.
+      button.blur();
+    });
+  };
+  windowButton('win-min', () => currentWindow.minimize());
+  windowButton('win-max', () => currentWindow.toggleMaximize().then(refreshMaxButton));
+  windowButton('win-close', () => currentWindow.close());
+  window.addEventListener('resize', () => { refreshMaxButton(); });
+  const drawTitle = () => {
+    const text = model.image.file ? `${model.image.file} - Recon` : 'Recon';
+    if (titleLine.textContent !== text) titleLine.textContent = text;
   };
 
   // ---------------------------------------------------------------- the mode
@@ -1355,7 +1613,9 @@
 
   const setFullscreen = async (on) => {
     model.fullscreen = await invoke('editor_fullscreen', { on });
-    document.body.classList.toggle('strip', strip.children.length > 0 && !model.fullscreen);
+    document.body.classList.toggle('fullscreen', model.fullscreen);
+    document.body.classList.toggle('strip', cells.length > 0 && !model.fullscreen);
+    if (!model.fullscreen) layoutStrip(); // the window may have changed size while the strip was away
     await measureRatio();
     model.fitZoom = computeFit();
     await paintRegion();
@@ -1591,10 +1851,15 @@
     return paintRegion();
   };
 
-  window.addEventListener('resize', async () => {
+  // The stage changed size: the window was resized, or the strip was dragged (S2.8).
+  const stageResized = async () => {
     await measureRatio();
     model.fitZoom = computeFit();
     paintRegion();
+  };
+  window.addEventListener('resize', () => {
+    if (cells.length > 0 && !model.fullscreen) setStripHeight(stripHeight); // the share of the window, and the columns
+    stageResized();
   });
 
   // ---------------------------------------------------------------- startup and the checks
@@ -1859,6 +2124,11 @@
     saveAs,
     refreshStrip,
     strip,
+    setStripHeight,
+    stripHeightOf: () => stripHeight,
+    stripLayout,
+    stripCells: () => cells,
+    cellRect,
     deleteDocument,
     renderTrash,
     setTool,

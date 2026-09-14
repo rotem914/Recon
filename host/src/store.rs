@@ -301,4 +301,44 @@ mod tests {
         assert_eq!(scan().len(), 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// S2.8's measurement, run by hand: what the startup scan costs at a year of
+    /// thousands of captures a month. Ignored because it writes sixty thousand files.
+    /// `cargo test --features stage0-checks -- --ignored --nocapture thirty_thousand`
+    #[test]
+    #[ignore]
+    fn thirty_thousand_documents_scan_in() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join(format!("store-scan-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        set_root(dir.clone());
+        let started = std::time::Instant::now();
+        for id in 1..=30_000u64 {
+            write_source(id, b"not a png, the scan only asks whether it exists").unwrap();
+            write_record(&Record {
+                schema: SCHEMA,
+                id,
+                created_ms: id,
+                modified_ms: id,
+                width: 1920,
+                height: 1080,
+                source: SourceRecord::Capture,
+                notes: serde_json::json!({ "callouts": [{ "id": "c1", "text": "a note of ordinary length" }] }),
+            })
+            .unwrap();
+        }
+        println!("written in {:?}", started.elapsed());
+        for pass in 1..=3 {
+            let started = std::time::Instant::now();
+            let found = scan();
+            println!(
+                "scan {pass}: {} documents in {:?}",
+                found.len(),
+                started.elapsed()
+            );
+            assert_eq!(found.len(), 30_000);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

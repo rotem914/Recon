@@ -1,7 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The editor page may listen for the host's events and call the commands the host registers. Nothing else: no file system, no shell, no clipboard from the page.",
+  "description": "The editor page may listen for the host's events, call the commands the host registers, and drive its own window the way Windows' frame did: drag it, minimize, maximize, close. Nothing else: no file system, no shell, no clipboard from the page.",
   "windows": ["editor", "bench"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close"
+  ]
 }

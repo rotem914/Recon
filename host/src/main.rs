@@ -275,6 +275,7 @@ fn editor_run(demo: bool) -> i32 {
         )
         .title("Recon")
         .inner_size(1280.0, 800.0)
+        .decorations(false)
         .visible(demo)
         .build()?;
         Ok(())

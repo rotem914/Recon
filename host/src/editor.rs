@@ -626,12 +626,59 @@ pub fn quit_after_saves(app: &AppHandle) {
     });
 }
 
-/// The timeline's thumbnail of one document (S2.1): at most 160 by 100, made once from the
-/// document's own image and kept as `thumb.png` beside it, so old history costs a small
-/// file each and never a decoded image in memory. A document whose folder is not on disk
-/// yet is thumbnailed from what it holds and kept in memory only.
-const THUMB_W: u32 = 160;
-const THUMB_H: u32 = 100;
+/// The timeline's thumbnail of one document (S2.1): at most 320 by 200 since S2.8 (160 by
+/// 100 before it, when the strip could not grow), made once from the document's own image
+/// and kept as `thumb.png` beside it, so old history costs a small file each and never a
+/// decoded image in memory. A document whose folder is not on disk yet is thumbnailed from
+/// what it holds and kept in memory only.
+const THUMB_W: u32 = 320;
+const THUMB_H: u32 = 200;
+
+/// A thumbnail kept before S2.8 fits 160 by 100 and is blurry in a grown strip. It is
+/// outgrown when the document holds more pixels than it and it does not touch the box a
+/// thumbnail is made in now; then it is made again, once. A thumbnail the size of its
+/// document, or one that already touches the box, is never remade.
+fn outgrown(png: &[u8], id: u64) -> bool {
+    let Some((w, h)) = image::ImageReader::new(std::io::Cursor::new(png))
+        .with_guessed_format()
+        .ok()
+        .and_then(|reader| reader.into_dimensions().ok())
+    else {
+        return false;
+    };
+    let Some((dw, dh)) = DOCUMENTS.lock().ok().and_then(|documents| {
+        documents
+            .iter()
+            .find(|d| d.id == id)
+            .map(|d| (d.width, d.height))
+    }) else {
+        return false;
+    };
+    outgrown_by((w, h), (dw, dh))
+}
+
+/// The rule of `outgrown`, on sizes alone: the kept thumbnail's, then the document's.
+fn outgrown_by((w, h): (u32, u32), (dw, dh): (u32, u32)) -> bool {
+    (w < dw || h < dh) && w < THUMB_W && h < THUMB_H
+}
+
+#[cfg(test)]
+mod thumbnail_tests {
+    use super::outgrown_by;
+
+    #[test]
+    fn a_thumbnail_from_before_s2_8_is_remade_once_and_a_current_one_never() {
+        // Kept at 160 by 100 from a 4K capture: remade.
+        assert!(outgrown_by((160, 90), (3840, 2160)));
+        // Made at 320 by 200 from the same: it touches the box, kept.
+        assert!(!outgrown_by((320, 180), (3840, 2160)));
+        // A tall picture kept at 25 by 100, then at 50 by 200: remade, then kept.
+        assert!(outgrown_by((25, 100), (500, 2000)));
+        assert!(!outgrown_by((50, 200), (500, 2000)));
+        // A picture smaller than the box is its own thumbnail: kept.
+        assert!(!outgrown_by((100, 60), (100, 60)));
+    }
+}
 
 fn thumbnail(id: u64) -> Result<Vec<u8>, String> {
     let cached = crate::store::folder(id)
@@ -645,7 +692,10 @@ fn thumbnail(id: u64) -> Result<Vec<u8>, String> {
                 .filter(|path| path.is_file())
         });
     if let Some(path) = cached {
-        return std::fs::read(&path).map_err(|err| format!("{}: {err}", path.display()));
+        let png = std::fs::read(&path).map_err(|err| format!("{}: {err}", path.display()))?;
+        if !outgrown(&png, id) {
+            return Ok(png);
+        }
     }
     let frame = {
         let documents = DOCUMENTS.lock().map_err(|_| "the documents are poisoned")?;
@@ -1006,9 +1056,12 @@ fn app() -> Result<&'static AppHandle, String> {
 /// because a hidden window can be throttled by the browser engine and then show a blank or
 /// stale first frame, which looks exactly like slowness.
 pub fn create_hidden(app: &AppHandle) -> tauri::Result<()> {
+    // No frame of Windows' own: the page draws the top bar, with the title, the controls
+    // and the three window buttons (Rotem's call, 2026-09-14). The edges still resize.
     WebviewWindowBuilder::new(app, "editor", WebviewUrl::App("index.html".into()))
         .title("Recon")
         .inner_size(1280.0, 800.0)
+        .decorations(false)
         .visible(false)
         .build()?;
     Ok(())

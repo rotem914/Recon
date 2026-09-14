@@ -2035,6 +2035,80 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       screen with its note, into the list and out of the trash. Provisional look, Rotem's
       to change.
 
+- [ ] S2.8 The timeline at scale, and a strip that grows: how many thumbnails the strip
+      holds at once, and a drag on its top edge that enlarges them. Asked by Rotem on
+      2026-09-14; a spec, nothing built. Model: Fable 5.1, it is a design and it changes
+      what is kept on disk.
+      **What is true today.** The strip lists every document and, the first time it is
+      shown, asks the host for every thumbnail at once, one thread each; every thumbnail
+      fetched is then held by the page for the life of the window, as its bytes and as an
+      image element. The host holds nothing per document, since a stored document's image
+      stays on disk until it is shown (S1.8). So the strip is the one place where memory
+      grows with the library, which §3.8 forbids, and the startup burst grows with it. At
+      the rate §3.8 states, a few hundred documents is one to two weeks of use, and a few
+      hundred is where a startup begins to stutter; nothing is heavy at today's count.
+      **No View More button.** A button pages a list read top to bottom; the strip is
+      scrolled, and the keys walk the same list as history (S1.9), so a hidden tail would
+      be one the keys reach and the eye cannot. The load is solved out of sight instead:
+      the strip keeps a box for every document, sized from the width and height the host
+      already lists, so the scroll length is right from the first frame; only the boxes on
+      screen, plus one screen's worth on either side, fetch and hold their picture, and a
+      box that scrolls two screens away lets its picture go. At most eight fetches are in
+      flight at once. The page then holds a fixed number of pictures whatever the library
+      holds, and a startup asks for a screenful, not a library. A View More, or a fold by
+      date, earns its place only if Rotem wants old work out of sight on purpose, which is
+      a product call and not a load one; the date grouping §3.8 names is the form it would
+      take.
+      **The strip grows by a drag.** The strip's top edge is a handle, six pixels tall,
+      under the vertical resize cursor. Dragging it up makes the strip taller and the
+      thumbnails larger, live; dragging it down makes them smaller, down to today's 96
+      pixels, which stays the minimum and the default, and a double-click on the edge
+      returns to it. A thumbnail keeps its picture's shape and grows with the row, from 124
+      wide today to 320 wide at most. A strip taller than one row of 320 stops growing them
+      and wraps instead: a second row, a third, as many as the height holds, newest first
+      in reading order, and the strip then scrolls vertically rather than sideways. The
+      strip can take at most 60% of the window's height, so the picture always keeps the
+      rest. The height is remembered by the page across restarts, one number; fullscreen
+      puts the strip away as it does and brings it back at that height. The trash view
+      uses the same rows. The current document stays scrolled into view through a resize,
+      and the picture above refits or keeps its pan exactly as it does when the window is
+      resized, through the same path.
+      **The thumbnail file grows with it, once.** A thumbnail kept at 160 by 100 is blurry
+      at 320, so the host makes `thumb.png` at 320 by 200 at most from then on, and remakes
+      a smaller one it finds the first time a larger one is asked for; the file is roughly
+      four times today's and still a few percent of the document's own image. The page asks
+      for the size it shows, in three fixed steps (160, 240 and 320 wide) so a drag does
+      not refetch on every pixel, and the host serves the kept file resampled down to that
+      step, so a small strip pays a small picture's memory and a 320 strip pays a 320 one:
+      a wall of three 320 rows across a 5120-wide window, margins included, is a few tens
+      of megabytes, and a 96-pixel strip is a few. The page's pixel is the screen's pixel
+      today (the window is not DPI-scaled, S0.4), so 320 means 320 on the screen; the day
+      the window scales, the file is made at 320 times that scale and nothing else moves.
+      **Rotem's calls, proposed here and open:** the 60% ceiling; the 96 minimum, which
+      keeps the drag one-directional; and whether the drag needs a keyboard twin, which
+      QA §6 flags on any pointer-only control.
+      **Folded in at Rotem's word on 2026-09-14, for thousands of captures a month:** the
+      strip must not build even an empty box per picture, and the list of records should
+      be read by month, newest first, rather than whole at startup.
+      **Built 2026-09-14, on the three proposed calls as they stand.** The strip is placed
+      by arithmetic: every document is a cell of one size, the cells that exist are the
+      screen's and one screen's worth on either side, and the scroll length is a block the
+      size of the whole list, so there is no element per picture at any count; thirty
+      documents in a 1280-wide strip make nineteen elements, and a scroll to the end drops
+      the newest and makes the oldest. The top edge is the handle, 96 the floor and the
+      default, 216 the one row of 320 by 200, then whole rows, 60% of the window the
+      ceiling, a double-click the reset, the height remembered by the page. The host makes
+      `thumb.png` at 320 by 200 and remakes a 160 by 100 one it finds, once, under a rule
+      unit-tested on sizes. Two things differ from the spec above. The kept file is served
+      as it is and the page scales it, not resampled to a step: a screenful of 320 by 200
+      pictures is a few megabytes, and a fetch burst on every step crossed was not worth
+      the saving. And the list is still read whole at startup, because it was measured
+      first: thirty thousand documents, a year at thousands a month, scan in 1.9 to 2.2
+      seconds on a warm disk (`store::tests::thirty_thousand_documents_scan_in`, run by
+      hand), paid once per boot since Recon lives in the tray. Reading by month is a
+      lazy document list through every path that walks history, delete and restore, so
+      it waits on Rotem's word with the number in hand rather than being built on a guess.
+
 **Stage 3, the secondary tools, begun at Rotem's word on 2026-09-14** before the trial
 said which one daily use wanted first; the plan's own order is taken. Every tool joins the
 same selection, undo, save and export the callouts have (part 10's acceptance), lives
