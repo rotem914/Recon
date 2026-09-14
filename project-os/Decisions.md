@@ -1100,3 +1100,9 @@ unless that display has something lit, and then repainting four one-pixel strips
 the three values above are guesses until Rotem has seen them; the reply names them.
 Revisit the speed and the dash length by eye, and the colours if the frame ever hides on
 a mid-grey picture.
+
+The same evening, after Rotem saw the pixel steps at 8 a second: the walk is read off the
+clock at about sixty frames a second, and the one pixel at each dash edge is blended by
+the fraction of a pixel walked, so the dashes glide. Two extra brushes per frame is the
+whole cost. The tuned values stand at 2 pixels thick, #00B9F7 on near black, 12 on and 8
+off, 12 pixels a second.

@@ -20,9 +20,10 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
+use std::time::Instant;
 
 use windows::core::{w, BOOL, PCWSTR};
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Dwm::{
     DwmGetWindowAttribute, DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS,
 };
@@ -62,9 +63,16 @@ const WM_ACCEPTING: u32 = WM_APP + 1;
 const ANTS_DASH: u32 = 12;
 const ANTS_GAP: u32 = 8;
 const ANTS_WIDTH: i32 = 2;
-// 8 pixels a second, Rotem's number: 1000 / 8.
-const ANTS_STEP_MS: u32 = 125;
+/// Pixels a second, Rotem's number. The walk is read off the clock, not counted in
+/// ticks, and the pixel at every dash edge is blended by the fraction in between, so
+/// the dashes glide instead of stepping.
+const ANTS_SPEED: f64 = 12.0;
+/// The frame's redraw interval: about sixty a second.
+const ANTS_FRAME_MS: u32 = 16;
 const ANTS_TIMER: usize = 1;
+/// The dash, Rotem's #00B9F7, and the gap, near black.
+const ANTS_DASH_RGB: (u8, u8, u8) = (0x00, 0xB9, 0xF7);
+const ANTS_GAP_RGB: (u8, u8, u8) = (0x20, 0x20, 0x20);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
@@ -140,8 +148,8 @@ struct State {
     /// The two inks of the marching frame: the light dash and the dark gap.
     border: HBRUSH,
     ink: HBRUSH,
-    /// How far the dashes have walked along the frame, in pixels; one more per tick.
-    phase: u32,
+    /// When the overlay came up: the dashes' walk is the time since, times the speed.
+    started: Instant,
 }
 
 thread_local! {
@@ -315,10 +323,9 @@ unsafe fn build_state(
         dim_dc,
         dim_bitmap,
         dim_previous,
-        // The dash is Rotem's blue, #00B9F7; a COLORREF is blue-green-red.
-        border: unsafe { CreateSolidBrush(windows::Win32::Foundation::COLORREF(0x00F7B900)) },
-        ink: unsafe { CreateSolidBrush(windows::Win32::Foundation::COLORREF(0x00202020)) },
-        phase: 0,
+        border: unsafe { CreateSolidBrush(colorref(ANTS_DASH_RGB)) },
+        ink: unsafe { CreateSolidBrush(colorref(ANTS_GAP_RGB)) },
+        started: Instant::now(),
     })
 }
 
@@ -402,7 +409,7 @@ unsafe fn build_surface(frame: &Frame, monitor: &MonitorInfo, screen_dc: HDC) ->
     };
     let _ = unsafe { ShowWindow(hwnd, SW_SHOW) };
     // The frame's clock. It dies with the window; a tick with nothing lit does nothing.
-    unsafe { SetTimer(Some(hwnd), ANTS_TIMER, ANTS_STEP_MS, None) };
+    unsafe { SetTimer(Some(hwnd), ANTS_TIMER, ANTS_FRAME_MS, None) };
 
     Some(Surface {
         hwnd,
@@ -653,13 +660,13 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             LRESULT(0)
         }
         WM_TIMER if wparam.0 == ANTS_TIMER => {
-            // One step of the dashes, and only the frame itself is repainted: four thin
-            // strips, not the lit area, so the walk costs nothing to speak of.
+            // One frame of the dashes, and only the frame itself is repainted: four thin
+            // strips, not the lit area, so the walk costs nothing to speak of. The walk
+            // is read off the clock at paint time, so a late frame does not slow it.
             let ring = STATE.with(|cell| {
-                let mut borrowed = cell.borrow_mut();
-                let state = borrowed.as_mut()?;
+                let borrowed = cell.borrow();
+                let state = borrowed.as_ref()?;
                 let sel = state.client_selection(hwnd)?;
-                state.phase = state.phase.wrapping_add(1);
                 Some(ring_rects(sel))
             });
             if let Some(ring) = ring {
@@ -789,6 +796,13 @@ impl State {
         self.parts
             .entry(window)
             .or_insert_with(|| parts_of_window(window))
+    }
+
+    /// How far the dashes have walked: whole pixels, and the fraction of the next one.
+    fn phase(&self) -> (u32, f64) {
+        let walked = self.started.elapsed().as_secs_f64() * ANTS_SPEED;
+        let whole = walked.floor();
+        ((whole as u64 % u32::MAX as u64) as u32, walked - whole)
     }
 
     fn origin_of_surface(&self, surface: isize) -> (i32, i32) {
@@ -1056,7 +1070,18 @@ unsafe fn paint(hwnd: HWND) {
             // along the frame with the phase. Only the runs inside the dirty region are
             // drawn, which on a tick is the frame's four strips.
             if let Some(sel) = selection {
-                for (run, light) in ant_runs(sel, state.phase) {
+                // The walk: whole pixels shift the pattern, and the fraction in between
+                // is the blend of the pixel at every edge, dash into gap and gap into
+                // dash. Two brushes per frame, made and freed here.
+                let (whole, fraction) = state.phase();
+                let to_gap = unsafe {
+                    CreateSolidBrush(colorref(mix(ANTS_DASH_RGB, ANTS_GAP_RGB, fraction)))
+                };
+                let to_dash = unsafe {
+                    CreateSolidBrush(colorref(mix(ANTS_GAP_RGB, ANTS_DASH_RGB, fraction)))
+                };
+                for ant in ant_runs(sel, whole) {
+                    let run = ant.run;
                     if run.right <= dirty.left
                         || run.left >= dirty.right
                         || run.bottom <= dirty.top
@@ -1064,9 +1089,15 @@ unsafe fn paint(hwnd: HWND) {
                     {
                         continue;
                     }
-                    let brush = if light { state.border } else { state.ink };
+                    let brush = if ant.light { state.border } else { state.ink };
                     let _ = unsafe { FillRect(hdc, &run, brush) };
+                    if let Some(edge) = ant.edge {
+                        let blend = if ant.light { to_gap } else { to_dash };
+                        let _ = unsafe { FillRect(hdc, &edge, blend) };
+                    }
                 }
+                let _ = unsafe { DeleteObject(HGDIOBJ(to_gap.0)) };
+                let _ = unsafe { DeleteObject(HGDIOBJ(to_dash.0)) };
             }
         });
     }
@@ -1120,10 +1151,32 @@ fn ink_at(position: i64) -> bool {
     position.rem_euclid(period) < ANTS_DASH as i64
 }
 
+/// One run of the marching frame: its rectangle, its ink, and the one pixel at its end
+/// where the ink changes, when it ends at a dash edge rather than at a band's end. That
+/// pixel is the one blended by the fraction of the walk.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Ant {
+    run: RECT,
+    light: bool,
+    edge: Option<RECT>,
+}
+
+/// A colour for a brush: red, green, blue, which a COLORREF stores the other way round.
+fn colorref((r, g, b): (u8, u8, u8)) -> COLORREF {
+    COLORREF((b as u32) << 16 | (g as u32) << 8 | r as u32)
+}
+
+/// The colour a fraction of the way from one to the other, per channel.
+fn mix(from: (u8, u8, u8), to: (u8, u8, u8), fraction: f64) -> (u8, u8, u8) {
+    let f = fraction.clamp(0.0, 1.0);
+    let one = |a: u8, b: u8| (a as f64 + (b as f64 - a as f64) * f).round() as u8;
+    (one(from.0, to.0), one(from.1, to.1), one(from.2, to.2))
+}
+
 /// The dashes of the marching frame: runs along the four bands, clockwise from the
 /// top-left corner, each light or dark, the pattern shifted by the phase so the dashes
 /// walk. The walk is one continuous path, so a dash turns a corner instead of restarting.
-fn ant_runs(sel: RECT, phase: u32) -> Vec<(RECT, bool)> {
+fn ant_runs(sel: RECT, phase: u32) -> Vec<Ant> {
     let w = (sel.right - sel.left).max(0);
     let h = (sel.bottom - sel.top).max(0);
     if w == 0 || h == 0 {
@@ -1160,22 +1213,35 @@ fn ant_runs(sel: RECT, phase: u32) -> Vec<(RECT, bool)> {
             let from = start + (dx + dy) * at;
             let to = start + (dx + dy) * (at + take - 1);
             let (lo, hi) = (from.min(to), from.max(to) + 1);
-            let run = if dx != 0 {
-                RECT {
-                    left: lo,
-                    top: band.top,
-                    right: hi,
-                    bottom: band.bottom,
-                }
-            } else {
-                RECT {
-                    left: band.left,
-                    top: lo,
-                    right: band.right,
-                    bottom: hi,
+            // Across the band, along the path from lo to hi; the edge pixel is the last
+            // one along the path, which is `to`.
+            let across = |a: i32, b: i32| {
+                if dx != 0 {
+                    RECT {
+                        left: a,
+                        top: band.top,
+                        right: b,
+                        bottom: band.bottom,
+                    }
+                } else {
+                    RECT {
+                        left: band.left,
+                        top: a,
+                        right: band.right,
+                        bottom: b,
+                    }
                 }
             };
-            runs.push((run, light));
+            let edge = if take as i64 == to_boundary {
+                Some(across(to, to + 1))
+            } else {
+                None
+            };
+            runs.push(Ant {
+                run: across(lo, hi),
+                light,
+                edge,
+            });
             at += take;
         }
         walked += length as i64;
@@ -1358,14 +1424,64 @@ mod tests {
     /// Every pixel the runs cover, with its ink, in visiting order.
     fn painted(sel: RECT, phase: u32) -> Vec<((i32, i32), bool)> {
         let mut out = Vec::new();
-        for (run, light) in ant_runs(sel, phase) {
+        for ant in ant_runs(sel, phase) {
+            let run = ant.run;
             for y in run.top..run.bottom {
                 for x in run.left..run.right {
-                    out.push(((x, y), light));
+                    out.push(((x, y), ant.light));
                 }
             }
         }
         out
+    }
+
+    #[test]
+    fn the_edge_pixel_sits_at_the_end_of_a_run_that_meets_a_dash_edge() {
+        let sel = rect(0, 0, 100, 60);
+        let runs = ant_runs(sel, 0);
+        // The first run is a whole dash along the top band, ending at a dash edge: its
+        // edge pixel is its last column, the band's full thickness.
+        let first = runs[0];
+        assert!(first.light);
+        let edge = first.edge.expect("the first dash ends at an edge");
+        assert_eq!(
+            (edge.left, edge.right),
+            (first.run.right - 1, first.run.right)
+        );
+        assert_eq!((edge.top, edge.bottom), (first.run.top, first.run.bottom));
+        // A run cut short by the band's end has no edge pixel: it continues round the
+        // corner in the next band, so the ink does not change there.
+        let cut = runs
+            .iter()
+            .find(|a| a.edge.is_none())
+            .expect("some run ends at a band's end");
+        let next = runs
+            .iter()
+            .skip_while(|a| *a != cut)
+            .nth(1)
+            .expect("a run follows it");
+        assert_eq!(cut.light, next.light);
+        // The edge pixel is always inside its run, so the blend never spills.
+        for ant in &runs {
+            if let Some(e) = ant.edge {
+                assert!(
+                    e.left >= ant.run.left
+                        && e.right <= ant.run.right
+                        && e.top >= ant.run.top
+                        && e.bottom <= ant.run.bottom
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_blend_walks_from_one_ink_to_the_other() {
+        assert_eq!(mix(ANTS_DASH_RGB, ANTS_GAP_RGB, 0.0), ANTS_DASH_RGB);
+        assert_eq!(mix(ANTS_DASH_RGB, ANTS_GAP_RGB, 1.0), ANTS_GAP_RGB);
+        let half = mix((0, 100, 200), (100, 100, 0), 0.5);
+        assert_eq!(half, (50, 100, 100));
+        // A COLORREF stores blue in the high byte and red in the low one.
+        assert_eq!(colorref((0x00, 0xB9, 0xF7)).0, 0x00F7B900);
     }
 
     #[test]
@@ -1394,21 +1510,23 @@ mod tests {
         // Consecutive runs alternate, and no run is longer than its ink allows.
         for pair in runs.windows(2) {
             let (a, b) = (&pair[0], &pair[1]);
-            let same_band = (a.0.top == b.0.top && a.0.bottom == b.0.bottom)
-                || (a.0.left == b.0.left && a.0.right == b.0.right);
+            let same_band = (a.run.top == b.run.top && a.run.bottom == b.run.bottom)
+                || (a.run.left == b.run.left && a.run.right == b.run.right);
             if same_band {
-                assert_ne!(a.1, b.1, "two runs of one ink side by side");
+                assert_ne!(a.light, b.light, "two runs of one ink side by side");
             }
         }
-        for (run, light) in &runs {
+        for ant in &runs {
+            let run = ant.run;
             let along = (run.right - run.left).max(run.bottom - run.top) as u32;
-            let limit = if *light { ANTS_DASH } else { ANTS_GAP };
+            let limit = if ant.light { ANTS_DASH } else { ANTS_GAP };
             assert!(along <= limit, "a run of {along} for a limit of {limit}");
         }
         // The path is one: the ink at a path position is the pattern's, corners included.
         let mut position = 0i64;
-        for (run, light) in &runs {
-            assert_eq!(*light, ink_at(position));
+        for ant in &runs {
+            let run = ant.run;
+            assert_eq!(ant.light, ink_at(position));
             position += (run.right - run.left).max(run.bottom - run.top) as i64;
         }
         assert_eq!(position, 2 * 100 + 2 * (60 - 2 * ANTS_WIDTH) as i64);
@@ -1425,8 +1543,8 @@ mod tests {
         let sel = rect(0, 0, 50, 30);
         let before = ant_runs(sel, 0);
         let after = ant_runs(sel, 1);
-        let first_before = before[0].0.right - before[0].0.left;
-        let first_after = after[0].0.right - after[0].0.left;
+        let first_before = before[0].run.right - before[0].run.left;
+        let first_after = after[0].run.right - after[0].run.left;
         assert_eq!(first_after, first_before - 1);
     }
 
