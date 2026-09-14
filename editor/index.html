@@ -60,6 +60,11 @@
              border: 1px solid #3a4149; box-shadow: 0 2px 10px rgba(0,0,0,.45);
              line-height: 1.35; }
   .callout.selected { border-color: #7aa7ff; }
+  .callout.text { background: transparent; border-color: transparent; box-shadow: none; padding: 0;
+                  color: #ff5252; font-weight: 700;
+                  text-shadow: 0 0 2px #fff, 0 0 2px #fff, 0 0 4px #fff; }
+  .callout.text .n { display: none; }
+  .callout.text.selected { border-color: #7aa7ff; }
   .callout .n { flex: 0 0 auto; font-size: .7em; min-width: 1.6em; height: 1.6em;
                 border-radius: .8em; background: #7aa7ff; color: #0d1014; font-weight: 700;
                 display: grid; place-items: center; }
@@ -127,6 +132,7 @@
     <button type="button" data-tool="arrow" title="Arrow: drag from the tail to the head (L)">Arrow</button>
     <button type="button" data-tool="rect" title="Rectangle: drag across what to frame (R)">Rectangle</button>
     <button type="button" data-tool="highlight" title="Highlight: drag across what to mark (H)">Highlight</button>
+    <button type="button" data-tool="text" title="Text: type where you click, no bubble (T)">Text</button>
   </div>
   <button id="copy" type="button" title="Copy the image to the clipboard (Ctrl+C)">Copy</button>
   <button id="saveas" type="button" title="Save As a new PNG file (Ctrl+S)">Save As</button>
@@ -644,6 +650,27 @@
     return Promise.resolve();
   };
 
+  // A text note (S3.3): typed where it is clicked, with the callout's editing and none of
+  // its dressing. It takes no callout number, so the numbering of the notes stays theirs.
+  const createTextNote = (at) => {
+    const textSize = model.textSize;
+    const note = {
+      id: `x${model.nextShape}`,
+      kind: 'text',
+      number: null,
+      anchor: { x: Math.round(at.x), y: Math.round(at.y) },
+      box: { x: Math.round(at.x), y: Math.round(at.y), width: Math.round(textSize * 13) },
+      text: '',
+      textSize,
+      dirMode: 'auto',
+      resolvedDir: 'ltr',
+    };
+    model.nextShape += 1;
+    model.callouts.push(note);
+    if (fitMargin()) paintRegion();
+    return note;
+  };
+
   const removeCallout = (callout) => {
     model.callouts = model.callouts.filter((c) => c !== callout);
     if (model.selected === callout) model.selected = null;
@@ -667,12 +694,15 @@
         el.className = 'callout';
         el.dataset.id = callout.id;
         el.innerHTML = '<div class="n"></div><div class="t" contenteditable="true" spellcheck="false"></div>';
+        if (callout.kind === 'text') el.classList.add('text');
         scene.appendChild(el);
 
-        const anchorEl = document.createElement('div');
-        anchorEl.className = 'anchor';
-        anchorEl.dataset.anchorFor = callout.id;
-        scene.appendChild(anchorEl);
+        if (callout.kind !== 'text') {
+          const anchorEl = document.createElement('div');
+          anchorEl.className = 'anchor';
+          anchorEl.dataset.anchorFor = callout.id;
+          scene.appendChild(anchorEl);
+        }
       }
       callout.resolvedDir = resolveDirection(callout);
       el.style.left = `${callout.box.x}px`;
@@ -684,15 +714,17 @@
       el.style.direction = callout.resolvedDir;
       el.style.textAlign = callout.resolvedDir === 'rtl' ? 'right' : 'left';
       el.classList.toggle('selected', model.selected === callout);
-      el.querySelector('.n').textContent = String(callout.number);
+      el.querySelector('.n').textContent = callout.number == null ? '' : String(callout.number);
       const textEl = el.querySelector('.t');
       if (textEl.textContent !== callout.text && model.editing !== callout) {
         textEl.textContent = callout.text;
       }
 
       const anchorEl = scene.querySelector(`[data-anchor-for="${callout.id}"]`);
-      anchorEl.style.left = `${callout.anchor.x}px`;
-      anchorEl.style.top = `${callout.anchor.y}px`;
+      if (anchorEl) {
+        anchorEl.style.left = `${callout.anchor.x}px`;
+        anchorEl.style.top = `${callout.anchor.y}px`;
+      }
     }
 
     for (const el of [...scene.querySelectorAll('.callout')]) {
@@ -710,6 +742,7 @@
     arrows.setAttribute('height', String(model.image.height || 1));
     let markup = '';
     for (const callout of model.callouts) {
+      if (callout.kind === 'text') continue; // no arrow, by design
       const el = scene.querySelector(`[data-id="${callout.id}"]`);
       const height = el ? el.offsetHeight : 40;
       const box = {
@@ -840,7 +873,7 @@
       `${modeLine}\n` +
       `zoom ${zoomText}   pan ${Math.round(model.pan.x)},${Math.round(model.pan.y)}   ` +
       `callouts ${model.callouts.length}   text ${sizeShown}px   dpr ${dpr()}\n` +
-      `0 fit  1 actual size  +/- zoom  wheel pan  Ctrl+wheel zoom  F11 fullscreen  PgUp/PgDn previous next  Ctrl +/- text size  arrows pan  ${model.mode === 'annotate' ? 'click to add' : 'drag to pan'}  Esc commit  Del remove  Ctrl+Z/Y undo redo  Ctrl+C copy  Ctrl+Enter copy and return  Ctrl+S save as  Ctrl+Del delete document  Ctrl+O open  C callout  L arrow  R rectangle  H highlight` +
+      `0 fit  1 actual size  +/- zoom  wheel pan  Ctrl+wheel zoom  F11 fullscreen  PgUp/PgDn previous next  Ctrl +/- text size  arrows pan  ${model.mode === 'annotate' ? 'click to add' : 'drag to pan'}  Esc commit  Del remove  Ctrl+Z/Y undo redo  Ctrl+C copy  Ctrl+Enter copy and return  Ctrl+S save as  Ctrl+Del delete document  Ctrl+O open  C callout  L arrow  R rectangle  H highlight  T text` +
       (currentNotice ? `\n${currentNotice}` : '');
   };
 
@@ -1166,7 +1199,7 @@
       event.preventDefault();
       return;
     }
-    const callout = createCallout(toImage(event));
+    const callout = model.tool === 'text' ? createTextNote(toImage(event)) : createCallout(toImage(event));
     layoutScene();
     startEditing(callout);
   });
@@ -1378,6 +1411,7 @@
       if (event.code === 'KeyL') { setTool('arrow'); event.preventDefault(); return; }
       if (event.code === 'KeyR') { setTool('rect'); event.preventDefault(); return; }
       if (event.code === 'KeyH') { setTool('highlight'); event.preventDefault(); return; }
+      if (event.code === 'KeyT') { setTool('text'); event.preventDefault(); return; }
     }
     if (event.key === 'Enter' && model.selected) { startEditing(model.selected); event.preventDefault(); return; }
 
@@ -1748,6 +1782,7 @@
     rectOfShape,
     createShape,
     removeShape,
+    createTextNote,
     handles,
     snapshot,
     copyAndReturn,

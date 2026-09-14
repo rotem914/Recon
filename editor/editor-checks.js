@@ -1906,9 +1906,74 @@ export async function runChecks(editor, invoke) {
     press({ key: 'z', code: 'KeyZ', ctrlKey: true });
     // Undo rebuilds the list, so the shape is read from it, not from the old object.
     check('undo puts it back', editor.rectOfShape(model.shapes[0]).x === 60 && editor.rectOfShape(model.shapes[0]).y === 40, JSON.stringify(editor.rectOfShape(model.shapes[0])));
+    pointer('pointerdown', shapeEl(model.shapes[0]), 100, 100);
+    pointer('pointerup', stage, 100, 100);
+    check('a click selects the rectangle again', model.selectedShape === model.shapes[0]);
     press({ key: 'Escape', code: 'Escape' });
     check('Escape clears the selection', model.selectedShape === null);
     press({ key: 'c', code: 'KeyC' });
+    model.callouts = [];
+    model.shapes = [];
+    editor.layoutScene();
+    editor.setTool('callout');
+    for (let i = 0; i < 40 && !(await invoke('editor_window_visible')); i += 1) await sleep(50);
+    await invoke('editor_show');
+  }
+
+  // ---------------------------------------------------------------- 34. S3.3: the text tool
+  say('');
+  say('S3.3: T, then a click, types a note where it was clicked, with no number, no bubble and no arrow, and the callouts\' numbering is untouched');
+  {
+    const stage = editor.stage;
+    await invoke('editor_store_reset');
+    const shot = await invoke('editor_capture_probe', { width: 400, height: 300 });
+    await editor.loadImage(shot);
+    await editor.setZoom(1);
+    const box = stage.getBoundingClientRect();
+    const css = (ix, iy) => ({ x: box.left + model.offset.x + ((ix - model.pan.x) * model.zoom) / editor.ratioOf(), y: box.top + model.offset.y + ((iy - model.pan.y) * model.zoom) / editor.ratioOf() });
+    const pointer = (type, target, ix, iy) => {
+      const at = css(ix, iy);
+      target.dispatchEvent(new PointerEvent(type, { pointerId: 13, button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: at.x, clientY: at.y, bubbles: true, cancelable: true }));
+    };
+    const press = (init) => { const e = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }); window.dispatchEvent(e); return e.defaultPrevented; };
+
+    press({ key: 'c', code: 'KeyC' });
+    pointer('pointerdown', stage, 40, 40);
+    pointer('pointerup', stage, 40, 40);
+    check('a click with the callout tool makes a note', model.callouts.length === 1);
+    document.querySelector(`[data-id="${model.callouts[0].id}"] .t`).textContent = 'one';
+    editor.commitEditing();
+    // A committed note stays selected, and a click elsewhere clears that first, which is
+    // the callout rule; Escape clears it here so the next click is the tool's.
+    press({ key: 'Escape', code: 'Escape' });
+    press({ key: 't', code: 'KeyT' });
+    check('T picks the text tool', model.tool === 'text');
+    pointer('pointerdown', stage, 150, 120);
+    pointer('pointerup', stage, 150, 120);
+    const note = model.callouts[1];
+    check('a click makes a text note where it was clicked, being typed at once', !!note && note.kind === 'text' && note.box.x === 150 && note.box.y === 120 && model.editing === note, JSON.stringify(note && note.box));
+    const el = document.querySelector(`[data-id="${note.id}"]`);
+    check('no number, no anchor, no arrow', note.number === null && el.classList.contains('text') && getComputedStyle(el.querySelector('.n')).display === 'none' && !document.querySelector(`[data-anchor-for="${note.id}"]`) && document.querySelectorAll('#arrows line').length === 1);
+    el.querySelector('.t').textContent = 'plain words on the picture';
+    editor.commitEditing();
+    check('the text commits like a note', note.text === 'plain words on the picture' && model.editing === null);
+    const layer = await editor.exportLayer();
+    // The export is the scene's own DOM (S0.6), so the bubble's transparency is read on
+    // the element and the words are looked for in the layer.
+    check('the export carries the words, and the bubble is transparent', layer.markup.includes('plain words on the picture') && getComputedStyle(el).backgroundColor === 'rgba(0, 0, 0, 0)',
+      getComputedStyle(el).backgroundColor);
+
+    press({ key: 'Escape', code: 'Escape' });
+    press({ key: 'c', code: 'KeyC' });
+    pointer('pointerdown', stage, 300, 200);
+    pointer('pointerup', stage, 300, 200);
+    const next = model.callouts[2];
+    check('the next callout is number 2: the text note took no number', !!next && next.number === 2, JSON.stringify(next && next.number));
+    document.querySelector(`[data-id="${next.id}"] .t`).textContent = 'two';
+    editor.commitEditing();
+    press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    check('undo removes the text note in its turn', model.callouts.length === 1 && model.callouts[0].text === 'one');
     model.callouts = [];
     model.shapes = [];
     editor.layoutScene();

@@ -2039,8 +2039,14 @@ Annotate and Copy were settled.
       highlight a translucent yellow fill; both are selected by a click, moved whole,
       undone, saved and exported as the arrow is. Checked in section 33 of the editor
       checks.
-- [ ] S3.3 Text: a note without the number, the bubble or the arrow, typed where it is
+- [x] S3.3 Text: a note without the number, the bubble or the arrow, typed where it is
       clicked; T. Model: Opus 5.
+      **Built 2026-09-14, on Fable at Rotem's word.** A text note is a callout in every
+      way that matters to editing, typed, resized, moved, selected, undone, saved and
+      exported through the same paths, with its bubble transparent, its number gone and no
+      anchor or arrow made for it; red with a white halo so it reads on a picture. It
+      takes no callout number, so the notes' numbering stays theirs. Checked in section
+      34 of the editor checks.
 - [ ] S3.4 Blur: a region the composer blurs in the source at export, since the page never
       holds the pixels (part 5); the layer carries the region and the host does the work,
       on screen through a blurred region from the region service. Model: Fable 5.1, it
