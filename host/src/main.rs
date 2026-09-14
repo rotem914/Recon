@@ -650,8 +650,15 @@ fn main() {
             log("ready: waiting on the hotkey or the tray");
             marks::startup(marks::READY);
 
-            if let Some(path) = open_at_start.clone() {
-                open_file(path, "at startup");
+            match open_at_start.clone() {
+                Some(path) => open_file(path, "at startup"),
+                // Launched like any application, Recon opens its window, with the latest
+                // document and the timeline (Rotem, 2026-09-14). The tray stays: closing
+                // the window hides it, and only the tray's Quit ends Recon (§3.1).
+                None => match editor::show(app.handle()) {
+                    Ok(ms) => log(&format!("editor shown at startup in {ms} ms")),
+                    Err(err) => log(&format!("EDITOR NOT SHOWN at startup: {err}")),
+                },
             }
 
             #[cfg(feature = "stage0-checks")]

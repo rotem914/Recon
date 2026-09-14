@@ -1966,6 +1966,10 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       latest document and the timeline; the menu stays on the right button; starting
       Recon again, from the Start menu or the taskbar, does the same through the single
       instance. Model: Opus 5, wired as documented.
+      **And the first start too, at Rotem's word on 2026-09-14:** launching Recon opens its
+      window like any application, with the latest document and the timeline, and the
+      window sits in the taskbar while it is shown. The tray stays as it was: closing the
+      window hides it and Recon stays alive there, and only the tray's Quit ends it.
       **Built 2026-09-14, on Fable at Rotem's word.** The left button on the tray icon
       shows the editor as it is, the latest document reopened at startup and the timeline
       under it; the menu is the right button's. A second start with no file was already
