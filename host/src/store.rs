@@ -73,6 +73,26 @@ pub fn trash(id: u64) -> Result<Option<PathBuf>, String> {
     Ok(Some(to))
 }
 
+/// Moves a trashed document's folder back among the documents, the stamp removed (S2.7).
+pub fn restore(id: u64) -> Result<PathBuf, String> {
+    let from = trash_root()?.join(id.to_string());
+    if !from.is_dir() {
+        return Err(format!("document {id} is not in the trash"));
+    }
+    let to = folder(id)?;
+    if to.exists() {
+        return Err(format!("document {id} is already among the documents"));
+    }
+    if let Some(parent) = to.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("{} could not be created: {err}", parent.display()))?;
+    }
+    std::fs::rename(&from, &to)
+        .map_err(|err| format!("{} could not be moved back: {err}", from.display()))?;
+    let _ = std::fs::remove_file(to.join("trashed"));
+    Ok(to)
+}
+
 /// What the trash holds: each folder's number and how many days it has been there.
 pub fn trash_list() -> Vec<(u64, u64)> {
     let Ok(trash) = trash_root() else {

@@ -31,6 +31,15 @@
               cursor: pointer; display: none; padding: 0; }
   .thumb:hover .x { display: block; }
   .thumb .x:hover { background: #c0392b; }
+  /* The trash (S2.7): a chip at the end of the timeline opens it in the same strip, each
+     trashed document with a way back; another chip returns. Provisional, Rotem's to restyle. */
+  .chip { flex: 0 0 auto; align-self: center; padding: 6px 10px; border-radius: 6px; border: 1px solid #3a4149;
+          background: #1b1f24; color: #cfd4da; font: 12px system-ui, sans-serif; cursor: pointer; }
+  .chip:hover { border-color: #7aa7ff; }
+  body.trash #strip { background: #1a1416; }
+  .thumb .restore { position: absolute; left: 2px; bottom: 2px; padding: 2px 6px; border-radius: 4px; border: none;
+                    background: rgba(10,12,14,.8); color: #f2f2f2; font: 11px system-ui, sans-serif; cursor: pointer; }
+  .thumb .restore:hover { background: #2e7d32; }
   #canvas { position: absolute; left: 0; top: 0; display: block; image-rendering: pixelated; }
   /* The annotation margin, drawn under the picture in the same colour the host puts in the
      output, so what is on screen is what a copy contains (§3.5, §3.6). */
@@ -753,10 +762,15 @@
     thumbUrls.set(id, url);
     return url;
   };
+  let stripMode = 'documents';
   const refreshStrip = async () => {
+    if (stripMode === 'trash') return renderTrash();
+    document.body.classList.remove('trash');
     const docs = await invoke('editor_documents').catch(() => []);
+    const trashed = await invoke('editor_trash_documents').catch(() => []);
     model.storage = await invoke('editor_storage').catch(() => model.storage);
-    document.body.classList.toggle('strip', docs.length > 0 && !model.fullscreen);
+    document.body.classList.toggle('strip', (docs.length > 0 || trashed.length > 0) && !model.fullscreen);
+    for (const el of [...strip.querySelectorAll('.chip, .thumb.trashed')]) el.remove();
     const seen = new Set();
     for (const doc of docs) {
       seen.add(doc.id);
@@ -797,8 +811,61 @@
     for (const el of [...strip.children]) {
       if (!seen.has(Number(el.dataset.id))) el.remove();
     }
+    if (trashed.length > 0) {
+      const chip = document.createElement('button');
+      chip.className = 'chip';
+      chip.type = 'button';
+      chip.id = 'trash-chip';
+      chip.textContent = `Trash · ${trashed.length}`;
+      chip.title = 'What was deleted in the last 30 days';
+      chip.addEventListener('click', () => { stripMode = 'trash'; renderTrash().catch(() => {}); chip.blur(); });
+      strip.appendChild(chip);
+    }
     const current = strip.querySelector('.thumb.current');
     if (current) current.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+  };
+
+  const renderTrash = async () => {
+    const trashed = await invoke('editor_trash_documents').catch(() => []);
+    document.body.classList.add('trash');
+    document.body.classList.toggle('strip', !model.fullscreen);
+    strip.replaceChildren();
+    const back = document.createElement('button');
+    back.className = 'chip';
+    back.type = 'button';
+    back.id = 'trash-back';
+    back.textContent = trashed.length ? 'Back' : 'The trash is empty; back';
+    back.addEventListener('click', () => { stripMode = 'documents'; refreshStrip().catch(() => {}); back.blur(); });
+    strip.appendChild(back);
+    for (const doc of trashed) {
+      const el = document.createElement('div');
+      el.className = 'thumb trashed';
+      el.dataset.id = String(doc.id);
+      el.title = `${doc.file || 'capture'}  ${doc.width}x${doc.height}  deleted ${doc.days} day${doc.days === 1 ? '' : 's'} ago; gone for good after 30`;
+      el.textContent = `${doc.width}x${doc.height}`;
+      const restore = document.createElement('button');
+      restore.className = 'restore';
+      restore.type = 'button';
+      restore.textContent = 'Restore';
+      restore.addEventListener('click', (event) => {
+        event.stopPropagation();
+        invoke('editor_trash_restore', { id: doc.id }).then(async (info) => {
+          stripMode = 'documents';
+          await loadImage(info);
+          await refreshStrip();
+          notice('restored from the trash', 3000);
+        }).catch((err) => { notice(`NOT RESTORED: ${err}`, 0); });
+      });
+      el.appendChild(restore);
+      strip.appendChild(el);
+      thumbFor(doc.id).then((url) => {
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = '';
+        el.insertBefore(img, el.firstChild);
+        for (const node of [...el.childNodes]) if (node.nodeType === Node.TEXT_NODE) node.remove();
+      }).catch(() => {});
+    }
   };
 
   // A document deleted: out of the timeline and, when it was the one on screen, the
@@ -1525,6 +1592,7 @@
     refreshStrip,
     strip,
     deleteDocument,
+    renderTrash,
     snapshot,
     copyAndReturn,
     fitMargin,

@@ -2006,8 +2006,17 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       Ctrl+Delete on the one on screen showing its neighbour, the last one emptying the
       editor, the file untouched, the sweep removing a folder backdated thirty-one days
       and keeping the others, a capture after the empty state.
-- [ ] S2.7 Restore from the trash: a way inside Recon to bring a trashed document back
+- [x] S2.7 Restore from the trash: a way inside Recon to bring a trashed document back
       within its thirty days. Model: Opus 5, the folder moves back the way it went.
+      **Built 2026-09-14, on Fable at Rotem's word.** When the trash holds anything, the
+      timeline ends with a "Trash · n" chip; it opens the trash in the same strip, each
+      deleted document as its thumbnail with how many days ago and a Restore button, and a
+      Back chip returns. Restore moves the folder back the way it went, the document
+      rejoins the list and shows with its notes. The strip stays for the chip even when no
+      document is left. Checked: no chip with an empty trash, the chip and its count after
+      a delete, the trash view with the thumbnail, Restore bringing the document back on
+      screen with its note, into the list and out of the trash. Provisional look, Rotem's
+      to change.
 - [x] S2.6 Export beyond PNG: Save As offering JPEG beside PNG, the same never-overwrite
       path, the quality fixed rather than asked. Model: Opus 5, the path exists.
       **Built 2026-09-14, on Fable at Rotem's word.** The Save As dialog offers JPEG beside

@@ -423,31 +423,7 @@ pub fn load_store() {
             if documents.iter().any(|d| d.id == record.id) {
                 continue;
             }
-            LAST_ID.fetch_max(record.id, Ordering::SeqCst);
-            documents.push(Managed {
-                id: record.id,
-                source: match record.source {
-                    crate::store::SourceRecord::Capture => Source::Capture,
-                    crate::store::SourceRecord::File {
-                        path,
-                        frame,
-                        modified_ms,
-                        len,
-                    } => Source::File {
-                        path: std::path::PathBuf::from(path),
-                        frame,
-                        modified: modified_ms.map(crate::store::from_millis),
-                        len,
-                    },
-                },
-                width: record.width,
-                height: record.height,
-                preserved: Preserved::OnDisk(source),
-                created: crate::store::from_millis(record.created_ms),
-                annotated: crate::store::from_millis(record.modified_ms),
-                notes: record.notes,
-                save_error: None,
-            });
+            documents.push(managed_from_record(record, source));
         }
     }
     crate::log(&format!("store: {count} documents read"));
@@ -457,6 +433,94 @@ pub fn load_store() {
             Err(err) => crate::log(&format!("store: document {id} NOT reopened: {err}")),
         }
     }
+}
+
+/// A record read from disk as the list holds it; the number counter moves past it.
+fn managed_from_record(record: crate::store::Record, source: std::path::PathBuf) -> Managed {
+    LAST_ID.fetch_max(record.id, Ordering::SeqCst);
+    Managed {
+        id: record.id,
+        source: match record.source {
+            crate::store::SourceRecord::Capture => Source::Capture,
+            crate::store::SourceRecord::File {
+                path,
+                frame,
+                modified_ms,
+                len,
+            } => Source::File {
+                path: std::path::PathBuf::from(path),
+                frame,
+                modified: modified_ms.map(crate::store::from_millis),
+                len,
+            },
+        },
+        width: record.width,
+        height: record.height,
+        preserved: Preserved::OnDisk(source),
+        created: crate::store::from_millis(record.created_ms),
+        annotated: crate::store::from_millis(record.modified_ms),
+        notes: record.notes,
+        save_error: None,
+    }
+}
+
+/// The trash as the timeline shows it (S2.7): each trashed document with its days there.
+#[derive(serde::Serialize)]
+pub struct TrashedLine {
+    pub id: u64,
+    pub width: u32,
+    pub height: u32,
+    pub file: String,
+    pub days: u64,
+}
+
+#[tauri::command]
+pub fn editor_trash_documents() -> Vec<TrashedLine> {
+    let Ok(trash) = crate::store::trash_root() else {
+        return Vec::new();
+    };
+    let mut lines: Vec<TrashedLine> = crate::store::trash_list()
+        .into_iter()
+        .filter_map(|(id, days)| {
+            let record = crate::store::read_record(&trash.join(id.to_string())).ok()?;
+            Some(TrashedLine {
+                id,
+                width: record.width,
+                height: record.height,
+                file: match record.source {
+                    crate::store::SourceRecord::File { path, .. } => std::path::Path::new(&path)
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_default(),
+                    crate::store::SourceRecord::Capture => String::new(),
+                },
+                days,
+            })
+        })
+        .collect();
+    lines.sort_by_key(|l| l.id);
+    lines
+}
+
+/// A trashed document brought back (S2.7): its folder moves back the way it went, it
+/// rejoins the list, and it is shown.
+#[tauri::command]
+pub fn editor_trash_restore(id: u64) -> Result<ImageInfo, String> {
+    let dir = crate::store::restore(id)?;
+    let record = crate::store::read_record(&dir)?;
+    let source = dir.join("source.png");
+    if !source.is_file() {
+        return Err(format!("document {id} came back without its image"));
+    }
+    {
+        let mut documents = DOCUMENTS.lock().map_err(|_| "the documents are poisoned")?;
+        if !documents.iter().any(|d| d.id == id) {
+            documents.push(managed_from_record(record, source));
+        }
+    }
+    crate::log(&format!("document {id} restored from the trash"));
+    show_document(id)?;
+    editor_image_info()
 }
 
 /// Puts a managed document on screen from its own preserved image, as the resume of
@@ -557,7 +621,13 @@ fn thumbnail(id: u64) -> Result<Vec<u8>, String> {
     let cached = crate::store::folder(id)
         .ok()
         .map(|dir| dir.join("thumb.png"))
-        .filter(|path| path.is_file());
+        .filter(|path| path.is_file())
+        .or_else(|| {
+            crate::store::trash_root()
+                .ok()
+                .map(|trash| trash.join(id.to_string()).join("thumb.png"))
+                .filter(|path| path.is_file())
+        });
     if let Some(path) = cached {
         return std::fs::read(&path).map_err(|err| format!("{}: {err}", path.display()));
     }
@@ -1186,6 +1256,8 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_show_document,
         editor_storage,
         editor_delete_document,
+        editor_trash_documents,
+        editor_trash_restore,
         checks::editor_trash_list,
         checks::editor_trash_age,
         checks::editor_sweep_trash,
@@ -1257,6 +1329,8 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_show_document,
         editor_storage,
         editor_delete_document,
+        editor_trash_documents,
+        editor_trash_restore,
     ]);
     builder.register_asynchronous_uri_scheme_protocol("region", |_ctx, request, responder| {
         let query = request.uri().query().unwrap_or_default().to_string();

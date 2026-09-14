@@ -1676,11 +1676,14 @@ export async function runChecks(editor, invoke) {
 
     // The thumbnail's delete on a document that is not on screen: gone from the timeline,
     // in the trash, the one on screen unchanged, the external file untouched.
+    // Since S2.7 the strip ends with a Trash chip once something is in the trash, so the
+    // documents are counted by their thumbnails.
+    const thumbs = () => strip.querySelectorAll('.thumb:not(.trashed)').length;
     strip.children[0].querySelector('.x').click();
-    for (let i = 0; i < 60 && strip.children.length !== 2; i += 1) await sleep(50);
+    for (let i = 0; i < 60 && thumbs() !== 2; i += 1) await sleep(50);
     let trash = await invoke('editor_trash_list');
-    check('deleted from its thumbnail: off the timeline, into the trash, the one on screen unchanged', strip.children.length === 2 && trash.some(([id]) => id === fileDoc) && model.image.document_id === shots[1].document_id && hud.textContent.includes('trash for 30 days'),
-      `trash ${JSON.stringify(trash)}`);
+    check('deleted from its thumbnail: off the timeline, into the trash, the one on screen unchanged', thumbs() === 2 && trash.some(([id]) => id === fileDoc) && model.image.document_id === shots[1].document_id && hud.textContent.includes('trash for 30 days'),
+      `thumbnails ${thumbs()}, trash ${JSON.stringify(trash)}`);
     const stillThere = await invoke('editor_open_path', { path: filePath }).then(() => true).catch(() => false);
     check('the external file the document came from is untouched', stillThere);
     await editor.loadImage(await invoke('editor_show_document', { id: shots[1].document_id }));
@@ -1689,14 +1692,14 @@ export async function runChecks(editor, invoke) {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', code: 'Delete', ctrlKey: true, bubbles: true, cancelable: true }));
     for (let i = 0; i < 60 && model.image.document_id !== shots[0].document_id; i += 1) await sleep(50);
     trash = await invoke('editor_trash_list');
-    check('Ctrl+Delete on the one on screen: the neighbour shows, and it is in the trash', model.image.document_id === shots[0].document_id && trash.length === 2 && strip.children.length === 1,
+    check('Ctrl+Delete on the one on screen: the neighbour shows, and it is in the trash', model.image.document_id === shots[0].document_id && trash.length === 2 && thumbs() === 1,
       `on screen ${model.image.document_id}, ${trash.length} in the trash`);
 
     // The last one: the editor is empty, the timeline gone.
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', code: 'Delete', ctrlKey: true, bubbles: true, cancelable: true }));
     for (let i = 0; i < 60 && model.image.width !== 0; i += 1) await sleep(50);
     await sleep(100);
-    check('the last document deleted leaves the editor empty, the timeline away, the controls away', model.image.width === 0 && !document.body.classList.contains('strip') && document.getElementById('controls').hidden && hud.textContent.includes('capture'),
+    check('the last document deleted leaves the editor empty, no thumbnail left, only the Trash chip, the controls away', model.image.width === 0 && thumbs() === 0 && !!strip.querySelector('#trash-chip') && document.getElementById('controls').hidden && hud.textContent.includes('capture'),
       hud.textContent.split('\n')[0]);
 
     // The sweep: thirty days on, a trashed document is gone for good; a younger one stays.
@@ -1740,6 +1743,43 @@ export async function runChecks(editor, invoke) {
     check('a .png name still writes a PNG', !!pngKind && pngKind.format === 'png' && pngKind.width === jpgKind.width, pngKind ? pngKind.format : JSON.stringify(png));
     const again = await writeTo(outDir + '\\shot annotated.jpg');
     check('the same JPEG name is never written over, a free one is offered', again.Exists !== undefined && again.Exists.offered.endsWith('shot annotated (2).jpg'), JSON.stringify(again).slice(0, 120));
+    model.callouts = [];
+    editor.layoutScene();
+  }
+
+  // ---------------------------------------------------------------- 31. S2.7: restore from the trash
+  say('');
+  say('S2.7: the timeline ends with a Trash chip when something was deleted; it opens the trash in the strip, and Restore brings a document back with its notes');
+  {
+    const strip = editor.strip;
+    await invoke('editor_store_reset');
+    const a = await invoke('editor_capture_probe', { width: 320, height: 200 });
+    await editor.loadImage(a);
+    const n = editor.createCallout({ x: 30, y: 30 });
+    n.text = 'back from the trash';
+    editor.layoutScene();
+    editor.record();
+    await editor.saveNow();
+    const b = await invoke('editor_capture_probe', { width: 340, height: 200 });
+    await editor.loadImage(b);
+    await editor.refreshStrip();
+    check('no chip while the trash is empty', !strip.querySelector('#trash-chip'));
+    await editor.deleteDocument(a.document_id);
+    const chip = strip.querySelector('#trash-chip');
+    check('after a delete the timeline ends with the Trash chip and its count', !!chip && chip.textContent === 'Trash · 1', chip && chip.textContent);
+    chip.click();
+    for (let i = 0; i < 60 && !strip.querySelector('.thumb.trashed'); i += 1) await sleep(50);
+    const trashed = strip.querySelector('.thumb.trashed');
+    check('the chip opens the trash in the strip: the deleted document, with Restore, and a way back', document.body.classList.contains('trash') && !!trashed && !!trashed.querySelector('.restore') && !!strip.querySelector('#trash-back'));
+    for (let i = 0; i < 100 && !(trashed.querySelector('img') && trashed.querySelector('img').naturalWidth > 0); i += 1) await sleep(50);
+    check('its thumbnail is there', !!trashed.querySelector('img') && trashed.querySelector('img').naturalWidth > 0);
+    trashed.querySelector('.restore').click();
+    for (let i = 0; i < 60 && model.image.document_id !== a.document_id; i += 1) await sleep(50);
+    await sleep(200);
+    const docs = await invoke('editor_documents');
+    const left = await invoke('editor_trash_list');
+    check('Restore brings the document back, on screen, with its note, in the list, out of the trash', model.image.document_id === a.document_id && model.callouts.length === 1 && model.callouts[0].text === 'back from the trash' && docs.some((d) => d.id === a.document_id) && left.length === 0 && !document.body.classList.contains('trash') && !strip.querySelector('#trash-chip'),
+      `on screen ${model.image.document_id}, ${docs.length} documents, ${left.length} in the trash`);
     model.callouts = [];
     editor.layoutScene();
   }
