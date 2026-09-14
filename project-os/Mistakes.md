@@ -67,6 +67,7 @@ Mistakes in HOW you worked:
 | 2026-09-10 | Made the commit conditional on your answer, and called the commit something waiting on you | The commit itself, unasked: rule 22 gives me the commit and gives you the push | `CLAUDE.md` working rules | 1 |
 | 2026-09-10 | Justified the technology choice by the owner having used that stack on another project | The right technologies for this task and for years of maintenance, argued on merits | `CLAUDE.md` rule 21 | 1 |
 | 2026-09-14 | Ran the four checks and the commit in one chain that did not stop on a red check, so S2.6 went in with clippy failing | A red check stops the commit (`CLAUDE.md`, Go commit step 4): the commit gated on every check, never chained after them | `project-os/Workflow.md` step 8 | 1 |
+| 2026-09-14 | Asked Rotem whether "the screen dims" and whether "the copy lies" in the words of my own checks, with no context for what the darkening is, where it shows, or why I was asking; he could not tell what I meant | Say first what the thing is and where it sits on screen, then the finding, then the question, in his words (`project-os/Conversations.md` rule 14) | `project-os/Conversations.md` rule 14 | 1 |
 
 ## Promoted
 
