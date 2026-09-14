@@ -62,7 +62,8 @@ const WM_ACCEPTING: u32 = WM_APP + 1;
 const ANTS_DASH: u32 = 12;
 const ANTS_GAP: u32 = 8;
 const ANTS_WIDTH: i32 = 2;
-const ANTS_STEP_MS: u32 = 256;
+// 1.48 pixels a second, Rotem's number: 1000 / 1.48, rounded.
+const ANTS_STEP_MS: u32 = 676;
 const ANTS_TIMER: usize = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
