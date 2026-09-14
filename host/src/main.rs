@@ -32,6 +32,7 @@ mod registration;
 #[cfg(feature = "stage0-checks")]
 mod selftest;
 mod source;
+mod startup;
 mod store;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -42,7 +43,7 @@ use capture::{desktop_to_image, CaptureSource, Frame};
 use overlay::Outcome;
 
 use tauri::image::Image;
-use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, RunEvent, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
@@ -479,6 +480,9 @@ fn main() {
     // starts Recon for a file (§3.1).
     let args: Vec<String> = std::env::args().skip(1).collect();
     let open_at_start = file_argument(&args);
+    // Started by Windows at logon, through the Run value the tray's "Start with Windows"
+    // wrote: Recon sits in the tray and shows no window (§3.1).
+    let started_by_windows = args.iter().any(|a| a == startup::FLAG);
 
     let cfg = config::load();
 
@@ -537,11 +541,17 @@ fn main() {
             let open_item = MenuItemBuilder::with_id("open", "Open Recon").build(app)?;
             let defaults_item =
                 MenuItemBuilder::with_id("defaults", "Default apps settings...").build(app)?;
+            // Ticked when the Run value exists; the tick flips on the click, and the
+            // registry follows it below.
+            let startup_item = CheckMenuItemBuilder::with_id("startup", "Start with Windows")
+                .checked(startup::is_enabled())
+                .build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Quit Recon").build(app)?;
             let menu = MenuBuilder::new(app)
                 .item(&open_item)
                 .item(&hotkey_item)
                 .item(&defaults_item)
+                .item(&startup_item)
                 .separator()
                 .item(&quit_item)
                 .build()?;
@@ -570,7 +580,7 @@ fn main() {
                         }
                     }
                 })
-                .on_menu_event(|app, event| {
+                .on_menu_event(move |app, event| {
                     if event.id() == "quit" {
                         log("quit chosen in the tray menu");
                         // Pending changes are saved before Quit (§3.8): the page is asked to
@@ -588,6 +598,22 @@ fn main() {
                         match editor::show(app) {
                             Ok(ms) => log(&format!("editor opened from the tray in {ms} ms")),
                             Err(err) => log(&format!("EDITOR NOT SHOWN from the tray: {err}")),
+                        }
+                    } else if event.id() == "startup" {
+                        // The menu flipped the tick already; the Run value follows it, and a
+                        // refused write puts the tick back so it never lies (§3.1).
+                        let wanted = startup_item.is_checked().unwrap_or(false);
+                        let result = if wanted {
+                            startup::enable()
+                                .map(|command| log(&format!("start with Windows ON: {command}")))
+                        } else {
+                            startup::disable().map(|()| log("start with Windows OFF"))
+                        };
+                        if let Err(err) = result {
+                            log(&format!("START WITH WINDOWS NOT CHANGED: {err}"));
+                            if let Err(err) = startup_item.set_checked(!wanted) {
+                                log(&format!("the tick could not be put back: {err}"));
+                            }
                         }
                     }
                 })
@@ -652,6 +678,10 @@ fn main() {
 
             match open_at_start.clone() {
                 Some(path) => open_file(path, "at startup"),
+                // Started by Windows at logon: the tray only, no window (§3.1).
+                None if started_by_windows => {
+                    log("started with Windows: in the tray, no window shown")
+                }
                 // Launched like any application, Recon opens its window, with the latest
                 // document and the timeline (Rotem, 2026-09-14). The tray stays: closing
                 // the window hides it, and only the tray's Quit ends Recon (§3.1).

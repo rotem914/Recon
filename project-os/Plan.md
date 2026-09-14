@@ -139,6 +139,11 @@ display, and its preferences link straight into Windows' own default-apps settin
 can be made the default viewer. Recon never silently takes an association it was not
 given, and never re-takes one the user changed.
 
+**Start with Windows.** The tray menu carries a "Start with Windows" tick. On, Recon writes
+one value under the user's own Run key, so Windows starts it at logon, where it sits in the
+tray with no window shown; off removes exactly that value. Nothing is written until the tick
+is chosen, and a start by hand still opens the window. Added 2026-09-15 at Rotem's ask.
+
 ## 3.2 Capture flow
 
 Global shortcut, freeze the desktop image, dimmed selection overlay, drag a region, open
@@ -1988,6 +1993,8 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       under it; the menu is the right button's. A second start with no file was already
       showing the editor since S1.2. The click itself is Rotem's to try; nothing here can
       press a tray icon.
+      **Since 2026-09-15, at Rotem's ask:** a start by Windows at logon, through the tray's
+      "Start with Windows" tick (§3.1), shows no window; Recon waits in the tray.
 - [x] S2.3 Copy and Save As on an annotated image: what Rotem met on the first day; the
       cause decides the step, a fix if the keys failed on an annotated file, visible
       controls if the keys were not the way in. Model: Fable 5.1 once the cause is known.

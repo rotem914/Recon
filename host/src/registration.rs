@@ -92,11 +92,11 @@ pub fn plan(exe: &Path) -> Vec<Entry> {
     out
 }
 
-fn wide(text: &str) -> Vec<u16> {
+pub(crate) fn wide(text: &str) -> Vec<u16> {
     text.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-fn write(entry: &Entry) -> Result<(), String> {
+pub(crate) fn write(entry: &Entry) -> Result<(), String> {
     let key_name = wide(&entry.key);
     let mut key = HKEY::default();
     let created = unsafe {
@@ -164,7 +164,7 @@ fn delete_tree(key: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn delete_value(key: &str, value: &str) -> Result<(), String> {
+pub(crate) fn delete_value(key: &str, value: &str) -> Result<(), String> {
     let key_name = wide(key);
     let mut handle = HKEY::default();
     let opened = unsafe {

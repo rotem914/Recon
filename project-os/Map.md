@@ -52,6 +52,7 @@ Recon/
 │       ├── platform.rs             # what the platform is: each display's HDR state, who owns the foreground window
 │       ├── focus.rs                # the return target: the application the capture began in, back in front on hide
 │       ├── registration.rs         # the file types in "Open with" and Default apps, under the user, never a default taken
+│       ├── startup.rs              # Start with Windows: the tray's tick, one value under the user's Run key, and --startup for a start in the tray
 │       ├── dialog.rs               # Ctrl+O and Ctrl+S: Windows' own picker and Save As, owned by the editor, on their own thread
 │       ├── export.rs               # Save As: the suggested name, the last export folder, a new file only, an available name when one exists
 │       ├── folder.rs               # the folder context: listed once, logical order, previous and next, a gone file skipped
@@ -117,6 +118,7 @@ Where state lives and who is allowed to write it.
 | The process docs | `CLAUDE.md`, `project-os/*.md` | Markdown | the assistant, under the rules each file states |
 | The hooks setting | `.claude/settings.local.json` | JSON | `project-os/install-hooks.mjs` only. Machine-local, not committed. |
 | The hotkey setting | `%APPDATA%\Recon\recon.json` | JSON | nobody yet. Recon only reads it, and says in its log where the value came from. |
+| Start with Windows | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, the value `Recon` | the command `"<exe>" --startup` | the host only, at the tray's "Start with Windows" tick; removed when it is unticked |
 | Recon's trash | `%LOCALAPPDATA%\Recon\trash\<number>\` | a deleted document's folder, whole, plus `trashed` with the time; removed for good at a startup thirty days on | the host only, at a delete and at the startup sweep |
 | Managed documents | `%LOCALAPPDATA%\Recon\documents\<number>\` | `source.png`, the preserved image, written once; `document.json`, schema 1, the size, the source and the page's notes, rewritten whole through a temporary file; `thumb.png`, the timeline's thumbnail, made once | the host only: the record and the image at a capture or at Annotate, the notes on every save the page sends. The checks use `host/target/debug/s18-store` instead, never this folder |
 

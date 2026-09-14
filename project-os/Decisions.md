@@ -92,6 +92,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-14 · The wheel zooms around the pointer, with Ctrl or without, and a sideways wheel still pans.
 - 2026-09-14 · The window's top bar is Recon's own, not Windows' frame recoloured.
 - 2026-09-14 · The timeline is a window onto the list, with no View More, and its thumbnail file is 320 wide.
+- 2026-09-15 · Start with Windows is one value under the user's Run key, and a logon start shows no window.
 - 2026-09-14 · With no tool in hand a drag pans the picture, and Space held pans it whatever tool is in hand.
 
 ---
@@ -1051,3 +1052,43 @@ a screenful. The thumbnail file is about four times its old size, a few percent 
 document's own image. Cost: a cell that scrolls two screens away and back is fetched
 again, from a small file. Revisit the startup read when a year's library is real and its
 two seconds are felt, and revisit the fold by date if Rotem wants old work out of sight.
+
+---
+
+## 2026-09-15 · Start with Windows is one value under the user's Run key, and a logon start shows no window
+
+### Context
+
+Rotem asked for a way to have Recon start with Windows. Two choices sit inside that: how
+Windows is told, and what Recon shows when Windows starts it, given that a start by hand
+opens the window (S2.2, 2026-09-14).
+
+### Options
+
+1. A value under the user's Run key, `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
+2. A shortcut in the user's Startup folder.
+3. A scheduled task at logon, or Tauri's autostart plugin, which writes the same Run value
+   through a dependency of its own.
+4. At a logon start: open the window as a start by hand does, or wait in the tray.
+
+### Decision
+
+Option 1, and the tray for option 4; mine, on Rotem's ask, his to veto. The Run value is
+under the same hive as the type registration, written and removed by the same two helpers,
+so it is exactly one value that can be removed exactly; it shows in Task Manager's Startup
+apps, where Windows lets the user turn it off too. A shortcut file is a second artefact
+to keep true when the executable moves; a scheduled task needs the task service and a
+plugin adds a dependency for one registry value. At logon the start is Windows' act, not the
+user's, and a window at every boot is the kind of thing that gets the option turned off;
+the tray, with the hotkey armed, is the point of starting early. The value passes
+`--startup` so the host can tell the two starts apart.
+
+### Consequences
+
+The tick reads the registry, so it is true after a restart and after Windows' own
+removal of the value. What it cannot see: Task Manager disables a startup app by a
+separate approval key and leaves the value in place, so a tick turned off there still
+shows on in the tray; revisit if that confuses. The value names the executable that
+wrote it, so a moved or rebuilt-elsewhere Recon needs the tick off and on again. A second
+instance started with `--startup` while one runs hands over to the running one, which
+shows its window, the same as any second start.

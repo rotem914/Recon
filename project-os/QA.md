@@ -33,6 +33,7 @@ that errors, and a working route says nothing about a layout that clips.
 | Client state / cache | Reload. Mutate, then confirm fresh data arrives. |
 | Refactor | Re-check the old behavior. Prove nothing moved. |
 | Process / rules | Cross-links resolve, and the change is recorded in `project-os/History.md`. |
+| Start with Windows | `cargo test --all-features startup -- --ignored` in `host/` writes, reads back and removes a value of its own name under the real Run key; `reg query` of the key before and after shows no `Recon` value unless the tick is on. The tick, the logon start and its hidden window are Rotem's hand. |
 | The capture overlay | Build with `--features stage0-checks` and run `--selftest`: C drags, D escapes, H clicks a window near its corner for the whole window, clicks its one child for the part, drags from the same point, all through the real overlay, and writes the lit part beside the executable to be looked at. |
 
 If a change spans rows, run every row it spans.
