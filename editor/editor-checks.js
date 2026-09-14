@@ -259,6 +259,11 @@ export async function runChecks(editor, invoke) {
     document.body.className = restore.cls;
     document.getElementById('stage').style.visibility = '';
     document.getElementById('hud').style.visibility = '';
+    if (looks.length && looks.every((look) => look.black > 0.99)) {
+      skipped('the screen shows what the page painted', 'the screen copy is all black, so the display is off; nothing can be seen on it');
+      screenOff = true;
+      looks = [];
+    }
     for (const look of looks) {
       const good = look.matching > 0.9 && look.black < 0.05;
       check(`${look.label}: the screen shows what the page painted`, good,
@@ -1380,6 +1385,88 @@ export async function runChecks(editor, invoke) {
     await editor.loadImage(info);
     check('previous from the capture is the annotated file, by its document, named', info.file === 'img10.png' && info.managed === true && info.context === 'history' && info.position === 4,
       `${info.file} ${info.position} of ${info.total} in ${info.context}`);
+    model.callouts = [];
+    editor.layoutScene();
+  }
+
+  // ---------------------------------------------------------------- 25. S1.10: Copy and Return, every way it can fail
+  say('');
+  say('S1.10: Copy and Return hides only after the copy and the save succeeded; a held clipboard, a failing store, a user who moved on, a target refused, closed or absent');
+  {
+    const hud = document.getElementById('hud');
+    const visible = () => invoke('editor_window_visible');
+    const shot = await invoke('editor_capture_probe', { width: 320, height: 200 });
+    await editor.loadImage(shot);
+    const note = editor.createCallout({ x: 40, y: 40 });
+    note.text = 'work that must not be lost';
+    editor.layoutScene();
+    editor.record();
+    await editor.saveNow();
+
+    // The clipboard is held by another application: nothing is copied, nothing hides,
+    // the notice says so, the work stays.
+    const held = await invoke('editor_hold_clipboard', { on: true });
+    let r = await editor.copyAndReturn();
+    check('a held clipboard: not copied, not hidden, said on screen', held === true && r.copied === false && r.hidden === false && (await visible()) === true && hud.textContent.includes('NOT COPIED'),
+      `held ${held}, copied ${r.copied}, hidden ${r.hidden}, ${String(r.reason).slice(0, 90)}`);
+    check('the work is where it was', model.callouts.length === 1 && model.callouts[0].text === 'work that must not be lost');
+    await invoke('editor_hold_clipboard', { on: false });
+
+    // The store refuses the save: the image is copied, the editor stays, the notice
+    // names the save.
+    await invoke('editor_show');
+    await invoke('editor_store_break', { on: true });
+    editor.markDirty();
+    r = await editor.copyAndReturn();
+    check('a failed save: copied, not hidden, the notice names it', r.copied === true && r.hidden === false && r.reason === 'save failed' && (await visible()) === true && hud.textContent.includes('NOT SAVED') && hud.textContent.includes('stays'),
+      hud.textContent.split('\n').pop().slice(0, 120));
+    await invoke('editor_store_break', { on: false });
+
+    // The user moved on while the copy ran: copied, reported, the editor stays.
+    await invoke('editor_show');
+    const pending = editor.copyAndReturn();
+    note.box.x += 10;
+    editor.layoutScene();
+    editor.record();
+    r = await pending;
+    check('moved on mid-copy: copied, not hidden, the note where it was moved to', r.copied === true && r.hidden === false && r.reason === 'moved on' && (await visible()) === true && model.callouts.length === 1,
+      `copied ${r.copied}, hidden ${r.hidden}, ${r.reason}; ${hud.textContent.split('\n').pop().slice(0, 100)}`);
+
+    // No application to return to: the copy lands, the save lands, the editor hides.
+    await invoke('editor_show');
+    r = await editor.copyAndReturn();
+    check('with nothing to return to: copied, saved, hidden', r.copied === true && r.hidden === true && (await visible()) === false && r.returned.includes('no application'), r.returned);
+    await invoke('editor_show');
+
+    // The target application has closed since the capture began: hidden, nothing activated.
+    await invoke('editor_stand_in', { on: true });
+    await invoke('editor_stand_in', { on: false });
+    editor.markDirty();
+    r = await editor.copyAndReturn();
+    check('the target has closed: hidden, nothing activated, said in the log line', r.hidden === true && r.returned.includes('has closed'), r.returned);
+    await invoke('editor_show');
+
+    // The target is there: the focus goes back to it, or the system refuses, and either
+    // way the editor is hidden and the outcome is named, never guessed.
+    await invoke('editor_stand_in', { on: true });
+    editor.markDirty();
+    r = await editor.copyAndReturn();
+    check('the target is there: hidden, and the return names its outcome', r.hidden === true && (r.returned.includes('focus returned') || r.returned.includes('refused')), r.returned);
+    await invoke('editor_stand_in', { on: false });
+    await invoke('editor_show');
+    check('the last return is what the host remembers', (await invoke('editor_last_return')) === r.returned);
+
+    // The idle Escape: a failing store keeps the editor, a working one hides it.
+    await invoke('editor_store_break', { on: true });
+    editor.markDirty();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }));
+    await sleep(400);
+    check('Escape with a failing save keeps the editor and says so', (await visible()) === true && hud.textContent.includes('NOT SAVED') && hud.textContent.includes('stays'));
+    await invoke('editor_store_break', { on: false });
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }));
+    for (let i = 0; i < 40 && (await visible()); i += 1) await sleep(50);
+    check('Escape with the save landing hides the editor', (await visible()) === false && model.save.state === 'saved');
+    await invoke('editor_show');
     model.callouts = [];
     editor.layoutScene();
   }

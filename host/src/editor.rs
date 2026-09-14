@@ -763,15 +763,21 @@ pub fn present(frame: Frame) -> Result<u128, String> {
 }
 
 /// Hides the editor and returns the focus to the application the capture began in (§3.1).
-pub fn hide(app: &AppHandle) -> Result<(), String> {
+pub fn hide(app: &AppHandle) -> Result<&'static str, String> {
     let window = app
         .get_webview_window("editor")
         .ok_or("there is no editor window")?;
     window.hide().map_err(|err| err.to_string())?;
     let returned = crate::focus::return_to_target();
     crate::log(&format!("editor hidden; {}", returned.line()));
-    Ok(())
+    if let Ok(mut last) = LAST_RETURN.lock() {
+        *last = returned.line();
+    }
+    Ok(returned.line())
 }
+
+/// What the last hide's focus return said, for the S1.10 checks.
+static LAST_RETURN: Mutex<&'static str> = Mutex::new("");
 
 /// The file's name in the title, so it is visible without hunting (§3.4); a capture is
 /// plain "Recon".
@@ -994,6 +1000,9 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         checks::editor_store_verify,
         checks::editor_store_break,
         checks::editor_window_visible,
+        checks::editor_hold_clipboard,
+        checks::editor_stand_in,
+        checks::editor_last_return,
         checks::editor_managed,
         checks::editor_replace_in_folder,
         checks::editor_make_folder,
@@ -1273,8 +1282,8 @@ pub fn editor_show(app: AppHandle) -> Result<u128, String> {
 
 /// Escape in the idle editor hides it and returns the focus (§3.6, §3.1).
 #[tauri::command]
-pub fn editor_hide(app: AppHandle) -> Result<(), String> {
-    hide(&app)
+pub fn editor_hide(app: AppHandle) -> Result<String, String> {
+    hide(&app).map(|line| line.to_string())
 }
 
 /// Fullscreen in and out (§3.4): one key in, the same key or Escape out. Returns the new
@@ -2638,6 +2647,64 @@ mod checks {
             crate::store::set_root(store_dir());
         }
         Ok(())
+    }
+
+    static CLIPBOARD_HOLDER: Mutex<Option<std::process::Child>> = Mutex::new(None);
+
+    /// Holds the clipboard open from ANOTHER PROCESS, our own executable started with
+    /// `--hold-clipboard`, so a publish meets what it meets when another application is
+    /// holding the clipboard, which is the real failure. A thread of this process would
+    /// not do: the clipboard is open per task, and a second open from the same process
+    /// succeeds. Returns whether it is held, so the check never assumes it.
+    #[tauri::command]
+    pub fn editor_hold_clipboard(on: bool) -> Result<bool, String> {
+        let mut slot = CLIPBOARD_HOLDER
+            .lock()
+            .map_err(|_| "the clipboard holder slot is poisoned")?;
+        if on {
+            if slot.is_none() {
+                *slot = Some(crate::selftest::open_clipboard_holder()?);
+            }
+            Ok(true)
+        } else {
+            if let Some(mut child) = slot.take() {
+                let _ = child.kill();
+                let _ = child.wait();
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Ok(false)
+        }
+    }
+
+    static STAND_IN: Mutex<Option<std::process::Child>> = Mutex::new(None);
+
+    /// A stand-in application as the return target: opened and remembered, or closed so
+    /// the target is gone, as the self test's section G does with the same window.
+    #[tauri::command]
+    pub fn editor_stand_in(on: bool) -> Result<(), String> {
+        let mut slot = STAND_IN
+            .lock()
+            .map_err(|_| "the stand-in slot is poisoned")?;
+        if on {
+            if slot.is_none() {
+                let (child, hwnd) = crate::selftest::open_stand_in()?;
+                crate::focus::remember(hwnd);
+                *slot = Some(child);
+            }
+        } else if let Some(mut child) = slot.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        Ok(())
+    }
+
+    #[tauri::command]
+    pub fn editor_last_return() -> String {
+        LAST_RETURN
+            .lock()
+            .map(|l| l.to_string())
+            .unwrap_or_default()
     }
 
     /// Whether the window is shown, for the S1.7 Copy and Return check.

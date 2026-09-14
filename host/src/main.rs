@@ -382,6 +382,9 @@ fn main() {
         if std::env::args().any(|a| a == "--stand-in-window") {
             std::process::exit(selftest::stand_in_window());
         }
+        if std::env::args().any(|a| a == "--hold-clipboard") {
+            std::process::exit(selftest::hold_clipboard());
+        }
         if std::env::args().any(|a| a == "--platform-report") {
             println!("dpi at startup  : {awareness}");
             println!(
@@ -649,7 +652,7 @@ fn main() {
                 api.prevent_close();
                 editor::flush_saves(window.app_handle());
                 match editor::hide(window.app_handle()) {
-                    Ok(()) => {}
+                    Ok(_) => {}
                     Err(err) => log(&format!("editor NOT hidden on close: {err}")),
                 }
             }

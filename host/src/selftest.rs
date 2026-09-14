@@ -520,8 +520,91 @@ pub fn stand_in_window() -> i32 {
     0
 }
 
+/// `--hold-clipboard`: opens the clipboard and holds it until this process is killed, so
+/// the S1.10 check can meet a clipboard another application is holding. Says "held" on
+/// its output once it has it.
+pub(crate) fn hold_clipboard() -> i32 {
+    use windows::Win32::System::DataExchange::OpenClipboard;
+    // With a window of its own: an open with no window does not keep another process
+    // out, as a probe on this machine showed, and a real application holds it through a
+    // window.
+    unsafe extern "system" fn proc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> windows::Win32::Foundation::LRESULT {
+        unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+    }
+    let title: Vec<u16> = "ReconClipboardHolder"
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    unsafe {
+        let instance =
+            windows::Win32::System::LibraryLoader::GetModuleHandleW(None).unwrap_or_default();
+        let class = WNDCLASSEXW {
+            cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
+            lpfnWndProc: Some(proc),
+            hInstance: instance.into(),
+            lpszClassName: windows::core::PCWSTR(title.as_ptr()),
+            ..Default::default()
+        };
+        RegisterClassExW(&class);
+        let Ok(hwnd) = CreateWindowExW(
+            WINDOW_EX_STYLE(0),
+            windows::core::PCWSTR(title.as_ptr()),
+            windows::core::PCWSTR(title.as_ptr()),
+            WS_OVERLAPPEDWINDOW,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            100,
+            100,
+            None,
+            None,
+            Some(instance.into()),
+            None,
+        ) else {
+            println!("not held: no window");
+            return 1;
+        };
+        if OpenClipboard(Some(hwnd)).is_err() {
+            println!("not held");
+            return 1;
+        }
+        println!("held");
+        let mut msg = MSG::default();
+        while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+            let _ = TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+    }
+    0
+}
+
+/// Starts the clipboard holder in its own process and waits for its "held".
+pub(crate) fn open_clipboard_holder() -> Result<std::process::Child, String> {
+    use std::io::{BufRead, BufReader};
+    let exe = std::env::current_exe().map_err(|err| err.to_string())?;
+    let mut child = std::process::Command::new(exe)
+        .arg("--hold-clipboard")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|err| format!("the clipboard holder did not start: {err}"))?;
+    let mut line = String::new();
+    if let Some(out) = child.stdout.take() {
+        let _ = BufReader::new(out).read_line(&mut line);
+    }
+    if line.trim() != "held" {
+        let _ = child.kill();
+        return Err(format!("the clipboard holder said {:?}", line.trim()));
+    }
+    Ok(child)
+}
+
 /// Starts the stand-in window in its own process and waits until it is in front.
-fn open_stand_in() -> Result<(std::process::Child, HWND), String> {
+pub(crate) fn open_stand_in() -> Result<(std::process::Child, HWND), String> {
     let exe = std::env::current_exe().map_err(|err| err.to_string())?;
     let mut child = std::process::Command::new(exe)
         .arg("--stand-in-window")

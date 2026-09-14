@@ -1895,9 +1895,25 @@ work rather than a feature count.
       position after Annotate, and a capture after that at 5 of 5 with the annotated file
       at 4. A document walked to from history stands on its own preserved image, named
       after its file, with no file open behind it (F82).
-- [ ] S1.10 Copy and Return, including every failure path: a failed clipboard, a failed save,
+- [x] S1.10 Copy and Return, including every failure path: a failed clipboard, a failed save,
       a refused activation, a closed target application, and a user who moved on
       mid-operation. Model: Fable 5.1, every branch is a way to lose work.
+      **Built 2026-09-14.** The order is fixed: the note being typed is committed, the
+      image is copied, the notes are saved, and only then does the editor hide; the hide
+      reports what the focus return did. Every way out is on screen, as a line under the
+      HUD, never a dialog, and the work stays: a clipboard another application holds
+      gives NOT COPIED with the reason and nothing hides; a store that refuses the save
+      gives "copied, but NOT SAVED" and the editor stays; a change made while the copy
+      ran gives "copied; the editor stays, since you moved on"; a target that has closed
+      hides with nothing activated; no target hides with nothing to return to; a target
+      that is there gets the focus, or the system refuses and the line says which. The
+      idle Escape follows the same rule: a failing save keeps the editor and says so.
+      Checked with the clipboard held by a second process of our own through a window,
+      since an open with no window does not keep another process out on this machine;
+      the store pointed at a file; a note moved during the copy; a stand-in application
+      opened and closed as the target. The return with the stand-in there came back as
+      "focus returned to the application the capture began in". A change that grows the margin during the copy makes the copy itself
+      fail, since the composition moved under it, and that path reads NOT COPIED, F83.
 - [ ] S1.11 PNG Save As: a new file every time, a suggested name derived from the source and
       marked as annotated, no path by which an external original is the default target, and
       an available name offered when the chosen one exists. There is no overwrite path.
@@ -2219,6 +2235,7 @@ was rated when it was raised.
 | F79 | A managed document is keyed by path and frame, but stepping frames inside it keeps the document's number while its preserved image is the one frame, so a note placed on frame 3 of a resumed frame-0 document sits on pixels the document does not hold | 🟠 | §3.8, S1.5, S1.8 | Open: S1.8 decides what a document of an animation preserves, one frame or the frame it is asked for |
 | F80 | The in-memory list of documents is capped at fifty, and an annotated file's document dropped at the cap loses its notes with no store to fall back on | 🟠 | S1.1 decision, S1.5, S1.8 | Closed at S1.8: the cap is gone, every document is on disk from its first moment, and the in-memory list holds paths |
 | F82 | A document read from disk stands without a file behind it, so its frames or pages cannot be stepped and its folder context is none until the file is opened again | 🟡 | §3.3, S1.8, S1.9 | Open: the document names its file, and Ctrl+O or the folder walk reaches the file itself; S1.9 decides whether history navigation reopens the file beside the document |
+| F83 | A note added while Copy and Return is composing can grow the margin, and the host then refuses the layer as the wrong size, so that "moved on" reads as NOT COPIED rather than as copied and staying | 🟡 | §3.3, S1.10 | Open: the page could compose from a snapshot of the composition; today the notice is right that nothing was copied, and a second Ctrl+Enter copies |
 | F81 | When no candidate is both inside the picture and clear of the other bubbles, placement takes a clear one in the margin over an overlapping one inside, so a crowded corner grows the canvas rather than stacking bubbles | 🟡 | §3.5, S1.6 | Open, Rotem's call: the order can prefer inside-and-overlapping instead; one line in `placeCallout` |
 
 Two rules earned during those passes, and they hold for the build too: a check must name the

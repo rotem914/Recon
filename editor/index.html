@@ -975,7 +975,13 @@
       if (model.fullscreen) { setFullscreen(false).catch((err) => console.error('fullscreen', err)); event.preventDefault(); return; }
       // The idle editor: pending changes are saved, then hide, and the focus goes back to
       // where the capture began (§3.1, §3.8).
-      saveNow().catch(() => {}).then(() => invoke('editor_hide')).catch((err) => console.error('hide', err));
+      saveNow().catch(() => 'failed').then((state) => {
+        if (state === 'failed') {
+          notice(`NOT SAVED: ${model.save.error}. The editor stays with your work`, 0);
+          return null;
+        }
+        return invoke('editor_hide');
+      }).catch((err) => console.error('hide', err));
       event.preventDefault();
       return;
     }
@@ -1259,14 +1265,26 @@
   // untouched source and publishes the clipboard. The success line shows only after the
   // host said it succeeded, and it is a HUD line, not a dialog.
   let flashTimer = null;
-  const copyComposed = async () => {
-    const layer = await exportLayer();
-    const report = await invoke('editor_copy', layer.bytes, { headers: { margin: layer.margin } });
-    console.log(`copied ${report.width}x${report.height}: composed ${report.compose_ms} ms, encoded ${report.published.encode_ms} ms, published ${report.published.publish_ms} ms as ${report.published.formats.join(', ')}`);
+  // A line under the HUD: for a moment when it is good news, until the next change when it
+  // is not. Never a dialog (§3.3: an actionable message, and the work stays).
+  const notice = (text, ms) => {
     drawHud();
-    hud.textContent += `\ncopied ${report.width}x${report.height} to the clipboard`;
+    hud.textContent += `\n${text}`;
     clearTimeout(flashTimer);
-    flashTimer = setTimeout(drawHud, 1500);
+    if (ms) flashTimer = setTimeout(drawHud, ms);
+  };
+  const copyComposed = async () => {
+    let layer;
+    let report;
+    try {
+      layer = await exportLayer();
+      report = await invoke('editor_copy', layer.bytes, { headers: { margin: layer.margin } });
+    } catch (err) {
+      notice(`NOT COPIED: ${err}. Your work is here; try again`, 0);
+      throw err;
+    }
+    console.log(`copied ${report.width}x${report.height}: composed ${report.compose_ms} ms, encoded ${report.published.encode_ms} ms, published ${report.published.publish_ms} ms as ${report.published.formats.join(', ')}`);
+    notice(`copied ${report.width}x${report.height} to the clipboard`, 1500);
     return report;
   };
 
@@ -1278,13 +1296,25 @@
     if (model.editing) commitEditing();
     const document_id = model.image.document_id;
     const before = snapshot();
-    const report = await copyComposed();
-    const changed = model.image.document_id !== document_id || snapshot() !== before || model.editing;
-    if (!changed) {
-      await saveNow();
-      await invoke('editor_hide');
+    let report;
+    try {
+      report = await copyComposed();
+    } catch (err) {
+      // Nothing left the editor: the notice is on screen and the work is where it was.
+      return { hidden: false, copied: false, reason: String(err) };
     }
-    return { ...report, hidden: !changed };
+    const movedOn = model.image.document_id !== document_id || snapshot() !== before || model.editing;
+    if (movedOn) {
+      notice(`copied ${report.width}x${report.height}; the editor stays, since you moved on`, 2500);
+      return { ...report, hidden: false, copied: true, reason: 'moved on' };
+    }
+    const saved = await saveNow();
+    if (saved === 'failed') {
+      notice(`copied ${report.width}x${report.height}, but NOT SAVED: ${model.save.error}. The editor stays with your work`, 0);
+      return { ...report, hidden: false, copied: true, reason: 'save failed' };
+    }
+    const returned = await invoke('editor_hide');
+    return { ...report, hidden: true, copied: true, returned };
   };
 
   window.reconEditor = {
@@ -1315,6 +1345,7 @@
     redo,
     saveNow,
     markDirty,
+    notice,
     snapshot,
     copyAndReturn,
     fitMargin,
