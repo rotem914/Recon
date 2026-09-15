@@ -23,7 +23,7 @@ state reachable with no animation at all (`project-os/QA.md` §7).
 |---|---|---|
 | App background | `#111217` | The page ground behind the picture and the panels (Rotem, 2026-09-14). |
 | Icon button hover | `#21222C` | The fill of an icon button's square under the pointer (Rotem, 2026-09-15). |
-| Scroller | `#21222C` | The thumb of the timeline's scroller once its rows wrap (Rotem, 2026-09-15). |
+| Scroller | `#21222C` | The thumb of the timeline's scroller, sideways in one row and vertical once its rows wrap (Rotem, 2026-09-15). |
 
 ## Components
 
@@ -71,7 +71,8 @@ Stated by Rotem on 2026-09-15 for the timeline along the bottom.
 | Part | Value |
 |---|---|
 | Thumb | 4 px thick, fully rounded, the scroller colour |
-| Track | no fill; 4 px clear of the screen's bottom edge and 4 px clear of the strip's top |
+| Track | no fill |
+| Sideways, one row | 4 px clear of the screen's bottom edge and 4 px clear above the thumb |
+| Vertical, rows | 4 px clear of the screen's bottom edge and 4 px clear of the strip's top |
 
-Used by: the timeline's vertical scroller, shown once its thumbnails wrap into rows. The
-one-row strip's sideways scroller is still the system's.
+Used by: the timeline along the bottom, both of its scrollers.

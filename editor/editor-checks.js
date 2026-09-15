@@ -2260,6 +2260,8 @@ export async function runChecks(editor, invoke) {
     check('only the screen and a screen either side exist as elements, not the thirty', rendered > 0 && rendered < 30 && rendered >= Math.floor(strip.clientWidth / 136),
       `${rendered} of 30 in a strip ${strip.clientWidth} wide`);
     check('the strip scrolls the whole row all the same', strip.scrollWidth === 16 + 30 * 136 - 8, `scroll width ${strip.scrollWidth}`);
+    check('the row scrolls sideways by Rotem\'s own scroller, 12 px under the cells: a 4 px thumb with 4 px clear above and below, not the system\'s', strip.offsetHeight - strip.clientTop - strip.clientHeight === 12,
+      `${strip.offsetHeight - strip.clientTop - strip.clientHeight} px between the strip's content and its bottom edge`);
     strip.scrollLeft = strip.scrollWidth;
     await sleep(100);
     check('scrolled to the end: the oldest cell exists, the newest is dropped', !!strip.querySelector(`[data-id="${shots[0].document_id}"]`) && !strip.querySelector(`[data-id="${shots[29].document_id}"]`) && cellsOf() < 30,
