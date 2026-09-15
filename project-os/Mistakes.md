@@ -67,7 +67,6 @@ Mistakes in HOW you worked:
 | 2026-09-10 | Made the commit conditional on your answer, and called the commit something waiting on you | The commit itself, unasked: rule 22 gives me the commit and gives you the push | `CLAUDE.md` working rules | 1 |
 | 2026-09-10 | Justified the technology choice by the owner having used that stack on another project | The right technologies for this task and for years of maintenance, argued on merits | `CLAUDE.md` rule 21 | 1 |
 | 2026-09-14 | Ran the four checks and the commit in one chain that did not stop on a red check, so S2.6 went in with clippy failing | A red check stops the commit (`CLAUDE.md`, Go commit step 4): the commit gated on every check, never chained after them | `project-os/Workflow.md` step 8 | 1 |
-| 2026-09-14 | Asked Rotem whether "the screen dims" and whether "the copy lies" in the words of my own checks, with no context for what the darkening is, where it shows, or why I was asking; he could not tell what I meant | Say first what the thing is and where it sits on screen, then the finding, then the question, in his words (`project-os/Conversations.md` rule 14) | `project-os/Conversations.md` rule 14 | 1 |
 
 ## Promoted
 
@@ -77,6 +76,7 @@ Mistakes in HOW you worked:
 | 2026-09-10 | Split the plan into two documents twice: first a review beside the plan, then a product plan beside the build plan | `CLAUDE.md` rule 13, one plan file |
 | 2026-09-10 | Argued from claims that were not established, twice: a platform behavior stated as documented, then what competing technologies cannot do | `project-os/QA.md` §13 |
 | 2026-09-15 | Read a direction word literally twice: styled only the "vertical" scroller where the spec described the sideways one, then centred the sidebar's buttons "horizontally", across a width they already filled, where Rotem meant in its height | `CLAUDE.md` rule 1, a direction word is read against the screen |
+| 2026-09-16 | Put a choice to Rotem in the words of my own design twice: the capture's dimming and the copy in the words of my checks, then the undo plan's three calls as rule names ("the last-thing-done rule") with no scene of what he would see; both times he could not tell what was asked | `project-os/Conversations.md` rule 14, a choice is shown as scenes |
 
 ## Retired
 

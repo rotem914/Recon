@@ -434,6 +434,7 @@ For an owner who does not read syntax, none of it sits inline in a sentence —
 collect commands, flags, patterns and paths in ONE fenced block at the section's
 end, labeled skippable, and frame every decision in product terms.
 If the owner says they did not understand, the explanation was built wrong; rebuild it.
+A choice put to the owner is two things he would SEE happen, one scene per line, never a rule's name.
 
 Repo-internal nouns are worse than syntax: they LOOK like plain English, so they
 slip past unnoticed and the owner cannot even tell they were jargon until asking.
