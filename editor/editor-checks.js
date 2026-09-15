@@ -2563,6 +2563,27 @@ export async function runChecks(editor, invoke) {
       dragged.left === 300 && dragged.shown === shownBefore && model.image.document_id === clickedId,
       `scrolled ${dragged.left} for a move of 300, shown ${dragged.shown} (was ${shownBefore}); the still press showed ${model.image.document_id}, wanted ${clickedId}`);
 
+    // Rotem, 2026-09-16: over the one-row strip the wheel scrolls it sideways, down to the right;
+    // once the rows wrap the page leaves the wheel to the strip's own vertical scroll.
+    strip.scrollLeft = 0;
+    await sleep(100);
+    const wheelOn = (deltaY) => {
+      const wheel = new WheelEvent('wheel', { deltaY, deltaMode: 0, bubbles: true, cancelable: true });
+      (strip.querySelector('.thumb') || strip).dispatchEvent(wheel);
+      return wheel.defaultPrevented;
+    };
+    const downTaken = wheelOn(120);
+    const afterDown = strip.scrollLeft;
+    const upTaken = wheelOn(-50);
+    const afterUp = strip.scrollLeft;
+    editor.setStripHeight(424);
+    const rowsWrapped = editor.stripLayout().rows;
+    const rowsTaken = wheelOn(120);
+    editor.setStripHeight(96);
+    check('over the one-row strip the wheel scrolls it sideways, down to the right, and rows leave the wheel alone',
+      downTaken && afterDown === 120 && upTaken && afterUp === 70 && rowsWrapped > 1 && !rowsTaken,
+      `down to ${afterDown}, up to ${afterUp}, taken ${downTaken} ${upTaken}; ${rowsWrapped} rows, taken ${rowsTaken}`);
+
     // The trash view lays out the same way.
     await editor.deleteDocument(shots[0].document_id);
     // The chip is the last cell, so with twenty-nine documents it exists only near the end.
