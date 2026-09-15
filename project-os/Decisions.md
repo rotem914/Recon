@@ -99,6 +99,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-15 · Under a pan drag lies a small copy of the whole picture, taken whenever the whole picture is painted.
 - 2026-09-15 · The design system lives in project-os/Design.md, read before a visible change.
 - 2026-09-15 · Zooming out stops at the whole picture as the space is now, and a whole view follows the space.
+- 2026-09-16 · The focus return target is used once: a hide with no capture since activates nothing.
 - 2026-09-16 · A deleted document is undone by the same Ctrl+Z as a note, the last thing done first.
 
 ---
@@ -1140,3 +1141,37 @@ quit ends them and the Trash chip is the way back after one. A picture's own not
 keeps its per-picture redo tail, reachable when the global list has nothing newer. A refused
 restore leaves the undo path rather than blocking it. Revisit if undo ever persists across
 a restart, or if a second cross-picture action joins the history.
+
+---
+
+## 2026-09-16 · The focus return target is used once: a hide with no capture since activates nothing
+
+### Context
+
+Review 3 (T4) found that the application remembered at the hotkey was never forgotten, so
+every later hide of the editor, opened from the tray or for a file from Explorer, brought
+that application to the front. §3.1 wants the focus back where the capture began and never
+on an unrelated window; hours later, the last capture's application is that window.
+
+### Options
+
+1. Take the target on use: one return per capture, then nothing until the next hotkey.
+2. Clear the target on every route that shows the editor without a capture: the tray, a
+   file opened, a second instance.
+3. Leave it, and call the jump the chain-of-captures behaviour.
+
+### Decision
+
+Option 1, by the assistant under Rotem's FIX ALL, his to change: one line, and it keeps
+"a chain of captures still returns", since each capture remembers afresh. Option 2 does the
+same in three places and misses the next route that shows the window. A hide with nothing
+remembered lets Windows pick, which is what §3.1 asks for a closed application too.
+
+### Consequences
+
+The first Escape or close after a capture returns the focus; a second hide of the same
+editor, with no capture between, activates nothing. Copy and Return behaves the same. The
+self test's section G and the S1.10 checks assert it. Revisit if Rotem wants a tray-opened
+editor to return anywhere in particular.
+
+---

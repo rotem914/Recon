@@ -66,9 +66,13 @@ pub fn remember(hwnd: HWND) {
 
 /// Brings the remembered window forward, if it is still there. Never activates anything
 /// else: a background completion or a closed application must not steal focus (§3.1).
+///
+/// The target is used once (review T4): a hide with no capture since the last return
+/// activates nothing, so an editor opened from the tray or for a file closes without
+/// bringing the last capture's application forward.
 pub fn return_to_target() -> Returned {
     let remembered = match TARGET.lock() {
-        Ok(slot) => *slot,
+        Ok(mut slot) => slot.take(),
         Err(_) => None,
     };
     let Some(raw) = remembered else {

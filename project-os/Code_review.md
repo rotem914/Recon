@@ -191,6 +191,16 @@ one is worth trusting. Group the rows under the dimensions above.
   key that changes the document: each path that leaves a note being typed reads its text
   back first, or the layout rewrites the element from the stale model and the typing is
   gone. (Source: `notes/2026-09-13-code-review-2.md`, R1; the open case is F67.)
+- 🔴 **A write is flushed before it is named.** Every temporary file is `sync_all`ed before
+  the rename, and an export before it is reported written; a rename of unflushed bytes can
+  survive a power cut as an empty file. (Source: `notes/2026-09-16-code-review-3.md`, T3.)
+- 🔴 **The dirty flag clears before the wait, never after.** A save that waits on an
+  earlier one clears the flag first, so a keystroke during the wait re-dirties the document
+  and the next save carries it. (Source: `notes/2026-09-16-code-review-3.md`, T1.)
+- 🟠 **A document's folder is written only for a listed document, under the list's lock.**
+  A thread that writes into `documents/<id>/` checks the list under the lock the delete
+  moves the folder under; an unlisted document's bytes go to its trash folder or nowhere.
+  (Source: `notes/2026-09-16-code-review-3.md`, T2.)
 
 ### State & concurrency
 

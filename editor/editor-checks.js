@@ -1406,8 +1406,10 @@ export async function runChecks(editor, invoke) {
     for (let i = 0; i < 200 && !hudEl.textContent.includes(`copied ${model.image.width}x${model.image.height}`); i += 1) await sleep(50);
     const back = await invoke('editor_clipboard_readback');
     check('Ctrl+C outside typing copies the composed image', copy && back.png && back.width === model.image.width && back.height === model.image.height, `${back.width}x${back.height}`);
-    check('Ctrl+S and Ctrl+Shift+Enter are taken and do nothing yet, the stage column honoured',
-      press({ key: 's', code: 'KeyS', ctrlKey: true }) && press({ key: 'Enter', code: 'Enter', ctrlKey: true, shiftKey: true }) && model.callouts.length === 1);
+    // Ctrl+S is S1.11's and opens a real dialog since then, so it is not pressed here: a dialog
+    // left open would make the one Save As at a time (review T9) refuse section 26's press.
+    check('Ctrl+Shift+Enter is taken and does nothing yet, the stage column honoured',
+      press({ key: 'Enter', code: 'Enter', ctrlKey: true, shiftKey: true }) && model.callouts.length === 1);
 
     // Copy and Return: the note being typed is committed, the image copied, the window hidden.
     editor.startEditing(t);
@@ -1539,6 +1541,30 @@ export async function runChecks(editor, invoke) {
     const again = await editor.saveNow();
     entry = await line(model.image.document_id);
     check('the next save lands, and the notice goes', again === 'saved' && !!entry && entry.notes.includes('written while the disk was refusing') && !hud.textContent.includes('NOT SAVED'));
+
+    // A keystroke while a save is on its way (review T1): a second save waits on the
+    // first, and a character typed during that wait has to reach the disk by the timer's
+    // own save, with nothing else touching the document.
+    {
+      const racedId = model.image.document_id;
+      const raced = editor.createCallout({ x: 120, y: 120 });
+      editor.layoutScene();
+      editor.startEditing(raced);
+      const textEl = el(raced).querySelector('.t');
+      const typed = (text) => { textEl.textContent = text; textEl.dispatchEvent(new InputEvent('input', { bubbles: true })); };
+      typed('one');
+      const first = editor.saveNow();
+      typed('one two');
+      const second = editor.saveNow();
+      typed('one two three');
+      await first;
+      await second;
+      const landed = await until(async () => { const l = await line(racedId); return l && l.notes.includes('one two three') ? l : null; }, 3000);
+      check('a character typed while a save is on its way reaches the disk by the timer\'s save', !!landed && model.save.state === 'saved',
+        landed ? 'on disk' : `not on disk within 3 s; the record holds ${JSON.stringify((await line(racedId)).notes.slice(0, 120))}`);
+      editor.commitEditing();
+      await editor.saveNow();
+    }
     model.callouts = [];
     editor.layoutScene();
   }
@@ -1696,6 +1722,12 @@ export async function runChecks(editor, invoke) {
         await invoke('editor_stand_in', { on: false });
         await invoke('editor_show');
         check('the last return is what the host remembers', (await invoke('editor_last_return')) === r.returned);
+        // The target is used once (review T4): a hide with no capture since returns
+        // nowhere, so an editor opened from the tray or for a file closes without a jump.
+        editor.markDirty();
+        r = await editor.copyAndReturn();
+        check('a second hide with no capture between activates nothing', r.hidden === true && r.returned.includes('no application'), r.returned);
+        await invoke('editor_show');
       }
     }
     await invoke('editor_show');
@@ -1763,6 +1795,7 @@ export async function runChecks(editor, invoke) {
     await sleep(1500);
     let outcome = await invoke('editor_save_as_outcome');
     check('Ctrl+S opens Save As, and the page says so', outcome.state === 'open' && hud.textContent.includes('Save As is open'), outcome.state);
+    check('a second Save As while it is open is refused: one dialog', (await editor.saveAs()) === false);
     const sent = await invoke('editor_press_escape');
     for (let i = 0; i < 40 && sent && outcome.state === 'open'; i += 1) {
       await sleep(100);
@@ -1995,6 +2028,34 @@ export async function runChecks(editor, invoke) {
     await editor.refreshStrip();
     check('a capture after the empty state shows and the timeline returns', model.image.width === 300 && document.body.classList.contains('strip') && editor.canvas.style.display !== 'none',
       `${model.image.width}, strip ${document.body.classList.contains('strip')}, canvas ${JSON.stringify(editor.canvas.style.display)}`);
+
+    // A capture deleted while its image is still encoding (review T2): no folder of its own
+    // is left among the documents, the trash holds the record with its image, and Restore
+    // brings the picture back.
+    const racing = await invoke('editor_capture_probe', { width: 4000, height: 2500 });
+    await editor.loadImage(racing);
+    await editor.deleteDocument(racing.document_id);
+    await sleep(1500);
+    const folders = await invoke('editor_store_list');
+    const trashNow = await invoke('editor_trash_list');
+    const restored = await invoke('editor_trash_restore', { id: racing.document_id })
+      .then(() => invoke('editor_show_document', { id: racing.document_id }))
+      .catch((err) => ({ error: String(err) }));
+    if (restored.width) await editor.loadImage(restored);
+    check('a capture deleted while its image encodes leaves no folder among the documents, sits in the trash with its image, and Restore brings the picture back',
+      !folders.some((l) => l.id === racing.document_id) && trashNow.some(([id]) => id === racing.document_id) && restored.width === 4000 && model.image.document_id === racing.document_id,
+      `folders ${folders.map((l) => l.id).join(' ')}, trash ${JSON.stringify(trashNow)}, restore ${JSON.stringify(restored).slice(0, 90)}`);
+
+    // A move to the trash that fails (review T10): the document stays listed, the picture
+    // stays on screen, and the page says so.
+    await invoke('editor_trash_break', { on: true });
+    const keptId = model.image.document_id;
+    const refused = await editor.deleteDocument(keptId).then(() => null, (err) => String(err));
+    const listedStill = (await invoke('editor_documents')).some((d) => d.id === keptId);
+    await invoke('editor_trash_break', { on: false });
+    check('a delete whose move to the trash fails keeps the document listed and on screen, and says NOT DELETED',
+      !!refused && listedStill && model.image.document_id === keptId && hud.textContent.includes('NOT DELETED'), refused || 'deleted');
+    editor.notice('', 0);
     model.callouts = [];
     editor.layoutScene();
   }

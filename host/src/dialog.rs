@@ -19,11 +19,11 @@ use windows::Win32::UI::Shell::{
     SIGDN_FILESYSPATH,
 };
 
-/// Shows the Save As dialog for a PNG (§3.6, S1.11), opened on `folder` with `name` filled
-/// in, and blocks until it closes. `Ok(None)` is a cancel. The dialog's own overwrite
-/// prompt is off on purpose: an existing name is never overwritten, the caller offers an
-/// available one instead, so the question the prompt asks must never be asked.
-pub fn save_png(
+/// Shows the Save As dialog (§3.6, S1.11; PNG or JPEG since S2.6), opened on `folder` with
+/// `name` filled in, and blocks until it closes. `Ok(None)` is a cancel. The dialog's own
+/// overwrite prompt is off on purpose: an existing name is never overwritten, the caller
+/// offers an available one instead, so the question the prompt asks must never be asked.
+pub fn save_as(
     owner: Option<HWND>,
     folder: &std::path::Path,
     name: &str,
@@ -73,7 +73,7 @@ pub fn save_png(
             dialog
                 .SetFileName(PCWSTR(name_wide.as_ptr()))
                 .map_err(|err| err.to_string())?;
-            let title = wide("Save As a PNG, a new file");
+            let title = wide("Save As, a new file");
             dialog
                 .SetTitle(PCWSTR(title.as_ptr()))
                 .map_err(|err| err.to_string())?;
