@@ -1847,6 +1847,18 @@ export async function runChecks(editor, invoke) {
         && Math.round(sizeBox.top) === sizeStageBottom + 16 && Math.round(sizeBox.bottom) === sizeStripTop - 16
         && getComputedStyle(sizeEl).backgroundColor === getComputedStyle(document.body).backgroundColor,
       `"${sizeEl.textContent}" at ${Math.round(sizeBox.left)}-${Math.round(sizeBox.right)} by ${Math.round(sizeBox.top)}-${Math.round(sizeBox.bottom)}, the stage to ${sizeStageBottom}, the strip from ${sizeStripTop}, ${getComputedStyle(sizeEl).backgroundColor}`);
+    // Its text centred in the window, in Google Sans at 14 px, medium, from the font file bundled with
+    // the page (Rotem, 2026-09-16): a face that failed to load, or the text off centre, turns this red.
+    await document.fonts.load('500 14px "Google Sans"', sizeEl.textContent);
+    const sizeFace = [...document.fonts].find((f) => f.family.replace(/"/g, '') === 'Google Sans' && String(f.weight) === '500');
+    const sizeStyle = getComputedStyle(sizeEl);
+    const sizeRange = document.createRange();
+    sizeRange.selectNodeContents(sizeEl);
+    const sizeText = sizeRange.getBoundingClientRect();
+    check('the size is centred in the window, in Google Sans at 14 px, medium, loaded from the page\'s own font file',
+      !!sizeFace && sizeFace.status === 'loaded' && sizeStyle.fontSize === '14px' && sizeStyle.fontWeight === '500' && sizeStyle.fontFamily.startsWith('"Google Sans"')
+        && sizeText.width > 0 && Math.abs((sizeText.left + sizeText.right) / 2 - window.innerWidth / 2) <= 1,
+      `${sizeFace ? sizeFace.status : 'no face'}, ${sizeStyle.fontWeight} ${sizeStyle.fontSize} ${sizeStyle.fontFamily.split(',')[0]}, the text ${sizeText.left.toFixed(1)}-${sizeText.right.toFixed(1)} in a window ${window.innerWidth} wide`);
     // With no timeline the HUD, which carries the notices, sits above the picture's size, not under it.
     document.body.classList.remove('strip');
     const bareHudBottom = Math.round(document.getElementById('hud').getBoundingClientRect().bottom);

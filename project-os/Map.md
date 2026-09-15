@@ -80,6 +80,7 @@ Recon/
 ├── editor/                         # the web view surface, a placeholder until S0.4
 │   ├── index.html                  # the editor: the scene, the callout, the text layer
 │   ├── editor-checks.js            # --editor-check: S0.4's evidence, not product code
+│   ├── fonts/                      # Google Sans, medium, Latin, from Google Fonts, with its OFL.txt
 │   └── bench.html                  # the web view half of S0.3, not product code
 └── project-os/                     # the process docs and their enforcement
     ├── Plan.md                     # the whole plan, read at task pickup

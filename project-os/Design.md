@@ -25,6 +25,12 @@ state reachable with no animation at all (`project-os/QA.md` §7).
 | Icon button hover | `#21222C` | The fill of an icon button's square under the pointer (Rotem, 2026-09-15). |
 | Scroller | `#21222C` | The thumb of the timeline's scroller, sideways in one row and vertical once its rows wrap (Rotem, 2026-09-15). |
 
+## Fonts
+
+| Font | Bundled | Where it is used |
+|---|---|---|
+| Google Sans | medium (500), the Latin subset, from Google Fonts under the SIL Open Font License, in `editor/fonts/` with its `OFL.txt` | The image size (Rotem, 2026-09-16). |
+
 ## Components
 
 ### Icon button
@@ -87,9 +93,10 @@ Stated by Rotem on 2026-09-16.
 | Margin | 16 px above and 16 px below |
 | Background | the app background |
 | Content | the picture's size in pixels, written as 1200x1500 |
+| Text | Google Sans, 14 px, medium (500), centred in the window |
 
-The text's look is not stated yet. Provisional in the page until it is: the top bar title's
-12 px text in #cfd4da, on a 16 px line, 12 px from the window's left edge.
+The text's colour and line are not stated yet. Provisional in the page until they are: the
+top bar title's #cfd4da, on a 16 px line.
 
 ### Window
 

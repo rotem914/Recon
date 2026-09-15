@@ -101,6 +101,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-15 · Zooming out stops at the whole picture as the space is now, and a whole view follows the space.
 - 2026-09-16 · The focus return target is used once: a hide with no capture since activates nothing.
 - 2026-09-16 · A deleted document is undone by the same Ctrl+Z as a note, the last thing done first.
+- 2026-09-16 · Google Sans is bundled with the page, the medium Latin subset, for the image size only.
 
 ---
 
@@ -1175,3 +1176,67 @@ self test's section G and the S1.10 checks assert it. Revisit if Rotem wants a t
 editor to return anywhere in particular.
 
 ---
+
+---
+
+## 2026-09-16 · Google Sans is bundled with the page, the medium Latin subset, for the image size only
+
+### Context
+
+Rotem asked for the image size's text in Google Sans, medium, from Google Fonts. The web view's
+security policy in `host/tauri.conf.json` takes stylesheets and fonts from the page's own origin
+only (`style-src 'self' 'unsafe-inline'`, `font-src 'self'`), and Recon has to work without a
+network. Google Fonts serves the weight as 25 files, one per script; the family is under the SIL
+Open Font License, whose text Google Fonts' own file list for the family carries.
+
+### Options
+
+1. Link Google Fonts' stylesheet from the page at runtime: the policy refuses it, and it needs a
+   network.
+2. Bundle every file Google Fonts serves for the weight, all 25 scripts.
+3. Bundle only the file for the script the text is written in, Latin, which holds the digits
+   and the x.
+4. Inline the font in the page as base64: the policy allows no data: fonts.
+
+### Decision
+
+Option 3, with the family's `OFL.txt`, in `editor/fonts/`, 23 KB. The subset is the assistant's
+call, Rotem's to veto.
+
+### Consequences
+
+A character outside Latin in that container falls back to the system font, character by
+character. Another weight or script is one more file from the same stylesheet. The notes keep
+the system font, so the export needs no inlined font; putting Google Sans on the notes would
+bring part 5's inlining back, and whether the policy lets the serialized layer load it is not
+established here. Revisit when the font is wanted on the notes or on text in another script.
+
+## 2026-09-16 · The focus return target is used once: a hide with no capture since activates nothing
+
+### Context
+
+Review 3 (T4) found that the application remembered at the hotkey was never forgotten, so
+every later hide of the editor, opened from the tray or for a file from Explorer, brought
+that application to the front. §3.1 wants the focus back where the capture began and never
+on an unrelated window; hours later, the last capture's application is that window.
+
+### Options
+
+1. Take the target on use: one return per capture, then nothing until the next hotkey.
+2. Clear the target on every route that shows the editor without a capture: the tray, a
+   file opened, a second instance.
+3. Leave it, and call the jump the chain-of-captures behaviour.
+
+### Decision
+
+Option 1, by the assistant under Rotem's FIX ALL, his to change: one line, and it keeps
+"a chain of captures still returns", since each capture remembers afresh. Option 2 does the
+same in three places and misses the next route that shows the window. A hide with nothing
+remembered lets Windows pick, which is what §3.1 asks for a closed application too.
+
+### Consequences
+
+The first Escape or close after a capture returns the focus; a second hide of the same
+editor, with no capture between, activates nothing. Copy and Return behaves the same. The
+self test's section G and the S1.10 checks assert it. Revisit if Rotem wants a tray-opened
+editor to return anywhere in particular.
