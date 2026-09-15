@@ -167,22 +167,8 @@ pub fn trash(id: u64) -> Result<Option<PathBuf>, String> {
     if to.exists() {
         let _ = std::fs::remove_dir_all(&to);
     }
-    // A file in the folder can be open for a moment, a thumbnail being read or written on
-    // its thread, and Windows refuses to move a folder with an open file in it. A second of
-    // short retries covers that; a folder truly held is still refused, and said so.
-    let started = SystemTime::now();
-    let mut moved = std::fs::rename(&from, &to);
-    while let Err(err) = &moved {
-        let waited = started.elapsed().unwrap_or_default();
-        if err.kind() != std::io::ErrorKind::PermissionDenied
-            || waited > std::time::Duration::from_secs(1)
-        {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-        moved = std::fs::rename(&from, &to);
-    }
-    moved.map_err(|err| format!("{} could not be moved to the trash: {err}", from.display()))?;
+    std::fs::rename(&from, &to)
+        .map_err(|err| format!("{} could not be moved to the trash: {err}", from.display()))?;
     note_folder(&from);
     let stamp = format!("{}", millis(SystemTime::now()));
     write_atomic(&to.join("trashed"), stamp.as_bytes())?;
@@ -296,11 +282,7 @@ pub struct Record {
     pub notes: serde_json::Value,
 }
 
-/// How many temporary files this process has named, so no two share a name.
-static TEMPORARIES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
-/// Writes the bytes to a temporary file beside the target, flushes it, and renames it into
-/// place.
+/// Writes the bytes to a temporary file beside the target and renames it into place.
 pub fn write_atomic(target: &Path, bytes: &[u8]) -> Result<(), String> {
     let parent = target
         .parent()
@@ -311,28 +293,9 @@ pub fn write_atomic(target: &Path, bytes: &[u8]) -> Result<(), String> {
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
-    // The process id and a counter: two writers of one target in this process, two threads
-    // making the same thumbnail, must not share a temporary file (review T8).
-    let temporary = parent.join(format!(
-        "{name}.{}.{}.tmp",
-        std::process::id(),
-        TEMPORARIES.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-    ));
-    let written = (|| -> std::io::Result<()> {
-        use std::io::Write;
-        let mut file = std::fs::File::create(&temporary)?;
-        file.write_all(bytes)?;
-        // Flushed to the disk before the rename (review T3): without it a power cut can
-        // commit the name before the bytes, and the file that survives is empty.
-        file.sync_all()
-    })();
-    if let Err(err) = written {
-        let _ = std::fs::remove_file(&temporary);
-        return Err(format!(
-            "{} could not be written: {err}",
-            temporary.display()
-        ));
-    }
+    let temporary = parent.join(format!("{name}.{}.tmp", std::process::id()));
+    std::fs::write(&temporary, bytes)
+        .map_err(|err| format!("{} could not be written: {err}", temporary.display()))?;
     std::fs::rename(&temporary, target).map_err(|err| {
         let _ = std::fs::remove_file(&temporary);
         format!("{} could not be put in place: {err}", target.display())

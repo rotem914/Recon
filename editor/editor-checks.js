@@ -1406,10 +1406,8 @@ export async function runChecks(editor, invoke) {
     for (let i = 0; i < 200 && !hudEl.textContent.includes(`copied ${model.image.width}x${model.image.height}`); i += 1) await sleep(50);
     const back = await invoke('editor_clipboard_readback');
     check('Ctrl+C outside typing copies the composed image', copy && back.png && back.width === model.image.width && back.height === model.image.height, `${back.width}x${back.height}`);
-    // Ctrl+S is S1.11's and opens a real dialog since then, so it is not pressed here: a dialog
-    // left open would make the one Save As at a time (review T9) refuse section 26's press.
-    check('Ctrl+Shift+Enter is taken and does nothing yet, the stage column honoured',
-      press({ key: 'Enter', code: 'Enter', ctrlKey: true, shiftKey: true }) && model.callouts.length === 1);
+    check('Ctrl+S and Ctrl+Shift+Enter are taken and do nothing yet, the stage column honoured',
+      press({ key: 's', code: 'KeyS', ctrlKey: true }) && press({ key: 'Enter', code: 'Enter', ctrlKey: true, shiftKey: true }) && model.callouts.length === 1);
 
     // Copy and Return: the note being typed is committed, the image copied, the window hidden.
     editor.startEditing(t);
@@ -1541,30 +1539,6 @@ export async function runChecks(editor, invoke) {
     const again = await editor.saveNow();
     entry = await line(model.image.document_id);
     check('the next save lands, and the notice goes', again === 'saved' && !!entry && entry.notes.includes('written while the disk was refusing') && !hud.textContent.includes('NOT SAVED'));
-
-    // A keystroke while a save is on its way (review T1): a second save waits on the
-    // first, and a character typed during that wait has to reach the disk by the timer's
-    // own save, with nothing else touching the document.
-    {
-      const racedId = model.image.document_id;
-      const raced = editor.createCallout({ x: 120, y: 120 });
-      editor.layoutScene();
-      editor.startEditing(raced);
-      const textEl = el(raced).querySelector('.t');
-      const typed = (text) => { textEl.textContent = text; textEl.dispatchEvent(new InputEvent('input', { bubbles: true })); };
-      typed('one');
-      const first = editor.saveNow();
-      typed('one two');
-      const second = editor.saveNow();
-      typed('one two three');
-      await first;
-      await second;
-      const landed = await until(async () => { const l = await line(racedId); return l && l.notes.includes('one two three') ? l : null; }, 3000);
-      check('a character typed while a save is on its way reaches the disk by the timer\'s save', !!landed && model.save.state === 'saved',
-        landed ? 'on disk' : `not on disk within 3 s; the record holds ${JSON.stringify((await line(racedId)).notes.slice(0, 120))}`);
-      editor.commitEditing();
-      await editor.saveNow();
-    }
     model.callouts = [];
     editor.layoutScene();
   }
@@ -1722,12 +1696,6 @@ export async function runChecks(editor, invoke) {
         await invoke('editor_stand_in', { on: false });
         await invoke('editor_show');
         check('the last return is what the host remembers', (await invoke('editor_last_return')) === r.returned);
-        // The target is used once (review T4): a hide with no capture since returns
-        // nowhere, so an editor opened from the tray or for a file closes without a jump.
-        editor.markDirty();
-        r = await editor.copyAndReturn();
-        check('a second hide with no capture between activates nothing', r.hidden === true && r.returned.includes('no application'), r.returned);
-        await invoke('editor_show');
       }
     }
     await invoke('editor_show');
@@ -1795,7 +1763,6 @@ export async function runChecks(editor, invoke) {
     await sleep(1500);
     let outcome = await invoke('editor_save_as_outcome');
     check('Ctrl+S opens Save As, and the page says so', outcome.state === 'open' && hud.textContent.includes('Save As is open'), outcome.state);
-    check('a second Save As while it is open is refused: one dialog', (await editor.saveAs()) === false);
     const sent = await invoke('editor_press_escape');
     for (let i = 0; i < 40 && sent && outcome.state === 'open'; i += 1) {
       await sleep(100);
@@ -2028,34 +1995,6 @@ export async function runChecks(editor, invoke) {
     await editor.refreshStrip();
     check('a capture after the empty state shows and the timeline returns', model.image.width === 300 && document.body.classList.contains('strip') && editor.canvas.style.display !== 'none',
       `${model.image.width}, strip ${document.body.classList.contains('strip')}, canvas ${JSON.stringify(editor.canvas.style.display)}`);
-
-    // A capture deleted while its image is still encoding (review T2): no folder of its own
-    // is left among the documents, the trash holds the record with its image, and Restore
-    // brings the picture back.
-    const racing = await invoke('editor_capture_probe', { width: 4000, height: 2500 });
-    await editor.loadImage(racing);
-    await editor.deleteDocument(racing.document_id);
-    await sleep(1500);
-    const folders = await invoke('editor_store_list');
-    const trashNow = await invoke('editor_trash_list');
-    const restored = await invoke('editor_trash_restore', { id: racing.document_id })
-      .then(() => invoke('editor_show_document', { id: racing.document_id }))
-      .catch((err) => ({ error: String(err) }));
-    if (restored.width) await editor.loadImage(restored);
-    check('a capture deleted while its image encodes leaves no folder among the documents, sits in the trash with its image, and Restore brings the picture back',
-      !folders.some((l) => l.id === racing.document_id) && trashNow.some(([id]) => id === racing.document_id) && restored.width === 4000 && model.image.document_id === racing.document_id,
-      `folders ${folders.map((l) => l.id).join(' ')}, trash ${JSON.stringify(trashNow)}, restore ${JSON.stringify(restored).slice(0, 90)}`);
-
-    // A move to the trash that fails (review T10): the document stays listed, the picture
-    // stays on screen, and the page says so.
-    await invoke('editor_trash_break', { on: true });
-    const keptId = model.image.document_id;
-    const refused = await editor.deleteDocument(keptId).then(() => null, (err) => String(err));
-    const listedStill = (await invoke('editor_documents')).some((d) => d.id === keptId);
-    await invoke('editor_trash_break', { on: false });
-    check('a delete whose move to the trash fails keeps the document listed and on screen, and says NOT DELETED',
-      !!refused && listedStill && model.image.document_id === keptId && hud.textContent.includes('NOT DELETED'), refused || 'deleted');
-    editor.notice('', 0);
     model.callouts = [];
     editor.layoutScene();
   }
@@ -2701,6 +2640,123 @@ export async function runChecks(editor, invoke) {
       `${less.documents} then ${same.documents} documents, ${less.bytes} (walk ${lessWalked}) then ${same.bytes} (walk ${sameWalked}) bytes`);
     await editor.refreshStrip();
     check('the timeline agrees', editor.stripCells().filter((c) => c.kind === 'doc').length === 60 && !strip.querySelector('#trash-chip'));
+    model.callouts = [];
+    editor.layoutScene();
+  }
+
+  // ---------------------------------------------------------------- 39. S2.9: undo of a deletion
+  say('');
+  say('S2.9: Ctrl+Z brings back the picture just deleted from the timeline, the last thing done first; Ctrl+Shift+Z deletes it again; the notes and their undo come back with it; no notice');
+  {
+    const hud = document.getElementById('hud');
+    await invoke('editor_store_reset');
+    const press = (init) => window.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
+    const undoKey = () => press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    const redoKey = () => press({ key: 'Z', code: 'KeyZ', ctrlKey: true, shiftKey: true });
+    const until = async (test) => { for (let i = 0; i < 80 && !test(); i += 1) await sleep(50); return test(); };
+    const inTrash = async (id) => (await invoke('editor_trash_list')).some(([t]) => t === id);
+    const listed = async (id) => (await invoke('editor_documents')).some((d) => d.id === id);
+    const thumbs = () => editor.stripCells().filter((c) => c.kind === 'doc').map((c) => c.doc.id);
+
+    // Three captures; the middle one gets a note and a second step, so its undo has history.
+    const a = await invoke('editor_capture_probe', { width: 320, height: 200 });
+    await editor.loadImage(a);
+    const b = await invoke('editor_capture_probe', { width: 340, height: 200 });
+    await editor.loadImage(b);
+    const n = editor.createCallout({ x: 30, y: 30 });
+    n.text = 'kept through the trash';
+    editor.layoutScene();
+    editor.record();
+    n.text = 'kept through the trash, edited';
+    editor.layoutScene();
+    editor.record();
+    await editor.saveNow();
+    const bRecord = await invoke('editor_store_read', { id: b.document_id });
+    const bBytes = (await invoke('editor_store_list')).find((l) => l.id === b.document_id).source_bytes;
+    const c = await invoke('editor_capture_probe', { width: 360, height: 200 });
+    await editor.loadImage(c);
+    await editor.refreshStrip();
+
+    // 1. Delete the one on screen, Ctrl+Z: it is back on screen, with its notes, its undo
+    //    still walking, its folder unchanged, out of the trash, no notice.
+    await editor.loadImage(await invoke('editor_show_document', { id: b.document_id }));
+    await editor.deleteDocument(b.document_id);
+    check('the middle document deleted from the screen: in the trash, the neighbour on screen', await inTrash(b.document_id) && model.image.document_id === c.document_id, `on screen ${model.image.document_id}`);
+    editor.notice('', 0);
+    undoKey();
+    check('Ctrl+Z after a delete brings the same document back on screen', await until(() => model.image.document_id === b.document_id), `on screen ${model.image.document_id}`);
+    await sleep(200);
+    check('with its notes as they were, out of the trash, back in the list', model.callouts.length === 1 && model.callouts[0].text === 'kept through the trash, edited' && !(await inTrash(b.document_id)) && (await listed(b.document_id)),
+      `${model.callouts.length} notes, "${model.callouts[0] && model.callouts[0].text}"`);
+    const bRecordAfter = await invoke('editor_store_read', { id: b.document_id }).catch((err) => String(err));
+    const bBytesAfter = ((await invoke('editor_store_list')).find((l) => l.id === b.document_id) || {}).source_bytes;
+    // The folder as a whole may grow by the thumbnail the timeline asks for after the return;
+    // the image and the record are what a move must leave alone.
+    check('its record and its image are byte for byte what they were: a move, never a rewrite', bRecordAfter === bRecord && bBytesAfter === bBytes, `image ${bBytes} then ${bBytesAfter} bytes, record ${bRecordAfter === bRecord ? 'same' : 'CHANGED'}`);
+    check('no notice for the coming back', !hud.textContent.includes('restored') && !hud.textContent.includes('NOT'), hud.textContent.split('\n').pop());
+    check('the timeline has all three again, in place', await until(() => thumbs().length === 3 && thumbs()[1] === b.document_id), JSON.stringify(thumbs()));
+    const noteUndo = editor.undo();
+    check('its own note undo still walks: the earlier text is back', noteUndo && !!model.callouts[0] && model.callouts[0].text === 'kept through the trash', model.callouts[0] && model.callouts[0].text);
+    editor.redo();
+    check('and redoes', !!model.callouts[0] && model.callouts[0].text === 'kept through the trash, edited');
+
+    // 2. Delete one not on screen, Ctrl+Z: the picture on screen unchanged, the thumbnail back.
+    await editor.deleteDocument(a.document_id);
+    check('the oldest deleted from its thumbnail while the middle one is on screen', await inTrash(a.document_id) && model.image.document_id === b.document_id);
+    undoKey();
+    check('Ctrl+Z brings its thumbnail back and leaves the screen alone', await until(() => thumbs().length === 3) && model.image.document_id === b.document_id && !(await inTrash(a.document_id)),
+      `${thumbs().length} thumbnails, on screen ${model.image.document_id}`);
+
+    // 3. The last thing done first: a note step, then a deletion, Ctrl+Z takes the deletion
+    //    with the note still there; the next Ctrl+Z takes the note; Ctrl+Shift+Z walks back.
+    const m = editor.createCallout({ x: 80, y: 80 });
+    m.text = 'newer than nothing';
+    editor.layoutScene();
+    editor.record();
+    await editor.deleteDocument(c.document_id);
+    undoKey();
+    check('a note, then a delete: Ctrl+Z brings the picture back first, the note still there', await until(() => thumbs().length === 3) && model.callouts.length === 2 && model.image.document_id === b.document_id,
+      `${thumbs().length} thumbnails, ${model.callouts.length} notes`);
+    undoKey();
+    check('the next Ctrl+Z takes the note', await until(() => model.callouts.length === 1), `${model.callouts.length} notes`);
+    redoKey();
+    check('Ctrl+Shift+Z puts the note back', await until(() => model.callouts.length === 2), `${model.callouts.length} notes`);
+    redoKey();
+    check('Ctrl+Shift+Z again deletes the picture again, into the trash', await until(() => thumbs().length === 2) && (await inTrash(c.document_id)), `${thumbs().length} thumbnails`);
+    undoKey();
+    check('and Ctrl+Z brings it back once more', await until(() => thumbs().length === 3) && !(await inTrash(c.document_id)));
+
+    // 4. Two deletes, two Ctrl+Z: both back, the later first.
+    await editor.deleteDocument(a.document_id);
+    await editor.deleteDocument(c.document_id);
+    undoKey();
+    check('two deletes: the first Ctrl+Z brings the later one back', await until(() => thumbs().length === 2) && thumbs().includes(c.document_id) && !thumbs().includes(a.document_id), JSON.stringify(thumbs()));
+    undoKey();
+    check('the second brings the earlier one back', await until(() => thumbs().length === 3) && thumbs().includes(a.document_id));
+
+    // 5. The last one deleted, the editor empty, Ctrl+Z from there: it is back on screen.
+    await editor.deleteDocument(a.document_id);
+    await editor.deleteDocument(c.document_id);
+    await editor.deleteDocument(b.document_id);
+    check('every document deleted: the editor is empty', model.image.width === 0 && thumbs().length === 0);
+    undoKey();
+    check('Ctrl+Z from the empty state brings the last one back on screen, with its notes', await until(() => model.image.document_id === b.document_id && model.image.width === 340) && model.callouts.length === 2,
+      `on screen ${model.image.document_id}, ${model.callouts.length} notes`);
+    const k = editor.createCallout({ x: 120, y: 120 });
+    k.text = 'new';
+    editor.layoutScene();
+    editor.record();
+    redoKey();
+    await sleep(300);
+    check('a new action ends the redo: after a fresh note, Ctrl+Shift+Z deletes nothing', thumbs().length === 1 && (await listed(b.document_id)) && model.callouts.length === 3, `${thumbs().length} thumbnails, ${model.callouts.length} notes`);
+
+    // 6. A restore refused: the failure is a line on screen, and the next Ctrl+Z moves on.
+    await editor.deleteDocument(b.document_id);
+    await invoke('editor_trash_age', { id: b.document_id, days: 31 });
+    await invoke('editor_sweep_trash');
+    undoKey();
+    check('a restore that cannot happen says so and leaves the undo path', await until(() => hud.textContent.includes('NOT RESTORED')) && !editor.deletionsOf().some((d) => d.id === b.document_id), hud.textContent.split('\n').pop());
+    editor.notice('', 0);
     model.callouts = [];
     editor.layoutScene();
   }

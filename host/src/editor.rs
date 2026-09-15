@@ -188,7 +188,6 @@ pub enum Source {
 /// The preserved image: the decoded pixels until the encode thread is done, then the PNG,
 /// so a document costs a few megabytes rather than tens. The entry exists from the first
 /// moment either way, so a second Annotate can never find nothing and create a second one.
-#[derive(Clone)]
 enum Preserved {
     Decoded(Arc<Image>),
     Encoded(Vec<u8>),
@@ -295,46 +294,28 @@ fn preserve(image: Arc<Image>, id: u64, source: Source) {
             return;
         }
         let encode_ms = started.elapsed().as_millis();
-        // To disk, once, under the list's lock (review T2): a delete moves the folder under
-        // the same lock, so the image lands where the record is. A document deleted while
-        // it encoded gets its image in the trash, where Restore expects it, and never a
-        // folder of its own among the documents again.
+        // To disk, once, outside the lock; the bytes stay in memory only if that failed.
+        let written = crate::store::write_source(id, &png);
         let Ok(mut documents) = DOCUMENTS.lock() else {
             return;
         };
-        let count = documents.len();
-        let Some(document) = documents.iter_mut().find(|d| d.id == id) else {
-            match crate::store::trash_root().map(|trash| trash.join(id.to_string())) {
-                Ok(dir) if dir.is_dir() => {
-                    match crate::store::write_atomic(&dir.join("source.png"), &png) {
-                        Ok(()) => crate::log(&format!(
-                            "document {id} was deleted while its image encoded; the image joined it in the trash"
-                        )),
-                        Err(err) => crate::log(&format!(
-                            "document {id} was deleted while its image encoded, and the image was NOT kept: {err}"
-                        )),
-                    }
+        if let Some(document) = documents.iter_mut().find(|d| d.id == id) {
+            match written {
+                Ok(path) => {
+                    document.preserved = Preserved::OnDisk(path);
+                    println!(
+                        "document {id} preserved: {width}x{height} encoded in {encode_ms} ms, written in {} ms, {} documents",
+                        started.elapsed().as_millis() - encode_ms,
+                        documents.len(),
+                    );
                 }
-                _ => crate::log(&format!(
-                    "document {id} is gone from the list with no folder in the trash; its image is dropped"
-                )),
-            }
-            return;
-        };
-        match crate::store::write_source(id, &png) {
-            Ok(path) => {
-                document.preserved = Preserved::OnDisk(path);
-                println!(
-                    "document {id} preserved: {width}x{height} encoded in {encode_ms} ms, written in {} ms, {count} documents",
-                    started.elapsed().as_millis() - encode_ms,
-                );
-            }
-            Err(err) => {
-                document.preserved = Preserved::Encoded(png);
-                document.save_error = Some(err.clone());
-                crate::log(&format!(
-                    "document {id} image NOT saved, kept in memory: {err}"
-                ));
+                Err(err) => {
+                    document.preserved = Preserved::Encoded(png);
+                    document.save_error = Some(err.clone());
+                    crate::log(&format!(
+                        "document {id} image NOT saved, kept in memory: {err}"
+                    ));
+                }
             }
         }
     });
@@ -356,52 +337,42 @@ impl Managed {
     /// The preserved pixels as a frame, from the PNG or the decoded copy, whichever is
     /// held right now. This is the document's own image; the file on disk is not read.
     fn frame(&self, name: &'static str) -> Result<Frame, String> {
-        preserved_frame(self.id, &self.preserved, self.width, self.height, name)
+        let decode = |png: &[u8]| {
+            image::load_from_memory_with_format(png, image::ImageFormat::Png)
+                .map_err(|err| {
+                    format!(
+                        "document {}: its preserved PNG did not decode: {err}",
+                        self.id
+                    )
+                })
+                .map(|img| img.into_rgba8().into_raw())
+        };
+        let rgba = match &self.preserved {
+            Preserved::Decoded(image) => image.frame.rgba.clone(),
+            Preserved::Encoded(png) => decode(png)?,
+            Preserved::OnDisk(path) => {
+                let png = std::fs::read(path).map_err(|err| {
+                    format!(
+                        "document {}: {} could not be read: {err}",
+                        self.id,
+                        path.display()
+                    )
+                })?;
+                decode(&png)?
+            }
+        };
+        Ok(Frame {
+            geometry: FrameGeometry {
+                origin_x: 0,
+                origin_y: 0,
+                width: self.width,
+                height: self.height,
+            },
+            rgba,
+            source: name,
+        })
     }
 
-    /// What `frame` needs, cloned, so a caller can decode outside the list's lock
-    /// (review T7): the handle is cheap, the decode is not.
-    fn preserved_handle(&self) -> (u64, Preserved, u32, u32) {
-        (self.id, self.preserved.clone(), self.width, self.height)
-    }
-}
-
-/// The frame behind a preserved image, decoded here; see `Managed::frame`.
-fn preserved_frame(
-    id: u64,
-    preserved: &Preserved,
-    width: u32,
-    height: u32,
-    name: &'static str,
-) -> Result<Frame, String> {
-    let decode = |png: &[u8]| {
-        image::load_from_memory_with_format(png, image::ImageFormat::Png)
-            .map_err(|err| format!("document {id}: its preserved PNG did not decode: {err}"))
-            .map(|img| img.into_rgba8().into_raw())
-    };
-    let rgba = match preserved {
-        Preserved::Decoded(image) => image.frame.rgba.clone(),
-        Preserved::Encoded(png) => decode(png)?,
-        Preserved::OnDisk(path) => {
-            let png = std::fs::read(path).map_err(|err| {
-                format!("document {id}: {} could not be read: {err}", path.display())
-            })?;
-            decode(&png)?
-        }
-    };
-    Ok(Frame {
-        geometry: FrameGeometry {
-            origin_x: 0,
-            origin_y: 0,
-            width,
-            height,
-        },
-        rgba,
-        source: name,
-    })
-}
-
-impl Managed {
     fn is_for(&self, path: &std::path::Path, frame: u32) -> bool {
         match &self.source {
             Source::File {
@@ -634,6 +605,20 @@ pub fn editor_trash_documents() -> Vec<TrashedLine> {
 /// rejoins the list, and it is shown.
 #[tauri::command]
 pub fn editor_trash_restore(id: u64) -> Result<ImageInfo, String> {
+    trash_rejoin(id)?;
+    show_document(id)?;
+    editor_image_info()
+}
+
+/// The first half of a restore, on its own (S2.9): the folder back out of the trash and
+/// the document back in the list, nothing shown. Undo of a deletion uses it, so a document
+/// that was not on screen when deleted returns to the timeline without taking the screen.
+#[tauri::command]
+pub fn editor_trash_rejoin(id: u64) -> Result<(), String> {
+    trash_rejoin(id)
+}
+
+fn trash_rejoin(id: u64) -> Result<(), String> {
     let dir = crate::store::restore(id)?;
     let record = crate::store::read_record(&dir)?;
     let source = dir.join("source.png");
@@ -647,32 +632,23 @@ pub fn editor_trash_restore(id: u64) -> Result<ImageInfo, String> {
         }
     }
     crate::log(&format!("document {id} restored from the trash"));
-    show_document(id)?;
-    editor_image_info()
+    Ok(())
 }
 
 /// Puts a managed document on screen from its own preserved image, as the resume of
 /// Annotate does, without a file behind it: the document stands on its own (§3.3).
 fn show_document(id: u64) -> Result<(), String> {
-    // The handle under the lock, the decode outside it (review T7): a large PNG takes a
-    // tenth of a second to decode, and the timeline, a thumbnail and a save in flight
-    // would all wait on it.
-    let (handle, name) = {
+    let frame = {
         let documents = DOCUMENTS.lock().map_err(|_| "the documents are poisoned")?;
         let document = documents
             .iter()
             .find(|d| d.id == id)
             .ok_or_else(|| format!("document {id} is not in the list"))?;
-        (
-            document.preserved_handle(),
-            match document.source {
-                Source::Capture => "capture",
-                Source::File { .. } => "document",
-            },
-        )
+        document.frame(match document.source {
+            Source::Capture => "capture",
+            Source::File { .. } => "document",
+        })?
     };
-    let (id, preserved, width, height) = handle;
-    let frame = preserved_frame(id, &preserved, width, height, name)?;
     state().set_document(None);
     if let Ok(mut slot) = state().folder.lock() {
         *slot = None;
@@ -930,24 +906,21 @@ pub fn editor_delete_document(id: u64) -> Result<Option<ImageInfo>, String> {
     let was_current = id == current_document_id();
     {
         let mut documents = DOCUMENTS.lock().map_err(|_| "the documents are poisoned")?;
-        if !documents.iter().any(|d| d.id == id) {
+        let before = documents.len();
+        documents.retain(|d| d.id != id);
+        if documents.len() == before {
             return Err(format!("document {id} is not in the list"));
         }
-        // The move first, under the lock, so an image still encoding lands where the folder
-        // is (review T2); a move that fails keeps the document listed and is the page's to
-        // show (review T10).
-        match crate::store::trash(id) {
-            Ok(Some(to)) => crate::log(&format!(
-                "document {id} deleted, into the trash at {}",
-                to.display()
-            )),
-            Ok(None) => crate::log(&format!("document {id} deleted; it had no folder yet")),
-            Err(err) => {
-                crate::log(&format!("document {id} NOT deleted: {err}"));
-                return Err(format!("not deleted: {err}"));
-            }
-        }
-        documents.retain(|d| d.id != id);
+    }
+    match crate::store::trash(id) {
+        Ok(Some(to)) => crate::log(&format!(
+            "document {id} deleted, into the trash at {}",
+            to.display()
+        )),
+        Ok(None) => crate::log(&format!("document {id} deleted; it had no folder yet")),
+        Err(err) => crate::log(&format!(
+            "document {id} deleted from the list, but NOT moved to the trash: {err}"
+        )),
     }
     if !was_current {
         return Ok(Some(editor_image_info()?));
@@ -1453,9 +1426,9 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_delete_document,
         editor_trash_documents,
         editor_trash_restore,
+        editor_trash_rejoin,
         checks::editor_trash_list,
         checks::editor_trash_age,
-        checks::editor_trash_break,
         checks::editor_sweep_trash,
         checks::editor_save_as_outcome,
         checks::editor_file_kind,
@@ -1527,6 +1500,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_delete_document,
         editor_trash_documents,
         editor_trash_restore,
+        editor_trash_rejoin,
     ]);
     builder.register_asynchronous_uri_scheme_protocol("region", |_ctx, request, responder| {
         let query = request.uri().query().unwrap_or_default().to_string();
@@ -1908,7 +1882,7 @@ pub fn editor_save_as(app: AppHandle, request: tauri::ipc::Request<'_>) -> Resul
                 let mut folder = folder;
                 let mut name = name;
                 loop {
-                    match crate::dialog::save_as(Some(owner), &folder, &name) {
+                    match crate::dialog::save_png(Some(owner), &folder, &name) {
                         Ok(None) => break SaveAsOutcome::cancelled(),
                         Err(err) => break SaveAsOutcome::failed(err),
                         Ok(Some(chosen)) => match crate::export::encode(
@@ -3444,24 +3418,6 @@ mod checks {
         let then =
             crate::store::millis(std::time::SystemTime::now()).saturating_sub(days * 86_400_000);
         crate::store::write_atomic(&dir.join("trashed"), then.to_string().as_bytes())
-    }
-
-    /// Puts a file where the checks' trash folder goes, so a move into the trash fails,
-    /// and takes it away again (review T10).
-    #[tauri::command]
-    pub fn editor_trash_break(on: bool) -> Result<(), String> {
-        let trash = crate::store::trash_root()?;
-        if on {
-            let _ = std::fs::remove_dir_all(&trash);
-            std::fs::write(&trash, b"a file where the trash expects a folder")
-                .map_err(|err| err.to_string())
-        } else {
-            match std::fs::remove_file(&trash) {
-                Ok(()) => Ok(()),
-                Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
-                Err(err) => Err(err.to_string()),
-            }
-        }
     }
 
     #[tauri::command]

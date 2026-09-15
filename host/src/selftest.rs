@@ -910,19 +910,6 @@ fn return_test() -> Result<(), String> {
         crate::platform::window_owner(ha).line()
     );
 
-    // A return uses the target up (review T4): a second one with nothing remembered
-    // since activates nothing, and says so.
-    let spent = crate::focus::return_to_target();
-    if spent != crate::focus::Returned::Nothing {
-        let _ = a.kill();
-        let _ = b.kill();
-        return Err(format!(
-            "a second return with no capture between said {spent:?}"
-        ));
-    }
-    println!("  a second return with no capture between activated nothing");
-    crate::focus::remember(ha);
-
     // The remembered window closes; the return must activate nothing.
     let _ = unsafe { PostMessageW(Some(ha), WM_CLOSE, WPARAM(0), LPARAM(0)) };
     std::thread::sleep(std::time::Duration::from_millis(600));

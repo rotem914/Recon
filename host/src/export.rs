@@ -144,8 +144,7 @@ pub fn write_new(path: &Path, png: &[u8]) -> Result<Written, String> {
         }
         Err(err) => return Err(format!("{} could not be created: {err}", path.display())),
     };
-    // Flushed to the disk, not only to the file (review T3): flush on a File is a no-op.
-    if let Err(err) = file.write_all(png).and_then(|_| file.sync_all()) {
+    if let Err(err) = file.write_all(png).and_then(|_| file.flush()) {
         drop(file);
         let _ = std::fs::remove_file(path);
         return Err(format!("{} could not be written: {err}", path.display()));

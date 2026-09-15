@@ -395,7 +395,7 @@ is a contract broken on day one.
 | `Esc` in fullscreen | Leave fullscreen | 1, built at S1.3 |
 | `Esc` in the otherwise idle editor | Save pending changes and hide the editor | 1, the hide and the focus return built at S1.1, the save at S1.8 |
 | Delete outside text editing | Delete the selected annotation | 1, built; Backspace does the same |
-| Undo and redo | While a note is being edited, undo works on the typing and never reaches object operations. Once editing ends, that text change takes its place in document history as one grouped step | 1 |
+| Undo and redo | While a note is being edited, undo works on the typing and never reaches object operations. Once editing ends, that text change takes its place in document history as one grouped step. A document deleted from the timeline is in the same history: Ctrl+Z brings it back, Ctrl+Shift+Z deletes it again, the last thing done first | 1; the deletion at S2.9, built 2026-09-16 |
 | `Ctrl+O` | Open an image file | 1, built at S1.2 |
 | Previous and next image, outside text editing | Walk the active navigation context, folder or Recon history, in the §3.4 order | 1, built at S1.4 for the folder and at S1.9 for history: PageDown and PageUp, Home and End for the first and last; the ends stop |
 | Fit to window · actual size · zoom in · zoom out | Viewing controls, no effect on export resolution; zoom out stops at the whole picture (§3.4) | 1, built: keys, and the wheel to zoom around the pointer, with Ctrl or without, at Rotem's call on 2026-09-14; a sideways wheel pans; the zoom-out floor at Rotem's word on 2026-09-15 |
@@ -2142,7 +2142,7 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       walk. One behaviour differs, Rotem's to veto: "the latest reopens" is now the
       last-modified of the fifty newest by creation, so an old document annotated last,
       with more than fifty newer ones, would not be the one reopened.
-- [ ] S2.9 Undo of a deletion: Ctrl+Z brings back the picture just deleted from the
+- [x] S2.9 Undo of a deletion: Ctrl+Z brings back the picture just deleted from the
       timeline. Asked by Rotem on 2026-09-16, his pick over undo buttons in the sidebar
       and over undo that survives a restart; a spec, nothing built. Model: Fable 5.1, it
       moves a document's folder and it changes what undo means.
@@ -2179,8 +2179,9 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       memory like the notes' undo, so after a quit the Trash chip is the way back, as it
       is now. A document swept from the trash cannot come back, but the sweep runs only
       at startup, so no undoable deletion is ever swept mid-session. A restore refused,
-      the folder gone or already back, says "NOT RESTORED: <why>" and keeps the entry,
-      so the trash view can still be tried.
+      the folder gone or already back, says "NOT RESTORED: <why>" and leaves the undo
+      path, so the next Ctrl+Z reaches what was done before it; the trash view is still
+      there to try.
       **Files.** `editor/index.html`: the counter, the deletion list, `undo` and `redo`
       choosing by number, `deleteDocument` keeping the stash, the empty-state key path;
       `host/src/editor.rs`: the restore that rejoins the list without showing, beside
@@ -2199,8 +2200,23 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       picture again. Two deletes, two Ctrl+Z: both back, the later first. No notice
       after a restore, and the failure line when one is refused. `source.png` and `document.json` hash the same before the
       delete and after the undo, the trash folder is empty after it and the chip gone. A
-      restore made to fail leaves the entry and shows the notice. Risk high: it moves
+      restore made to fail shows its line and leaves the undo path. Risk high: it moves
       folders in the store.
+      **Built 2026-09-16.** As specified: one counter across note steps and deletions, undo
+      taking the newer of the current picture's step and the newest deletion, redo taking the
+      most recently undone thing first and passing over a step of a picture no longer on
+      screen; the deletion's stash kept, so the notes and their undo come back; the host's
+      `editor_trash_rejoin` beside `editor_trash_restore`, the same move without the show,
+      and the Restore button now built on the same half. Two things the review of the diff
+      caught and the build fixed: a refused restore kept its entry, so every later Ctrl+Z hit
+      the same refusal and never reached the notes, and now leaves the undo path; and the
+      empty path stashed with a save, which could only fail into a folder already in the
+      trash, and now stashes without one. Checked in section 39 of the editor checks, twenty-
+      one lines, every scene of the spec: back on screen with its notes and its own undo
+      still walking, the image and the record byte for byte unchanged, the thumbnail alone
+      back for a picture not on screen, the last thing done first both ways, two deletes and
+      two Ctrl+Z, the empty state, a fresh action ending the redo, a refused restore. Not
+      looked at by eye in the release; the checks drove the real page.
 
 **Stage 3, the secondary tools, begun at Rotem's word on 2026-09-14** before the trial
 said which one daily use wanted first; the plan's own order is taken. Every tool joins the
