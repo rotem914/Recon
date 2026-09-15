@@ -2478,6 +2478,30 @@ export async function runChecks(editor, invoke) {
     try { kept = localStorage.getItem('recon.strip-height'); } catch (_) { /* none */ }
     check('a double-click on the edge returns the strip to its default', editor.stripHeightOf() === 96 && kept === '96' && stage.clientHeight === window.innerHeight - 32 - 96, `${editor.stripHeightOf()} tall, remembered ${kept}`);
 
+    // Rotem, 2026-09-15: a press anywhere on the one-row strip and a move sideways scrolls it,
+    // and the click that ends the scroll shows no document; a press that does not move still does.
+    strip.scrollLeft = 0;
+    await sleep(100);
+    const pressAt = (target, type, x) => target.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: strip.getBoundingClientRect().top + 40, button: 0, pointerId: 2, bubbles: true, cancelable: true }));
+    const pressed = strip.querySelector('.thumb:not(.current)');
+    const shownBefore = model.image.document_id;
+    pressAt(pressed, 'pointerdown', 600);
+    pressAt(pressed, 'pointermove', 450);
+    pressAt(pressed, 'pointermove', 300);
+    pressAt(pressed, 'pointerup', 300);
+    pressed.click();
+    await sleep(400);
+    const dragged = { left: strip.scrollLeft, shown: model.image.document_id };
+    const clicked = [...strip.querySelectorAll('.thumb:not(.current)')].find((t) => t.getBoundingClientRect().left > 60);
+    const clickedId = Number(clicked.dataset.id);
+    pressAt(clicked, 'pointerdown', 700);
+    pressAt(clicked, 'pointerup', 702);
+    clicked.click();
+    for (let i = 0; i < 40 && model.image.document_id !== clickedId; i += 1) await sleep(50);
+    check('a press on a thumbnail and a move sideways scrolls the strip by the move and shows nothing; a press that barely moves shows the thumbnail',
+      dragged.left === 300 && dragged.shown === shownBefore && model.image.document_id === clickedId,
+      `scrolled ${dragged.left} for a move of 300, shown ${dragged.shown} (was ${shownBefore}); the still press showed ${model.image.document_id}, wanted ${clickedId}`);
+
     // The trash view lays out the same way.
     await editor.deleteDocument(shots[0].document_id);
     // The chip is the last cell, so with twenty-nine documents it exists only near the end.

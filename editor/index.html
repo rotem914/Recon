@@ -1273,6 +1273,43 @@
   };
   strip.addEventListener('scroll', renderStrip);
 
+  // A press anywhere on the one-row strip and a move sideways scrolls it (Rotem, 2026-09-15).
+  // Past a few pixels the press is a scroll, and the click that ends it shows nothing.
+  const STRIP_SCROLL_SLOP = 4;
+  let stripScroll = null;
+  let stripScrolled = false;
+  strip.addEventListener('pointerdown', (event) => {
+    stripScrolled = false;
+    // The one row only, and never a press on the strip's own scroller below its content.
+    const contentBottom = strip.getBoundingClientRect().top + strip.clientTop + strip.clientHeight;
+    if (event.button !== 0 || layout.rows !== 1 || event.clientY >= contentBottom) return;
+    stripScroll = { x: event.clientX, left: strip.scrollLeft, id: event.pointerId, moving: false };
+    event.preventDefault(); // a thumbnail's picture would otherwise start the system's own drag
+  });
+  strip.addEventListener('pointermove', (event) => {
+    if (!stripScroll || event.pointerId !== stripScroll.id) return;
+    const dx = event.clientX - stripScroll.x;
+    if (!stripScroll.moving) {
+      if (Math.abs(dx) < STRIP_SCROLL_SLOP) return;
+      stripScroll.moving = true;
+      try { strip.setPointerCapture(event.pointerId); } catch (_) { /* a synthetic pointer has no capture */ }
+    }
+    strip.scrollLeft = stripScroll.left - dx;
+  });
+  const endStripScroll = (event) => {
+    if (!stripScroll || event.pointerId !== stripScroll.id) return;
+    stripScrolled = stripScroll.moving;
+    stripScroll = null;
+  };
+  strip.addEventListener('pointerup', endStripScroll);
+  strip.addEventListener('pointercancel', endStripScroll);
+  strip.addEventListener('click', (event) => {
+    if (!stripScrolled) return;
+    stripScrolled = false;
+    event.stopPropagation();
+    event.preventDefault();
+  }, true);
+
   const refreshStrip = async () => {
     if (stripMode === 'trash') return renderTrash();
     document.body.classList.remove('trash');
