@@ -259,6 +259,18 @@ plan names for the next step is a suggestion and never a reason to stop: the run
 on whichever model is loaded, and the reply says which one the plan wanted. Rotem said so
 on 2026-09-14, after a stop at the S1.6 to S1.7 boundary asked him to switch.
 
+**Every committed change to the code is built into the release, unasked.** Rotem said on
+2026-09-15: build straight away, never ask each time. So the task's commit is followed in
+the same turn by the release build, and a reply never offers BUILD as a next step. The
+build is made from the commit alone: the commit archived into `.tmp/release-<commit>/`,
+built with `cargo build --release` into the private target folder `.tmp/release-target/`,
+so another session's uncommitted work stays out and a running Recon's hold on its file
+does not stop the build. It is copied over `host/target/release/recon-host.exe` at once
+when no Recon from that path is running; otherwise a waiting job copies it the moment that
+Recon exits, and copies nothing if one from that path is back by then. The hash of the copy
+is read back against the build, and the build and the copy get their History rows like any
+change. A change to the docs alone builds nothing.
+
 Close with a short summary:
 
 - what changed,
