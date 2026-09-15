@@ -2156,10 +2156,11 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       **The rule: the last thing done is what Ctrl+Z undoes.** Every note operation and
       every deletion takes a number from one counter as it happens. Ctrl+Z compares the
       newest deletion still undoable with the current document's newest note step and
-      takes the newer; Ctrl+Y and Ctrl+Shift+Z take the oldest undone one the same way.
-      So delete, then Ctrl+Z, brings the picture back; delete, add a note to the
-      neighbour, then Ctrl+Z twice, removes the note and then brings the picture back;
-      two deletes and two Ctrl+Z bring both back, the later one first.
+      takes the newer; Ctrl+Shift+Z takes the oldest undone one the same way. So delete,
+      then Ctrl+Z, brings the picture back; add a note to one picture, delete another,
+      then Ctrl+Z, brings the deleted picture back first, the note still there; two
+      deletes and two Ctrl+Z bring both back, the later one first. Rotem's call on
+      2026-09-16, "A", over undoing the notes first.
       **What coming back means.** The folder moves back out of the trash the way it went,
       through the S2.7 move, never rewritten, and the document rejoins the list in its
       place by number. If it was on screen when deleted, it shows again; if it was not,
@@ -2167,9 +2168,10 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       that rejoins the list without showing, a host change. The page keeps the deleted
       document's notes and their undo history in memory instead of dropping them, so a
       note's undo is where it was after the round trip. The Trash chip's count follows.
-      The notice says "restored; Ctrl+Y deletes it again".
-      **Redo deletes it again**, into the trash by the same delete path, so a Ctrl+Z
-      pressed by mistake is itself undone. Proposed, Rotem's to veto.
+      No notice: the picture coming back is the whole message (Rotem, 2026-09-16).
+      **Redo deletes it again**, by Ctrl+Shift+Z, into the trash by the same delete path,
+      so a Ctrl+Z pressed by mistake is itself undone. Rotem's word on 2026-09-16: no
+      Ctrl+Y for it, Ctrl+Shift+Z is the redo.
       **The empty state.** After the last document is deleted the editor is empty and
       the keys today guard on a picture; Ctrl+Z must work there and bring the document
       back on screen.
@@ -2186,16 +2188,16 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       `editor/editor-checks.js`: a section. Not touched: `host/src/store.rs`, whose
       `trash` and `restore` are the moves and stay as they are; the note undo's
       snapshots; the trash view. The §3.6 undo row gets its clause when this is built.
-      **Rotem's calls, open:** the last-thing-done rule, against Ctrl+Z reaching a
-      deletion only once the current document has nothing left to undo; redo as
-      delete-again; the notice's words.
+      **Rotem's calls, 2026-09-16, all three settled above:** the last thing done is what
+      Ctrl+Z takes; Ctrl+Shift+Z deletes it again; no notice when it comes back.
       **Checks, in the editor checks.** Delete the document on screen, Ctrl+Z: the same
       document is on screen with its notes, and its note undo still walks. Delete one
       not on screen, Ctrl+Z: the picture on screen unchanged, the thumbnail back in its
-      place. Delete the last one, Ctrl+Z from the empty state: it is back. Delete, add a
-      note to the neighbour, Ctrl+Z removes the note, Ctrl+Z brings the picture back,
-      Ctrl+Y deletes it again, Ctrl+Y puts the note back. Two deletes, two Ctrl+Z: both
-      back, the later first. `source.png` and `document.json` hash the same before the
+      place. Delete the last one, Ctrl+Z from the empty state: it is back. Add a note,
+      delete another picture, Ctrl+Z brings the picture back with the note still there,
+      Ctrl+Z removes the note, Ctrl+Shift+Z puts the note back, Ctrl+Shift+Z deletes the
+      picture again. Two deletes, two Ctrl+Z: both back, the later first. No notice
+      after a restore, and the failure line when one is refused. `source.png` and `document.json` hash the same before the
       delete and after the undo, the trash folder is empty after it and the chip gone. A
       restore made to fail leaves the entry and shows the notice. Risk high: it moves
       folders in the store.
