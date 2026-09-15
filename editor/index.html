@@ -139,17 +139,29 @@
      32 square with no fill of its own and a 20 by 20 icon in it, 8 px between buttons, and
      a hover fills the square with #21222C, fading in by the design system's A1
      (project-os/Design.md). Outside the stage so a click on them reaches no canvas handler;
-     the stage starts at the sidebar's right edge, and fullscreen puts it away with the bar. */
+     the stage starts at the sidebar's right edge, and fullscreen puts it away with the bar.
+     One container holds all nine buttons, centred across the sidebar, and each button's
+     name opens as a tooltip on its right under the pointer (Rotem, 2026-09-15). Above the
+     stage, so a tooltip is not painted under the picture. */
   #controls { position: absolute; left: 0; top: 32px; bottom: 0; width: 48px; padding: 8px;
-              display: flex; flex-direction: column; gap: 8px; }
+              display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 3; }
+  #buttons { flex: none; display: flex; flex-direction: column; align-items: center; gap: 8px; }
   body.strip #controls { bottom: var(--strip-h, 96px); }
   body.fullscreen #controls { display: none; }
-  #controls button { flex: none; width: 32px; height: 32px; padding: 0; border: none; border-radius: 0;
+  #controls button { position: relative; flex: none; width: 32px; height: 32px; padding: 0; border: none; border-radius: 0;
                      background: transparent; color: #f2f2f2; cursor: pointer;
                      display: grid; place-items: center;
                      transition: background-color 144ms ease-out; /* A1 */ }
   #controls button:hover { background: #21222C; }
-  @media (prefers-reduced-motion: reduce) { #controls button { transition: none; } }
+  /* The tooltip: the button's name, 8 px to its right, centred on it. Its look is provisional
+     until Rotem states one: the hover colour, 12 px text, fading in by A1. */
+  #controls button::after { content: attr(aria-label); position: absolute; left: calc(100% + 8px); top: 50%;
+                            transform: translateY(-50%); padding: 4px 8px; border-radius: 4px;
+                            background: #21222C; color: #f2f2f2; white-space: nowrap; pointer-events: none;
+                            font: 12px/16px ui-sans-serif, "Segoe UI", system-ui, sans-serif;
+                            opacity: 0; visibility: hidden; transition: opacity 144ms ease-out, visibility 0s linear 144ms; }
+  #controls button:hover::after { opacity: 1; visibility: visible; transition: opacity 144ms ease-out; /* A1 */ }
+  @media (prefers-reduced-motion: reduce) { #controls button, #controls button::after { transition: none; } }
   #controls svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.5;
                   stroke-linecap: round; stroke-linejoin: round; }
   /* The tools (Stage 3): which one a click on the picture uses. */
@@ -179,17 +191,19 @@
 <div id="bar" data-tauri-drag-region>
   <div id="title" data-tauri-drag-region>Recon</div>
   <div id="controls" hidden>
+   <div id="buttons">
     <div id="tools">
-      <button type="button" data-tool="callout" title="Callout: a numbered note (C)"><svg viewBox="0 0 20 20"><path d="M4 3h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-6l-4 3v-3H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M10 6v5M8.5 7.5L10 6"/></svg></button>
-      <button type="button" data-tool="arrow" title="Arrow: drag from the tail to the head (L)"><svg viewBox="0 0 20 20"><path d="M4 16L16 4"/><path d="M9 4h7v7"/></svg></button>
-      <button type="button" data-tool="rect" title="Rectangle: drag across what to frame (R)"><svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="1"/></svg></button>
-      <button type="button" data-tool="highlight" title="Highlight: drag across what to mark (H)"><svg viewBox="0 0 20 20"><path d="M3 17h5l8-8-4-4-8 8v4z"/><path d="M11 6l3 3"/><path d="M3 19h14"/></svg></button>
-      <button type="button" data-tool="text" title="Text: type where you click, no bubble (T)"><svg viewBox="0 0 20 20"><path d="M4 4h12M10 4v12M7 16h6"/></svg></button>
-      <button type="button" data-tool="blur" title="Blur: drag across what to hide (B)"><svg viewBox="0 0 20 20"><path d="M10 3c-3 4-5 6.5-5 9a5 5 0 0 0 10 0c0-2.5-2-5-5-9z"/></svg></button>
+      <button type="button" data-tool="callout" aria-label="Callout"><svg viewBox="0 0 20 20"><path d="M4 3h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-6l-4 3v-3H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M10 6v5M8.5 7.5L10 6"/></svg></button>
+      <button type="button" data-tool="arrow" aria-label="Arrow"><svg viewBox="0 0 20 20"><path d="M4 16L16 4"/><path d="M9 4h7v7"/></svg></button>
+      <button type="button" data-tool="rect" aria-label="Rectangle"><svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="1"/></svg></button>
+      <button type="button" data-tool="highlight" aria-label="Highlight"><svg viewBox="0 0 20 20"><path d="M3 17h5l8-8-4-4-8 8v4z"/><path d="M11 6l3 3"/><path d="M3 19h14"/></svg></button>
+      <button type="button" data-tool="text" aria-label="Text"><svg viewBox="0 0 20 20"><path d="M4 4h12M10 4v12M7 16h6"/></svg></button>
+      <button type="button" data-tool="blur" aria-label="Blur"><svg viewBox="0 0 20 20"><path d="M10 3c-3 4-5 6.5-5 9a5 5 0 0 0 10 0c0-2.5-2-5-5-9z"/></svg></button>
     </div>
-    <button id="copy" type="button" title="Copy the image to the clipboard (Ctrl+C)"><svg viewBox="0 0 20 20"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M13 7V4.5A1.5 1.5 0 0 0 11.5 3h-7A1.5 1.5 0 0 0 3 4.5v7A1.5 1.5 0 0 0 4.5 13H7"/></svg></button>
-    <button id="saveas" type="button" title="Save As a new PNG file (Ctrl+S)"><svg viewBox="0 0 20 20"><path d="M3 4.5A1.5 1.5 0 0 1 4.5 3H13l4 4v8.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 15.5z"/><path d="M6.5 3v4h6V3"/><rect x="6.5" y="11" width="7" height="6"/></svg></button>
-    <button id="mode" type="button" title="Annotate (A)"><svg class="to-annotate" viewBox="0 0 20 20"><path d="M4 16l1-4 8-8 3 3-8 8-4 1z"/><path d="M12 5l3 3"/></svg><svg class="to-view" viewBox="0 0 20 20"><path d="M2 10s3-5.5 8-5.5 8 5.5 8 5.5-3 5.5-8 5.5-8-5.5-8-5.5z"/><circle cx="10" cy="10" r="2.5"/></svg></button>
+    <button id="copy" type="button" aria-label="Copy"><svg viewBox="0 0 20 20"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M13 7V4.5A1.5 1.5 0 0 0 11.5 3h-7A1.5 1.5 0 0 0 3 4.5v7A1.5 1.5 0 0 0 4.5 13H7"/></svg></button>
+    <button id="saveas" type="button" aria-label="Save As"><svg viewBox="0 0 20 20"><path d="M3 4.5A1.5 1.5 0 0 1 4.5 3H13l4 4v8.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 15.5z"/><path d="M6.5 3v4h6V3"/><rect x="6.5" y="11" width="7" height="6"/></svg></button>
+    <button id="mode" type="button" aria-label="Annotate"><svg class="to-annotate" viewBox="0 0 20 20"><path d="M4 16l1-4 8-8 3 3-8 8-4 1z"/><path d="M12 5l3 3"/></svg><svg class="to-view" viewBox="0 0 20 20"><path d="M2 10s3-5.5 8-5.5 8 5.5 8 5.5-3 5.5-8 5.5-8-5.5-8-5.5z"/><circle cx="10" cy="10" r="2.5"/></svg></button>
+   </div>
   </div>
   <div id="winbtns">
     <button id="win-min" type="button" title="Minimize"><svg viewBox="0 0 10 10"><path d="M0 5.5h10"/></svg></button>
@@ -1386,8 +1400,8 @@
   // file on screen, or resumed if one exists for that file and frame, never a second one.
   const applyMode = () => {
     document.body.classList.toggle('viewing', model.mode !== 'annotate');
-    // An icon button's name is its title; the icon shown follows body.viewing.
-    modeButton.title = model.mode === 'annotate' ? 'View (A)' : 'Annotate (A)';
+    // An icon button's name is its aria-label, which its tooltip shows; the icon follows body.viewing.
+    modeButton.setAttribute('aria-label', model.mode === 'annotate' ? 'View' : 'Annotate');
     controls.hidden = !model.image.width;
     drawHud();
   };

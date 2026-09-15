@@ -943,13 +943,13 @@ export async function runChecks(editor, invoke) {
     await editor.loadImage(shot);
     check('a capture opens ready for annotation', model.mode === 'annotate' && shot.managed === true);
     const button = document.getElementById('mode');
-    check('the button offers the other mode', !button.hidden && button.title === 'View (A)', button.title);
+    check('the button offers the other mode', !button.hidden && button.getAttribute('aria-label') === 'View', button.getAttribute('aria-label'));
     button.click();
     for (let i = 0; i < 20 && model.mode !== 'view'; i += 1) await sleep(20);
-    check('clicking it switches to viewing, and it offers Annotate', model.mode === 'view' && button.title === 'Annotate (A)' && document.activeElement !== button);
+    check('clicking it switches to viewing, and it offers Annotate', model.mode === 'view' && button.getAttribute('aria-label') === 'Annotate' && document.activeElement !== button);
     button.click();
     for (let i = 0; i < 20 && model.mode !== 'annotate'; i += 1) await sleep(20);
-    check('and back', model.mode === 'annotate' && button.title === 'View (A)');
+    check('and back', model.mode === 'annotate' && button.getAttribute('aria-label') === 'View');
     await editor.setMode('view');
     await editor.setMode('annotate');
     managed = await invoke('editor_managed');
@@ -1656,13 +1656,26 @@ export async function runChecks(editor, invoke) {
     check('nine icon buttons, 32 by 32 with a 20 by 20 icon, 8 px apart, named, with no fill of their own', buttons.length === 9
       && boxes.every((b) => Math.round(b.width) === 32 && Math.round(b.height) === 32)
       && boxes.every((b, i) => i === 0 || Math.round(b.top - boxes[i - 1].bottom) === 8)
-      && buttons.every((b) => iconWidth(b) === 20 && b.title.length > 0)
+      && buttons.every((b) => iconWidth(b) === 20 && (b.getAttribute('aria-label') || '').length > 0)
       && buttons.every((b) => b.classList.contains('active') || getComputedStyle(b).backgroundColor === 'rgba(0, 0, 0, 0)'),
       `${buttons.length} buttons at ${boxes.map((b) => Math.round(b.top)).join(' ')}, icons ${buttons.map(iconWidth).join(' ')}, the sidebar ${Math.round(cbox.height)} tall`);
     const hoverRule = [...document.styleSheets[0].cssRules].find((r) => r.selectorText === '#controls button:hover');
     check('a hover fills the square with #21222C, fading in by A1: 144 ms, ease-out', !!hoverRule && hoverRule.style.backgroundColor === 'rgb(33, 34, 44)'
       && buttons.every((b) => getComputedStyle(b).transitionProperty === 'background-color' && getComputedStyle(b).transitionDuration === '0.144s' && getComputedStyle(b).transitionTimingFunction === 'ease-out'),
       `${hoverRule && hoverRule.style.backgroundColor}, ${getComputedStyle(buttons[0]).transition}`);
+    // One container around the nine, centred across the sidebar; a tooltip on each button's right (Rotem, 2026-09-15).
+    const group = document.getElementById('buttons');
+    const gbox = group.getBoundingClientRect();
+    check('one container holds all nine buttons, centred across the sidebar', !!group && group.parentElement === controls && buttons.every((b) => group.contains(b))
+      && Math.abs((gbox.left + gbox.right) / 2 - (cbox.left + cbox.right) / 2) < 0.5 && Math.round(gbox.width) === 32,
+      `container ${Math.round(gbox.left)}-${Math.round(gbox.right)}, its centre ${(gbox.left + gbox.right) / 2} in a sidebar centred at ${(cbox.left + cbox.right) / 2}`);
+    const tips = buttons.map((b) => getComputedStyle(b, '::after'));
+    check('each button carries its name as a tooltip 8 px to its right, hidden at rest, above the stage', tips.every((t, i) => t.content === `"${buttons[i].getAttribute('aria-label')}"` && t.position === 'absolute' && t.left === '40px' && t.opacity === '0' && t.visibility === 'hidden')
+      && getComputedStyle(controls).zIndex === '3',
+      tips.map((t) => t.content).join(' '));
+    const tipRule = [...document.styleSheets[0].cssRules].find((r) => r.selectorText === '#controls button:hover::after');
+    check('a hover opens the tooltip, fading in by A1', !!tipRule && tipRule.style.opacity === '1' && tipRule.style.visibility === 'visible' && tipRule.style.transition === 'opacity 144ms ease-out',
+      tipRule && tipRule.style.transition);
 
     const c = editor.createCallout({ x: 50, y: 50 });
     c.text = 'copied by the button';

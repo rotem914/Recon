@@ -42,6 +42,28 @@ Stated by Rotem on 2026-09-15 for the controls sidebar.
 Used by: the controls sidebar down the left edge of the editor, the six tools, Copy, Save
 As and the mode.
 
+### Button group
+
+Stated by Rotem on 2026-09-15 for the controls sidebar.
+
+| Part | Value |
+|---|---|
+| Container | one container around all the sidebar's buttons, no look of its own |
+| Placement | centred horizontally across the sidebar |
+
+### Tooltip
+
+Stated by Rotem on 2026-09-15 for the icon buttons.
+
+| Part | Value |
+|---|---|
+| Placement | on the right of the button, centred on it |
+| Opens | on hover over the button |
+| Text | the action's name only |
+
+The look is not stated yet. Provisional in the page until it is: the icon button hover
+colour as its fill, 12 px text, a 4 px radius, 8 px from the button, fading in by A1.
+
 ### Scroller
 
 Stated by Rotem on 2026-09-15 for the timeline along the bottom.
