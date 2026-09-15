@@ -2141,6 +2141,63 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       walk. One behaviour differs, Rotem's to veto: "the latest reopens" is now the
       last-modified of the fifty newest by creation, so an old document annotated last,
       with more than fifty newer ones, would not be the one reopened.
+- [ ] S2.9 Undo of a deletion: Ctrl+Z brings back the picture just deleted from the
+      timeline. Asked by Rotem on 2026-09-16, his pick over undo buttons in the sidebar
+      and over undo that survives a restart; a spec, nothing built. Model: Fable 5.1, it
+      moves a document's folder and it changes what undo means.
+      **What is true today.** Undo and redo (S1.7) walk one document's notes and shapes,
+      a snapshot per completed operation, kept in the page's memory per document until
+      Recon quits. A delete (S2.5) moves the document's folder whole into Recon's trash
+      and drops the page's copy of its notes and their undo; the way back is the Trash
+      chip and its Restore button (S2.7), which always puts the restored document on
+      screen. Ctrl+Z after a delete undoes the neighbour's last note operation instead,
+      or nothing.
+      **The rule: the last thing done is what Ctrl+Z undoes.** Every note operation and
+      every deletion takes a number from one counter as it happens. Ctrl+Z compares the
+      newest deletion still undoable with the current document's newest note step and
+      takes the newer; Ctrl+Y and Ctrl+Shift+Z take the oldest undone one the same way.
+      So delete, then Ctrl+Z, brings the picture back; delete, add a note to the
+      neighbour, then Ctrl+Z twice, removes the note and then brings the picture back;
+      two deletes and two Ctrl+Z bring both back, the later one first.
+      **What coming back means.** The folder moves back out of the trash the way it went,
+      through the S2.7 move, never rewritten, and the document rejoins the list in its
+      place by number. If it was on screen when deleted, it shows again; if it was not,
+      the picture on screen stays and only the thumbnail returns, which needs a restore
+      that rejoins the list without showing, a host change. The page keeps the deleted
+      document's notes and their undo history in memory instead of dropping them, so a
+      note's undo is where it was after the round trip. The Trash chip's count follows.
+      The notice says "restored; Ctrl+Y deletes it again".
+      **Redo deletes it again**, into the trash by the same delete path, so a Ctrl+Z
+      pressed by mistake is itself undone. Proposed, Rotem's to veto.
+      **The empty state.** After the last document is deleted the editor is empty and
+      the keys today guard on a picture; Ctrl+Z must work there and bring the document
+      back on screen.
+      **What it does not cover.** A restart: the deletion list lives in the page's
+      memory like the notes' undo, so after a quit the Trash chip is the way back, as it
+      is now. A document swept from the trash cannot come back, but the sweep runs only
+      at startup, so no undoable deletion is ever swept mid-session. A restore refused,
+      the folder gone or already back, says "NOT RESTORED: <why>" and keeps the entry,
+      so the trash view can still be tried.
+      **Files.** `editor/index.html`: the counter, the deletion list, `undo` and `redo`
+      choosing by number, `deleteDocument` keeping the stash, the empty-state key path;
+      `host/src/editor.rs`: the restore that rejoins the list without showing, beside
+      `editor_trash_restore`; `host/capabilities/default.json` for the new command;
+      `editor/editor-checks.js`: a section. Not touched: `host/src/store.rs`, whose
+      `trash` and `restore` are the moves and stay as they are; the note undo's
+      snapshots; the trash view. The §3.6 undo row gets its clause when this is built.
+      **Rotem's calls, open:** the last-thing-done rule, against Ctrl+Z reaching a
+      deletion only once the current document has nothing left to undo; redo as
+      delete-again; the notice's words.
+      **Checks, in the editor checks.** Delete the document on screen, Ctrl+Z: the same
+      document is on screen with its notes, and its note undo still walks. Delete one
+      not on screen, Ctrl+Z: the picture on screen unchanged, the thumbnail back in its
+      place. Delete the last one, Ctrl+Z from the empty state: it is back. Delete, add a
+      note to the neighbour, Ctrl+Z removes the note, Ctrl+Z brings the picture back,
+      Ctrl+Y deletes it again, Ctrl+Y puts the note back. Two deletes, two Ctrl+Z: both
+      back, the later first. `source.png` and `document.json` hash the same before the
+      delete and after the undo, the trash folder is empty after it and the chip gone. A
+      restore made to fail leaves the entry and shows the notice. Risk high: it moves
+      folders in the store.
 
 **Stage 3, the secondary tools, begun at Rotem's word on 2026-09-14** before the trial
 said which one daily use wanted first; the plan's own order is taken. Every tool joins the
