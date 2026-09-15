@@ -1141,6 +1141,11 @@ pub fn create_hidden(app: &AppHandle) -> tauri::Result<()> {
     WebviewWindowBuilder::new(app, "editor", WebviewUrl::App("index.html".into()))
         .title("Recon")
         .inner_size(1280.0, 800.0)
+        // Centred in the main display's work area, across and in height (Rotem, 2026-09-15);
+        // it opened at Windows' default place, near the left edge. On a display smaller than
+        // the window, it is shrunk to the work area first, so the top bar is never above it.
+        .prevent_overflow()
+        .center()
         .decorations(false)
         .visible(false)
         .build()?;
