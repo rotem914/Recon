@@ -43,8 +43,38 @@ fn snapshot(dir: &Path) -> BTreeMap<PathBuf, u64> {
     map
 }
 
-fn recon_data_dir() -> Option<PathBuf> {
-    std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("Recon"))
+/// Every file under a folder, at any depth, hashed: the documents live in folders of their
+/// own, so a one-level look would never see one written by mistake.
+fn snapshot_tree(dir: &Path, map: &mut BTreeMap<PathBuf, u64>) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                snapshot_tree(&path, map);
+            } else if path.is_file() {
+                if let Some(h) = hash_file(&path) {
+                    map.insert(path, h);
+                }
+            }
+        }
+    }
+}
+
+/// Recon's own folders: the hotkey config under the roaming application data, and the
+/// documents with their trash under the local one (S1.8). Both are watched (review T11).
+fn recon_data_dirs() -> Vec<PathBuf> {
+    [("APPDATA", "Recon"), ("LOCALAPPDATA", "Recon")]
+        .iter()
+        .filter_map(|(var, name)| std::env::var_os(var).map(|d| PathBuf::from(d).join(name)))
+        .collect()
+}
+
+fn snapshot_data() -> BTreeMap<PathBuf, u64> {
+    let mut map = BTreeMap::new();
+    for dir in recon_data_dirs() {
+        snapshot_tree(&dir, &mut map);
+    }
+    map
 }
 
 fn pixel(frame: &super::DecodedFrame, x: u32, y: u32) -> [u8; 4] {
@@ -229,7 +259,7 @@ pub fn run(dir: &Path) -> i32 {
         dir.display()
     );
     let before = snapshot(dir);
-    let data_before = recon_data_dir().map(|d| snapshot(&d)).unwrap_or_default();
+    let data_before = snapshot_data();
     println!("{} files hashed before anything was opened", before.len());
     println!();
 
@@ -327,7 +357,7 @@ pub fn run(dir: &Path) -> i32 {
     }
 
     let after = snapshot(dir);
-    let data_after = recon_data_dir().map(|d| snapshot(&d)).unwrap_or_default();
+    let data_after = snapshot_data();
     let unchanged = before == after;
     let nothing_new_in_data = data_before == data_after;
 
@@ -348,7 +378,7 @@ pub fn run(dir: &Path) -> i32 {
         after.len()
     ));
     summary.push_str(&format!(
-        "  {}  nothing was written to Recon's own data folder ({} files before, {} after)\n",
+        "  {}  nothing was written to Recon's own data folders, the config and the documents ({} files before, {} after)\n",
         if nothing_new_in_data {
             "pass "
         } else {

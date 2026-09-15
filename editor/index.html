@@ -723,8 +723,12 @@
     const documentId = model.image.document_id;
     const notes = JSON.parse(JSON.stringify(notesOf()));
     const save = model.save;
-    if (saving) await saving;
+    // Cleared before the wait, not after (review T1): a keystroke typed while an earlier
+    // save is still on its way marks the document dirty again, and the timer's save
+    // carries it. Cleared after the wait, the flag was wiped over that keystroke, and the
+    // text stayed in the page's memory only while the HUD said saved.
     save.dirty = false;
+    if (saving) await saving;
     save.state = 'saving';
     drawHud();
     saving = invoke('editor_save_notes', { documentId, notes }).then(() => {
@@ -1403,7 +1407,15 @@
   // A document deleted: out of the timeline and, when it was the one on screen, the
   // neighbour shows or the editor is empty. The host says what remains.
   const deleteDocument = async (id) => {
-    const info = await invoke('editor_delete_document', { id });
+    let info;
+    try {
+      info = await invoke('editor_delete_document', { id });
+    } catch (err) {
+      // The host keeps the document when its move to the trash failed (review T10): said
+      // on screen, and the timeline is as it was.
+      notice(`NOT DELETED: ${err}`, 0);
+      throw err;
+    }
     documents.delete(id);
     if (info) {
       await loadImage(info);
@@ -2289,14 +2301,20 @@
   // The outcome comes back as an event: saved, nothing saved, or NOT SAVED with the
   // reason; a name that exists is never written over, and the notice says which name was
   // offered instead.
+  // One dialog at a time (review T9): a second Ctrl+S while it is open opened a second
+  // dialog over the first. The flag is held from the press until the host says the dialog
+  // is done; false is returned when the press was ignored.
+  let saveAsOpen = false;
   const saveAs = async () => {
-    if (!model.image.width) return;
+    if (!model.image.width || saveAsOpen) return false;
+    saveAsOpen = true;
     let layer;
     try {
       layer = await exportLayer();
       await invoke('editor_save_as', layer.bytes, { headers: { margin: layer.margin, blur: layer.blur } });
       notice('Save As is open', 0);
     } catch (err) {
+      saveAsOpen = false;
       notice(`NOT SAVED: ${err}`, 0);
       throw err;
     }
@@ -2390,6 +2408,7 @@
     });
     await window.__TAURI__.event.listen('save-as-offered', (event) => notice(event.payload.line, 0));
     await window.__TAURI__.event.listen('save-as-done', (event) => {
+      saveAsOpen = false;
       notice(event.payload.line, event.payload.state === 'failed' ? 0 : 3000);
     });
     await window.__TAURI__.event.listen('save-now', async () => {

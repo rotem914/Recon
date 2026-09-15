@@ -221,43 +221,28 @@ pub fn blur_rects(rgba: &mut [u8], width: u32, height: u32, rects: &[BlurRect]) 
         }
         let mut scratch = region.clone();
         for _ in 0..2 {
-            // Rows.
+            // Rows, then columns, each line by a running sum (review T6): the window
+            // [i - r, i + r] clamped to the line, one pixel entering and one leaving per
+            // step, so the cost no longer grows with the radius.
             for y in 0..rh {
-                for x in 0..rw {
-                    let a = x.saturating_sub(r);
-                    let b = (x + r + 1).min(rw);
-                    let mut sum = [0u32; 3];
-                    for xx in a..b {
-                        let p = region[y * rw + xx];
-                        sum[0] += p[0] as u32;
-                        sum[1] += p[1] as u32;
-                        sum[2] += p[2] as u32;
-                    }
-                    let n = (b - a) as u32;
-                    let p = &mut scratch[y * rw + x];
-                    p[0] = (sum[0] / n) as u8;
-                    p[1] = (sum[1] / n) as u8;
-                    p[2] = (sum[2] / n) as u8;
-                }
+                blur_line(
+                    rw,
+                    r,
+                    |x| region[y * rw + x],
+                    |x, c| {
+                        scratch[y * rw + x][..3].copy_from_slice(&c);
+                    },
+                );
             }
-            // Columns.
             for x in 0..rw {
-                for y in 0..rh {
-                    let a = y.saturating_sub(r);
-                    let b = (y + r + 1).min(rh);
-                    let mut sum = [0u32; 3];
-                    for yy in a..b {
-                        let p = scratch[yy * rw + x];
-                        sum[0] += p[0] as u32;
-                        sum[1] += p[1] as u32;
-                        sum[2] += p[2] as u32;
-                    }
-                    let n = (b - a) as u32;
-                    let p = &mut region[y * rw + x];
-                    p[0] = (sum[0] / n) as u8;
-                    p[1] = (sum[1] / n) as u8;
-                    p[2] = (sum[2] / n) as u8;
-                }
+                blur_line(
+                    rh,
+                    r,
+                    |y| scratch[y * rw + x],
+                    |y, c| {
+                        region[y * rw + x][..3].copy_from_slice(&c);
+                    },
+                );
             }
         }
         for y in y0..y1 {
@@ -270,9 +255,173 @@ pub fn blur_rects(rgba: &mut [u8], width: u32, height: u32, rects: &[BlurRect]) 
     }
 }
 
+/// One line of the box blur: pixel `i` becomes the mean of the pixels from `i - r` to
+/// `i + r`, clamped to the line, read through `at` and written through `put`. The sum
+/// runs along the line, adding the pixel that enters the window and subtracting the one
+/// that leaves it, and the same integer mean comes out as a direct sum of the window.
+fn blur_line(
+    len: usize,
+    r: usize,
+    at: impl Fn(usize) -> [u8; 4],
+    mut put: impl FnMut(usize, [u8; 3]),
+) {
+    let mut sum = [0u32; 3];
+    // The pixels in [left, right) are in the sum.
+    let mut left = 0usize;
+    let mut right = 0usize;
+    for i in 0..len {
+        let want_right = (i + r + 1).min(len);
+        while right < want_right {
+            let p = at(right);
+            sum[0] += p[0] as u32;
+            sum[1] += p[1] as u32;
+            sum[2] += p[2] as u32;
+            right += 1;
+        }
+        let want_left = i.saturating_sub(r);
+        while left < want_left {
+            let p = at(left);
+            sum[0] -= p[0] as u32;
+            sum[1] -= p[1] as u32;
+            sum[2] -= p[2] as u32;
+            left += 1;
+        }
+        let n = (right - left) as u32;
+        put(
+            i,
+            [(sum[0] / n) as u8, (sum[1] / n) as u8, (sum[2] / n) as u8],
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The blur as it was first written, a direct sum of the window per pixel, kept here
+    /// so the running sum is proved to give the same bytes.
+    fn blur_rects_direct(rgba: &mut [u8], width: u32, height: u32, rects: &[BlurRect]) {
+        for rect in rects {
+            let x0 = rect.x.min(width) as usize;
+            let y0 = rect.y.min(height) as usize;
+            let x1 = (rect.x.saturating_add(rect.w)).min(width) as usize;
+            let y1 = (rect.y.saturating_add(rect.h)).min(height) as usize;
+            if x1 <= x0 || y1 <= y0 {
+                continue;
+            }
+            let r = blur_radius(*rect) as usize;
+            let (rw, rh) = (x1 - x0, y1 - y0);
+            let mut region: Vec<[u8; 4]> = Vec::with_capacity(rw * rh);
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    let i = (y * width as usize + x) * 4;
+                    region.push([rgba[i], rgba[i + 1], rgba[i + 2], rgba[i + 3]]);
+                }
+            }
+            let mut scratch = region.clone();
+            for _ in 0..2 {
+                for y in 0..rh {
+                    for x in 0..rw {
+                        let a = x.saturating_sub(r);
+                        let b = (x + r + 1).min(rw);
+                        let mut sum = [0u32; 3];
+                        for xx in a..b {
+                            let p = region[y * rw + xx];
+                            sum[0] += p[0] as u32;
+                            sum[1] += p[1] as u32;
+                            sum[2] += p[2] as u32;
+                        }
+                        let n = (b - a) as u32;
+                        let p = &mut scratch[y * rw + x];
+                        p[0] = (sum[0] / n) as u8;
+                        p[1] = (sum[1] / n) as u8;
+                        p[2] = (sum[2] / n) as u8;
+                    }
+                }
+                for x in 0..rw {
+                    for y in 0..rh {
+                        let a = y.saturating_sub(r);
+                        let b = (y + r + 1).min(rh);
+                        let mut sum = [0u32; 3];
+                        for yy in a..b {
+                            let p = scratch[yy * rw + x];
+                            sum[0] += p[0] as u32;
+                            sum[1] += p[1] as u32;
+                            sum[2] += p[2] as u32;
+                        }
+                        let n = (b - a) as u32;
+                        let p = &mut region[y * rw + x];
+                        p[0] = (sum[0] / n) as u8;
+                        p[1] = (sum[1] / n) as u8;
+                        p[2] = (sum[2] / n) as u8;
+                    }
+                }
+            }
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    let i = (y * width as usize + x) * 4;
+                    let p = region[(y - y0) * rw + (x - x0)];
+                    rgba[i..i + 3].copy_from_slice(&p[..3]);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_running_blur_is_byte_for_byte_the_direct_one() {
+        let (w, h) = (97, 61);
+        let source = checker(w, h);
+        // Regions of every awkward shape: past the edges, thinner than the radius, one
+        // pixel wide, and a radius at the cap.
+        let rects = [
+            BlurRect {
+                x: 3,
+                y: 5,
+                w: 40,
+                h: 30,
+            },
+            BlurRect {
+                x: 80,
+                y: 40,
+                w: 60,
+                h: 60,
+            },
+            BlurRect {
+                x: 10,
+                y: 10,
+                w: 1,
+                h: 20,
+            },
+            BlurRect {
+                x: 0,
+                y: 0,
+                w: 97,
+                h: 61,
+            },
+            BlurRect {
+                x: 50,
+                y: 20,
+                w: 400,
+                h: 400,
+            },
+        ];
+        for rect in rects {
+            let mut running = source.clone();
+            let mut direct = source.clone();
+            blur_rects(&mut running, w, h, &[rect]);
+            blur_rects_direct(&mut direct, w, h, &[rect]);
+            assert_eq!(running, direct, "{rect:?}");
+            // The alpha is never touched, and nothing outside the region is.
+            for (i, (a, b)) in running.iter().zip(source.iter()).enumerate() {
+                let (x, y) = ((i / 4) as u32 % w, (i / 4) as u32 / w);
+                let inside =
+                    x >= rect.x && x < rect.x + rect.w && y >= rect.y && y < rect.y + rect.h;
+                if i % 4 == 3 || !inside {
+                    assert_eq!(a, b, "byte {i} at {x},{y} for {rect:?}");
+                }
+            }
+        }
+    }
 
     fn checker(w: u32, h: u32) -> Vec<u8> {
         let mut v = Vec::new();

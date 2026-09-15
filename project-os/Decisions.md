@@ -99,6 +99,9 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-15 · Under a pan drag lies a small copy of the whole picture, taken whenever the whole picture is painted.
 - 2026-09-15 · The design system lives in project-os/Design.md, read before a visible change.
 - 2026-09-15 · Zooming out stops at the whole picture as the space is now, and a whole view follows the space.
+- 2026-09-16 · The focus return target is used once: a hide with no capture since activates nothing.
+- 2026-09-16 · Google Sans is bundled with the page, the medium Latin subset, for the image size only.
+- 2026-09-16 · A deleted document is undone by the same Ctrl+Z as a note, the last thing done first.
 
 ---
 
@@ -1106,3 +1109,102 @@ view from then on. A stage with no area, a timeline dragged to the top of a shor
 moves nothing, and zooming out there stops at the fit kept from before. Side effect: a picture that opens just as the timeline first appears fits above it
 now, where it used to open with its bottom under the timeline. Revisit if a large capture
 should open at actual size.
+
+## 2026-09-16 · A deleted document is undone by the same Ctrl+Z as a note, the last thing done first
+
+### Context
+
+Undo (S1.7) walked one picture's notes; a picture deleted from the timeline could only come
+back through the Trash chip. Rotem asked for Ctrl+Z to bring it back. A deletion is an
+action across pictures, the notes' undo is per picture, and one key has to serve both.
+
+### Options
+
+1. One order across both: every note step and every deletion takes a number from one
+   counter, and Ctrl+Z takes whichever is newest.
+2. Notes first: Ctrl+Z walks the picture's notes to their start, and only then reaches a
+   deletion.
+3. A separate key or button for undoing a deletion.
+
+### Decision
+
+Option 1, Rotem's on 2026-09-16 when the two were put to him as scenes ("A"). Redo is
+Ctrl+Shift+Z alone and deletes the picture again, no Ctrl+Y named for it; nothing is said
+on screen when the picture comes back. Redo takes the most recently undone thing first,
+and a step of a picture no longer on screen is passed over, since redoing it would change a
+picture the user is not looking at.
+
+### Consequences
+
+Ctrl+Z after a delete always brings the picture back, whatever the picture on screen holds.
+The deletion list and the counter live in the page's memory, like the notes' undo, so a
+quit ends them and the Trash chip is the way back after one. A picture's own note history
+keeps its per-picture redo tail, reachable when the global list has nothing newer. A refused
+restore leaves the undo path rather than blocking it. Revisit if undo ever persists across
+a restart, or if a second cross-picture action joins the history.
+
+---
+
+## 2026-09-16 · Google Sans is bundled with the page, the medium Latin subset, for the image size only
+
+### Context
+
+Rotem asked for the image size's text in Google Sans, medium, from Google Fonts. The web view's
+security policy in `host/tauri.conf.json` takes stylesheets and fonts from the page's own origin
+only (`style-src 'self' 'unsafe-inline'`, `font-src 'self'`), and Recon has to work without a
+network. Google Fonts serves the weight as 25 files, one per script; the family is under the SIL
+Open Font License, whose text Google Fonts' own file list for the family carries.
+
+### Options
+
+1. Link Google Fonts' stylesheet from the page at runtime: the policy refuses it, and it needs a
+   network.
+2. Bundle every file Google Fonts serves for the weight, all 25 scripts.
+3. Bundle only the file for the script the text is written in, Latin, which holds the digits
+   and the x.
+4. Inline the font in the page as base64: the policy allows no data: fonts.
+
+### Decision
+
+Option 3, with the family's `OFL.txt`, in `editor/fonts/`, 23 KB. The subset is the assistant's
+call, Rotem's to veto.
+
+### Consequences
+
+A character outside Latin in that container falls back to the system font, character by
+character. Another weight or script is one more file from the same stylesheet. The notes keep
+the system font, so the export needs no inlined font; putting Google Sans on the notes would
+bring part 5's inlining back, and whether the policy lets the serialized layer load it is not
+established here. Revisit when the font is wanted on the notes or on text in another script.
+
+## 2026-09-16 · The focus return target is used once: a hide with no capture since activates nothing
+
+### Context
+
+Review 3 (T4) found that the application remembered at the hotkey was never forgotten, so
+every later hide of the editor, opened from the tray or for a file from Explorer, brought
+that application to the front. §3.1 wants the focus back where the capture began and never
+on an unrelated window; hours later, the last capture's application is that window.
+
+### Options
+
+1. Take the target on use: one return per capture, then nothing until the next hotkey.
+2. Clear the target on every route that shows the editor without a capture: the tray, a
+   file opened, a second instance.
+3. Leave it, and call the jump the chain-of-captures behaviour.
+
+### Decision
+
+Option 1, by the assistant under Rotem's FIX ALL, his to change: one line, and it keeps
+"a chain of captures still returns", since each capture remembers afresh. Option 2 does the
+same in three places and misses the next route that shows the window. A hide with nothing
+remembered lets Windows pick, which is what §3.1 asks for a closed application too.
+
+### Consequences
+
+The first Escape or close after a capture returns the focus; a second hide of the same
+editor, with no capture between, activates nothing. Copy and Return behaves the same. The
+self test's section G and the S1.10 checks assert it. Revisit if Rotem wants a tray-opened
+editor to return anywhere in particular.
+
+---
