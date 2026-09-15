@@ -2271,6 +2271,8 @@ export async function runChecks(editor, invoke) {
     check('at 424 the second row enters: two rows of 320, as many columns as fit, scrolled vertically', h2 === 424 && layout.rows === 2 && layout.cols === cols && strip.classList.contains('grid') && second.x === 8 && second.y === 216
       && strip.scrollHeight === 16 + Math.ceil(30 / cols) * 208 - 8 && stage.clientHeight === window.innerHeight - 32 - 424,
       `${h2} tall, ${layout.rows} rows of ${layout.cols}, cell ${cols} at ${second.x},${second.y}, scroll height ${strip.scrollHeight}`);
+    check('the rows scroll by Rotem\'s own scroller, 4 px wide at the strip\'s right edge, not the system\'s', strip.offsetWidth - strip.clientWidth === 4,
+      `${strip.offsetWidth - strip.clientWidth} px between the strip's edge and its content`);
     const h2b = editor.setStripHeight(500);
     check('and between rows the height is the hand\'s, the rows unchanged', h2b === 500 && editor.stripLayout().rows === 2 && stage.clientHeight === window.innerHeight - 32 - 500, `${h2b} tall, ${editor.stripLayout().rows} rows`);
     const h3 = editor.setStripHeight(100000);

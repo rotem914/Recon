@@ -42,6 +42,12 @@
            background: #14171b; border-top: 1px solid #2a3037; }
   body.strip #strip { display: block; }
   #strip.grid { overflow-x: hidden; overflow-y: auto; }
+  /* The rows' scroller, once the strip wraps and scrolls vertically: Rotem's own on
+     2026-09-15, a 4 px thumb of #21222C, fully rounded, on no track, 4 px clear of the
+     screen's bottom and of the strip's top (project-os/Design.md). */
+  #strip.grid::-webkit-scrollbar { width: 4px; }
+  #strip.grid::-webkit-scrollbar-track { margin: 4px 0; }
+  #strip.grid::-webkit-scrollbar-thumb { background: #21222C; border-radius: 2px; }
   #strip::after { content: ''; display: block; width: var(--extent-x, 0px); height: var(--extent-y, 0px); }
   #strip-handle { position: absolute; left: 0; right: 0; bottom: calc(var(--strip-h, 96px) - 3px); height: 6px;
                   cursor: ns-resize; display: none; z-index: 2; }
