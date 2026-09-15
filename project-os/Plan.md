@@ -2074,8 +2074,9 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       **The strip grows by a drag.** The strip's top edge is a handle, six pixels tall,
       under the vertical resize cursor. Dragging it up makes the strip taller and the
       thumbnails larger, live; dragging it down makes them smaller, down to today's 96
-      pixels, which stays the minimum and the default, and a double-click on the edge
-      returns to it. A thumbnail keeps its picture's shape and grows with the row, from 124
+      pixels, which stays the minimum, and a double-click on the edge returns to the
+      default. The default was 96 too; at Rotem's word on 2026-09-16 it is 128, which
+      makes the thumbnails 112 tall. A thumbnail keeps its picture's shape and grows with the row, from 124
       wide today to 320 wide at most. A strip taller than one row of 320 stops growing them
       and wraps instead: a second row, a third, as many as the height holds, newest first
       in reading order, and the strip then scrolls vertically rather than sideways. The

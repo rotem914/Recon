@@ -2507,7 +2507,7 @@ export async function runChecks(editor, invoke) {
       `${editor.stripHeightOf()} tall, remembered ${kept}, cursor ${getComputedStyle(handle).cursor}`);
     handle.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     try { kept = localStorage.getItem('recon.strip-height'); } catch (_) { /* none */ }
-    check('a double-click on the edge returns the strip to its default', editor.stripHeightOf() === 96 && kept === '96' && stage.clientHeight === window.innerHeight - 32 - 96, `${editor.stripHeightOf()} tall, remembered ${kept}`);
+    check('a double-click on the edge returns the strip to its default, 112 px thumbnails', editor.stripHeightOf() === 128 && kept === '128' && editor.stripLayout().h === 112 && stage.clientHeight === window.innerHeight - 32 - 128, `${editor.stripHeightOf()} tall, remembered ${kept}, thumbnails ${editor.stripLayout().h} tall`);
 
     // Rotem, 2026-09-15: a press anywhere on the one-row strip and a move sideways scrolls it,
     // and the click that ends the scroll shows no document; a press that does not move still does.

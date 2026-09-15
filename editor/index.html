@@ -1049,7 +1049,8 @@
   // holds, and a startup asks for a screenful. The strip's top edge is a handle: dragged
   // up, the cells grow to 320 wide; past that a row of 320 enters whenever there is room
   // for one, and the strip scrolls vertically. The height is remembered by the page.
-  const STRIP_MIN = 96;        // today's strip: the default and the floor
+  const STRIP_MIN = 96;        // the floor
+  const STRIP_DEFAULT = 128;   // the default: 112 px thumbnails, 8 px clear above and below (Rotem, 2026-09-16)
   const STRIP_PAD = 8;
   const STRIP_GAP = 8;
   const CELL_MAX_W = 320;
@@ -1094,7 +1095,7 @@
   let stripMode = 'documents';
   let cells = [];              // { key, kind: 'doc' | 'trashed' | 'chip', doc?, chip? }
   const rendered = new Map();  // key -> element
-  let stripHeight = STRIP_MIN;
+  let stripHeight = STRIP_DEFAULT;
   const layout = { rows: 1, cols: 0, w: 0, h: 0 };
   const stripLayout = () => ({ ...layout });
 
@@ -1111,7 +1112,7 @@
     return stripHeight;
   };
   const rememberStripHeight = () => { try { localStorage.setItem('recon.strip-height', String(stripHeight)); } catch (_) { /* no storage: the default each start */ } };
-  const recallStripHeight = () => { try { return Number(localStorage.getItem('recon.strip-height')) || STRIP_MIN; } catch (_) { return STRIP_MIN; } };
+  const recallStripHeight = () => { try { return Number(localStorage.getItem('recon.strip-height')) || STRIP_DEFAULT; } catch (_) { return STRIP_DEFAULT; } };
 
   const cellRect = (i) => {
     const { rows, cols, w, h } = layout;
@@ -1370,7 +1371,7 @@
   stripHandle.addEventListener('pointerup', endStripDrag);
   stripHandle.addEventListener('pointercancel', endStripDrag);
   stripHandle.addEventListener('dblclick', () => {
-    setStripHeight(STRIP_MIN);
+    setStripHeight(STRIP_DEFAULT);
     rememberStripHeight();
     stageResized();
   });

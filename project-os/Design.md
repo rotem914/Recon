@@ -84,3 +84,11 @@ Stated by Rotem on 2026-09-15.
 | Part | Value |
 |---|---|
 | Size when it opens | 1600 wide by 1160 tall, centred in the main display's work area |
+
+### Timeline
+
+Stated by Rotem on 2026-09-16.
+
+| Part | Value |
+|---|---|
+| Thumbnail height by default | 112 px, with 8 px clear above and below, so the timeline is 128 px tall until it is dragged |
