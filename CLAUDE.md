@@ -98,6 +98,14 @@ At pickup, name these six things:
 - What behavior must stay unchanged.
 - What QA must run before delivery.
 
+**A direction word is read against the screen, not the dictionary.** "Horizontal",
+"vertical", "across" and "up" name what the owner sees wrong, and a designer's word for
+an axis can mean the other one. When the literal reading would change nothing visible,
+or the words and a spec or a screenshot point at different elements, the literal
+reading is the wrong one: build what the picture shows, or ask before building, never
+after. Written on 2026-09-15, the second time a direction word was built literally: a
+timeline scroller, then the sidebar's buttons centred across a width they already filled.
+
 ### 2. Smallest safe change wins
 
 Prefer the smallest isolated change that solves the task. No side refactors, no

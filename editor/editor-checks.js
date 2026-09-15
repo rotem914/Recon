@@ -1666,9 +1666,11 @@ export async function runChecks(editor, invoke) {
     // One container around the nine, centred across the sidebar; a tooltip on each button's right (Rotem, 2026-09-15).
     const group = document.getElementById('buttons');
     const gbox = group.getBoundingClientRect();
-    check('one container holds all nine buttons, centred across the sidebar', !!group && group.parentElement === controls && buttons.every((b) => group.contains(b))
-      && Math.abs((gbox.left + gbox.right) / 2 - (cbox.left + cbox.right) / 2) < 0.5 && Math.round(gbox.width) === 32,
-      `container ${Math.round(gbox.left)}-${Math.round(gbox.right)}, its centre ${(gbox.left + gbox.right) / 2} in a sidebar centred at ${(cbox.left + cbox.right) / 2}`);
+    const stageBottom = Math.round(stage.getBoundingClientRect().bottom);
+    check('one container holds all nine buttons, centred in the sidebar\'s height and across it, the sidebar running from the top bar to the timeline', !!group && group.parentElement === controls && buttons.every((b) => group.contains(b))
+      && Math.abs((gbox.left + gbox.right) / 2 - (cbox.left + cbox.right) / 2) < 0.5 && Math.round(gbox.width) === 32
+      && Math.round(cbox.bottom) === stageBottom && Math.abs((gbox.top + gbox.bottom) / 2 - (cbox.top + cbox.bottom) / 2) < 0.5,
+      `container ${Math.round(gbox.left)}-${Math.round(gbox.right)} by ${Math.round(gbox.top)}-${Math.round(gbox.bottom)}, centred at ${(gbox.left + gbox.right) / 2},${(gbox.top + gbox.bottom) / 2}; the sidebar ${Math.round(cbox.top)}-${Math.round(cbox.bottom)}, centred at ${(cbox.left + cbox.right) / 2},${(cbox.top + cbox.bottom) / 2}; the stage ends at ${stageBottom}`);
     const tips = buttons.map((b) => getComputedStyle(b, '::after'));
     check('each button carries its name as a tooltip 8 px to its right, hidden at rest, above the stage', tips.every((t, i) => t.content === `"${buttons[i].getAttribute('aria-label')}"` && t.position === 'absolute' && t.left === '40px' && t.opacity === '0' && t.visibility === 'hidden')
       && getComputedStyle(controls).zIndex === '3',

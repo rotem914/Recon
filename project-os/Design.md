@@ -49,7 +49,7 @@ Stated by Rotem on 2026-09-15 for the controls sidebar.
 | Part | Value |
 |---|---|
 | Container | one container around all the sidebar's buttons, no look of its own |
-| Placement | centred horizontally across the sidebar |
+| Placement | centred in the sidebar's height, between the top bar and the timeline, and across its width |
 
 ### Tooltip
 
