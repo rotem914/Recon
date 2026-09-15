@@ -49,7 +49,7 @@ Stated by Rotem on 2026-09-15 for the controls sidebar.
 | Part | Value |
 |---|---|
 | Container | one container around all the sidebar's buttons, no look of its own |
-| Placement | centred in the sidebar's height, between the top bar and the timeline, and across its width |
+| Placement | centred in the sidebar's height, between the top bar and the image size above the timeline, and across its width |
 
 ### Tooltip
 
@@ -76,6 +76,20 @@ Stated by Rotem on 2026-09-15 for the timeline along the bottom.
 | Vertical, rows | 4 px clear of the screen's bottom edge and 4 px clear of the strip's top |
 
 Used by: the timeline along the bottom, both of its scrollers.
+
+### Image size
+
+Stated by Rotem on 2026-09-16.
+
+| Part | Value |
+|---|---|
+| Container | 100% of the window's width, above the timeline |
+| Margin | 16 px above and 16 px below |
+| Background | the app background |
+| Content | the picture's size in pixels, written as 1200x1500 |
+
+The text's look is not stated yet. Provisional in the page until it is: the top bar title's
+12 px text in #cfd4da, on a 16 px line, 12 px from the window's left edge.
 
 ### Window
 
