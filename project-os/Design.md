@@ -76,3 +76,11 @@ Stated by Rotem on 2026-09-15 for the timeline along the bottom.
 | Vertical, rows | 4 px clear of the screen's bottom edge and 4 px clear of the strip's top |
 
 Used by: the timeline along the bottom, both of its scrollers.
+
+### Window
+
+Stated by Rotem on 2026-09-15.
+
+| Part | Value |
+|---|---|
+| Size when it opens | 1600 wide by 1160 tall, centred in the main display's work area |
