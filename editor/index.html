@@ -37,8 +37,9 @@
      block, the size of the whole list, gives the strip its scroll length without an
      element for it. */
   body.strip #stage { bottom: var(--strip-h, 96px); }
+  /* Above the sidebar, so a strip dragged taller covers it (Rotem, 2026-09-15); the handle above both. */
   #strip { position: absolute; left: 0; right: 0; bottom: 0; height: var(--strip-h, 96px); display: none;
-           overflow-x: auto; overflow-y: hidden;
+           overflow-x: auto; overflow-y: hidden; z-index: 4;
            background: #14171b; border-top: 1px solid #2a3037; }
   body.strip #strip { display: block; }
   #strip.grid { overflow-x: hidden; overflow-y: auto; }
@@ -56,7 +57,7 @@
                                                border-block: 4px solid transparent; border-radius: 2px / 6px; }
   #strip::after { content: ''; display: block; width: var(--extent-x, 0px); height: var(--extent-y, 0px); }
   #strip-handle { position: absolute; left: 0; right: 0; bottom: calc(var(--strip-h, 96px) - 3px); height: 6px;
-                  cursor: ns-resize; display: none; z-index: 2; }
+                  cursor: ns-resize; display: none; z-index: 5; }
   body.strip #strip-handle { display: block; }
   body.fullscreen #strip-handle { display: none; }
   .thumb, .chip-cell { position: absolute; box-sizing: border-box; }

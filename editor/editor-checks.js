@@ -2292,6 +2292,13 @@ export async function runChecks(editor, invoke) {
       `${strip.offsetWidth - strip.clientWidth} px between the strip's edge and its content`);
     const h2b = editor.setStripHeight(500);
     check('and between rows the height is the hand\'s, the rows unchanged', h2b === 500 && editor.stripLayout().rows === 2 && stage.clientHeight === window.innerHeight - 32 - 500, `${h2b} tall, ${editor.stripLayout().rows} rows`);
+    // Rotem, 2026-09-15: a strip dragged taller covers the sidebar, and its handle stays on top.
+    const stripTop = Math.round(strip.getBoundingClientRect().top);
+    const underSidebar = [...document.querySelectorAll('#controls button')].filter((b) => b.getBoundingClientRect().top >= stripTop);
+    const hits = underSidebar.map((b) => { const r = b.getBoundingClientRect(); return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); });
+    const handleHit = document.elementFromPoint(24, stripTop);
+    check('at 500 tall the strip covers the sidebar\'s buttons below its top, and the handle is above the strip', underSidebar.length > 0 && hits.every((h) => strip.contains(h)) && handleHit === handle,
+      `${underSidebar.length} button(s) below the strip's top at ${stripTop}, hit ${hits.map((h) => h && (h.id || h.className || h.tagName)).join(' ')}; at the edge ${handleHit && (handleHit.id || handleHit.tagName)}`);
     const h3 = editor.setStripHeight(100000);
     check('the strip never takes more than 96% of the window', h3 === Math.floor(window.innerHeight * 0.96), `${h3} of ${window.innerHeight}`);
 
