@@ -1479,6 +1479,8 @@
       if (sameSize) {
         model.zoom = view.zoom;
         model.pan = view.pan;
+        // The view put back is the user's own, so a follow when the space returns keeps it.
+        openedWithoutArea = false;
         await paintRegion();
       }
       model.mode = 'annotate';
@@ -1998,11 +2000,15 @@
   // is measured, so the zoom-out stop and the follow both use the fit kept from before.
   const stageHasArea = () => { const vp = viewport(); return vp.w >= 2 && vp.h >= 2; };
   const wholeNow = () => (stageHasArea() ? computeFit() : model.fitZoom);
+  // A picture opened onto a stage with no area has never been measured, so the first follow once
+  // the space returns takes it to its own whole picture, whatever zoom was pressed blind.
+  let openedWithoutArea = false;
   const followFit = () => {
     // A stage with no area, a timeline dragged to the top of a short window, has no whole
     // picture to follow; the view waits for the space to come back.
     if (!stageHasArea()) return false;
-    const wasFit = Math.abs(model.zoom - model.fitZoom) < 0.0005;
+    const wasFit = openedWithoutArea || Math.abs(model.zoom - model.fitZoom) < 0.0005;
+    openedWithoutArea = false;
     model.fitZoom = computeFit();
     if ((wasFit || model.zoom < model.fitZoom) && model.zoom !== model.fitZoom) {
       model.zoom = model.fitZoom;
@@ -2086,7 +2092,11 @@
     setTool(null);
     model.history = known && known.history ? known.history : { steps: [snapshot()], index: 0 };
     applyMode();
-    model.fitZoom = computeFit();
+    // A stage with no area measures a fit of 0, and a zoom of 0 loses the picture at the next zoom
+    // key; the picture opens at the fit kept from before, and follows when the space returns.
+    const openedWithArea = stageHasArea();
+    if (openedWithArea) model.fitZoom = computeFit();
+    openedWithoutArea = !openedWithArea;
     model.zoom = model.fitZoom;
     model.pan = { x: 0, y: 0 };
     refreshStrip().catch(() => {});

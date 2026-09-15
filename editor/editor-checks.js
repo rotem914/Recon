@@ -931,6 +931,37 @@ export async function runChecks(editor, invoke) {
       empty.h === 1 && empty.zoom === beforeEmpty && empty.kept > 0 && afterMinus === beforeEmpty && afterWheel === beforeEmpty && keyed.zoom > beforeEmpty
         && [keyed.x, keyed.y, restored.x, restored.y].every(Number.isFinite),
       `stage ${empty.h} px tall, zoom ${beforeEmpty.toFixed(3)} kept as ${empty.zoom.toFixed(3)}, - to ${afterMinus.toFixed(3)}, the wheel to ${afterWheel.toFixed(3)}, + to ${keyed.zoom.toFixed(3)}, pan ${keyed.x.toFixed(1)},${keyed.y.toFixed(1)}, back ${restored.x.toFixed(1)},${restored.y.toFixed(1)}`);
+    // A picture opened onto a stage with no area, a timeline at its full height over a short
+    // window, opens at the fit kept from before rather than a zoom of 0, so a zoom key there keeps
+    // the pan a number; when the space returns it takes its own whole picture, even after a zoom
+    // key pressed blind, and the follow is spent once it has run. The picture before it is larger
+    // than the window and smaller than the one opened, so the kept fit is below 1 and above the
+    // opened picture's whole.
+    await editor.loadImage(await invoke('editor_load_probe', { width: 1600, height: 1000 }));
+    const keptBefore = model.fitZoom;
+    stage.style.bottom = `${window.innerHeight}px`;
+    window.dispatchEvent(new Event('resize'));
+    await sleep(250);
+    await editor.loadImage(await invoke('editor_load_probe', { width: 3840, height: 2160 }));
+    const openedEmpty = { h: stage.clientHeight, zoom: model.zoom, kept: model.fitZoom };
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '+', code: 'Equal', bubbles: true, cancelable: true }));
+    await sleep(100);
+    const openedKeyed = { zoom: model.zoom, x: model.pan.x, y: model.pan.y };
+    stage.style.bottom = '';
+    window.dispatchEvent(new Event('resize'));
+    for (let i = 0; i < 60 && model.zoom !== editor.computeFit(); i += 1) await sleep(25);
+    const openedBack = { zoom: model.zoom, kept: model.fitZoom, whole: editor.computeFit(), x: model.pan.x, y: model.pan.y };
+    await editor.setZoom(openedBack.whole * 1.2);
+    const chosen = model.zoom;
+    window.dispatchEvent(new Event('resize'));
+    await sleep(250);
+    const afterFollow = model.zoom;
+    await editor.setZoom(editor.computeFit());
+    check('a picture opened onto a stage with no area opens at the kept fit, a zoom key there keeps the pan a number, and it takes its own whole picture when the space returns',
+      keptBefore < 1 && keptBefore > openedBack.whole && openedEmpty.h === 0 && openedEmpty.zoom === keptBefore && openedEmpty.kept === keptBefore
+        && openedKeyed.zoom === keptBefore * 1.5 && [openedKeyed.x, openedKeyed.y, openedBack.x, openedBack.y].every(Number.isFinite)
+        && openedBack.zoom === openedBack.whole && openedBack.kept === openedBack.whole && afterFollow === chosen,
+      `kept ${keptBefore.toFixed(3)}, stage ${openedEmpty.h} px tall, opened at ${openedEmpty.zoom.toFixed(3)} with the fit ${openedEmpty.kept.toFixed(3)}, + to ${openedKeyed.zoom.toFixed(3)}, pan ${openedKeyed.x.toFixed(1)},${openedKeyed.y.toFixed(1)}; back: zoom ${openedBack.zoom.toFixed(3)}, fit ${openedBack.kept.toFixed(3)}, whole ${openedBack.whole.toFixed(3)}, pan ${openedBack.x.toFixed(1)},${openedBack.y.toFixed(1)}; a zoom chosen at ${chosen.toFixed(3)} kept through a follow as ${afterFollow.toFixed(3)}`);
     // A note that grows the margin follows the same way: a view left at a kept fit takes the
     // whole composition once the margin has grown.
     await editor.loadImage(await invoke('editor_load_probe', { width: 120, height: 80 }));
