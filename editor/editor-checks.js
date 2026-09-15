@@ -943,13 +943,13 @@ export async function runChecks(editor, invoke) {
     await editor.loadImage(shot);
     check('a capture opens ready for annotation', model.mode === 'annotate' && shot.managed === true);
     const button = document.getElementById('mode');
-    check('the button offers the other mode', !button.hidden && button.textContent === 'View', button.textContent);
+    check('the button offers the other mode', !button.hidden && button.title === 'View (A)', button.title);
     button.click();
     for (let i = 0; i < 20 && model.mode !== 'view'; i += 1) await sleep(20);
-    check('clicking it switches to viewing, and it offers Annotate', model.mode === 'view' && button.textContent === 'Annotate' && document.activeElement !== button);
+    check('clicking it switches to viewing, and it offers Annotate', model.mode === 'view' && button.title === 'Annotate (A)' && document.activeElement !== button);
     button.click();
     for (let i = 0; i < 20 && model.mode !== 'annotate'; i += 1) await sleep(20);
-    check('and back', model.mode === 'annotate' && button.textContent === 'View');
+    check('and back', model.mode === 'annotate' && button.title === 'View (A)');
     await editor.setMode('view');
     await editor.setMode('annotate');
     managed = await invoke('editor_managed');
@@ -1643,10 +1643,26 @@ export async function runChecks(editor, invoke) {
     const controls = document.getElementById('controls');
     const copyButton = document.getElementById('copy');
     const saveButton = document.getElementById('saveas');
-    const winButtons = document.getElementById('winbtns').getBoundingClientRect();
-    check('the three controls are shown with an image, in the top bar, left of the window buttons', !controls.hidden && copyButton && saveButton && document.getElementById('mode')
-      && copyButton.getBoundingClientRect().top >= 0 && copyButton.getBoundingClientRect().bottom <= 32 && copyButton.getBoundingClientRect().right < winButtons.left,
-      `copy at ${Math.round(copyButton.getBoundingClientRect().right)}, the window buttons from ${Math.round(winButtons.left)}`);
+    // The sidebar (Rotem, 2026-09-15): icon buttons down the left edge, the spec in project-os/Design.md.
+    const stage = document.getElementById('stage');
+    const cbox = controls.getBoundingClientRect();
+    const stageLeft = Math.round(stage.getBoundingClientRect().left);
+    check('the controls are a sidebar down the left edge, below the top bar, and the stage starts at its right edge', !controls.hidden && copyButton && saveButton && document.getElementById('mode')
+      && cbox.left === 0 && Math.round(cbox.top) === 32 && Math.round(cbox.width) === 48 && stageLeft === 48,
+      `sidebar ${Math.round(cbox.left)}-${Math.round(cbox.right)} from ${Math.round(cbox.top)}, the stage from ${stageLeft}`);
+    const buttons = [...controls.querySelectorAll('button')];
+    const boxes = buttons.map((b) => b.getBoundingClientRect());
+    const iconWidth = (b) => Math.max(...[...b.querySelectorAll('svg')].map((s) => Math.round(s.getBoundingClientRect().width)));
+    check('nine icon buttons, 32 by 32 with a 20 by 20 icon, 8 px apart, named, with no fill of their own', buttons.length === 9
+      && boxes.every((b) => Math.round(b.width) === 32 && Math.round(b.height) === 32)
+      && boxes.every((b, i) => i === 0 || Math.round(b.top - boxes[i - 1].bottom) === 8)
+      && buttons.every((b) => iconWidth(b) === 20 && b.title.length > 0)
+      && buttons.every((b) => b.classList.contains('active') || getComputedStyle(b).backgroundColor === 'rgba(0, 0, 0, 0)'),
+      `${buttons.length} buttons at ${boxes.map((b) => Math.round(b.top)).join(' ')}, icons ${buttons.map(iconWidth).join(' ')}, the sidebar ${Math.round(cbox.height)} tall`);
+    const hoverRule = [...document.styleSheets[0].cssRules].find((r) => r.selectorText === '#controls button:hover');
+    check('a hover fills the square with #21222C, fading in by A1: 144 ms, ease-out', !!hoverRule && hoverRule.style.backgroundColor === 'rgb(33, 34, 44)'
+      && buttons.every((b) => getComputedStyle(b).transitionProperty === 'background-color' && getComputedStyle(b).transitionDuration === '0.144s' && getComputedStyle(b).transitionTimingFunction === 'ease-out'),
+      `${hoverRule && hoverRule.style.backgroundColor}, ${getComputedStyle(buttons[0]).transition}`);
 
     const c = editor.createCallout({ x: 50, y: 50 });
     c.text = 'copied by the button';
@@ -2161,7 +2177,7 @@ export async function runChecks(editor, invoke) {
 
   // ---------------------------------------------------------------- 36. the top bar
   say('');
-  say('the top bar: Recon draws its own, the title on the left, the controls in it, minimize, maximize and close on the right; fullscreen puts it away');
+  say('the top bar: Recon draws its own, the title on the left, minimize, maximize and close on the right; fullscreen puts it away');
   {
     const win = window.__TAURI__.window.getCurrentWindow();
     const stage = document.getElementById('stage');
@@ -2199,9 +2215,12 @@ export async function runChecks(editor, invoke) {
     check('the keys are still the page\'s after a click on a window button', document.activeElement !== document.getElementById('win-max'));
 
     await editor.setFullscreen(true);
-    check('fullscreen puts the bar away and the stage starts at the top', getComputedStyle(bar).display === 'none' && stageTop() === 0 && stage.clientHeight === window.innerHeight, `the stage from ${stageTop()}`);
+    const stageLeft = () => Math.round(stage.getBoundingClientRect().left);
+    const sidebar = document.getElementById('controls');
+    check('fullscreen puts the bar and the sidebar away and the stage takes the whole window', getComputedStyle(bar).display === 'none' && getComputedStyle(sidebar).display === 'none'
+      && stageTop() === 0 && stageLeft() === 0 && stage.clientHeight === window.innerHeight && stage.clientWidth === window.innerWidth, `the stage from ${stageLeft()},${stageTop()}`);
     await editor.setFullscreen(false);
-    check('and it comes back', getComputedStyle(bar).display !== 'none' && stageTop() === 32, `the stage from ${stageTop()}`);
+    check('and they come back', getComputedStyle(bar).display !== 'none' && getComputedStyle(sidebar).display !== 'none' && stageTop() === 32 && stageLeft() === 48, `the stage from ${stageLeft()},${stageTop()}`);
   }
 
   // ---------------------------------------------------------------- 37. S2.8: the timeline at scale

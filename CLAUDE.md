@@ -58,6 +58,9 @@ Read this file first. Then the docs in `project-os/`, in this order:
 12. `project-os/Hooks.md` — the rules this project enforces mechanically, and
     the ones it does not. Read it to know which of the rules above are merely
     written down. You install those hooks during setup, without being asked.
+13. `project-os/Design.md` — the design system: the tokens and components Rotem
+    has stated. Load it when the task changes something a person can see, and
+    look a value up there before guessing one from a neighbour.
 
 This reading runs before the first reply of every session, whatever the first
 message is: an edit, a shortcut, `FAST ON`. A hook's summary of a file is a

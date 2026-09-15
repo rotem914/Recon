@@ -88,6 +88,7 @@ Recon/
     ├── Conversations.md            # how every reply is written
     ├── Code_review.md              # the review calibration
     ├── Visual_QA.md                # the hands-on testing method
+    ├── Design.md                   # the design system: Rotem's tokens and components, read before a visible change
     ├── Map.md                      # this file
     ├── History.md                  # what changed, one row per task
     ├── Decisions.md                # why non-obvious choices were made
