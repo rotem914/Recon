@@ -668,9 +668,7 @@
       if (value !== model.margin[edge]) { model.margin[edge] = value; changed = true; }
     }
     if (!changed) return false;
-    const wasFit = Math.abs(model.zoom - model.fitZoom) < 0.0005;
-    model.fitZoom = computeFit();
-    if (wasFit) model.zoom = model.fitZoom;
+    followFit();
     return true;
   };
 
@@ -1282,6 +1280,7 @@
     const trashed = await invoke('editor_trash_documents').catch(() => []);
     model.storage = await invoke('editor_storage').catch(() => model.storage);
     document.body.classList.toggle('strip', (docs.length > 0 || trashed.length > 0) && !model.fullscreen);
+    if (followFit()) paintRegion(); // the stage changed height (Rotem, 2026-09-15)
     // Newest first, at the left (Rotem's word, 2026-09-14); the host lists oldest first.
     cells = [...docs].reverse().map((doc) => ({ key: `doc:${doc.id}`, kind: 'doc', doc }));
     if (trashed.length > 0) {
@@ -1299,6 +1298,7 @@
     const trashed = await invoke('editor_trash_documents').catch(() => []);
     document.body.classList.add('trash');
     document.body.classList.toggle('strip', !model.fullscreen);
+    if (followFit()) paintRegion(); // the stage changed height (Rotem, 2026-09-15)
     cells = [{ key: 'chip:back', kind: 'chip', chip: {
       id: 'trash-back', text: trashed.length ? 'Back' : 'The trash is empty; back', title: '',
       onClick: () => { stripMode = 'documents'; refreshStrip().catch(() => {}); },
@@ -1727,7 +1727,7 @@
     document.body.classList.toggle('strip', cells.length > 0 && !model.fullscreen);
     if (!model.fullscreen) layoutStrip(); // the window may have changed size while the strip was away
     await measureRatio();
-    model.fitZoom = computeFit();
+    followFit();
     await paintRegion();
     return model.fullscreen;
   };
@@ -1913,7 +1913,10 @@
       x: model.pan.x + ((cssX - model.offset.x) * dpr()) / model.zoom,
       y: model.pan.y + ((cssY - model.offset.y) * dpr()) / model.zoom,
     };
-    model.zoom = Math.min(8, Math.max(model.fitZoom / 4, next));
+    // The whole picture, as the stage is now, is the most it zooms out (Rotem, 2026-09-15):
+    // read live, the kept fit on a stage with no area, and never above the zoom on screen, so a
+    // zoom out never enlarges the picture.
+    model.zoom = Math.min(8, Math.max(Math.min(wholeNow(), model.zoom), next));
     model.pan.x = at.x - ((cssX - model.offset.x) * dpr()) / model.zoom;
     model.pan.y = at.y - ((cssY - model.offset.y) * dpr()) / model.zoom;
     return paintRegion();
@@ -1925,7 +1928,10 @@
       x: model.pan.x + (vp.w * dpr()) / model.zoom / 2,
       y: model.pan.y + (vp.h * dpr()) / model.zoom / 2,
     };
-    model.zoom = Math.min(8, Math.max(model.fitZoom / 4, next));
+    // The whole picture, as the stage is now, is the most it zooms out (Rotem, 2026-09-15):
+    // read live, the kept fit on a stage with no area, and never above the zoom on screen, so a
+    // zoom out never enlarges the picture.
+    model.zoom = Math.min(8, Math.max(Math.min(wholeNow(), model.zoom), next));
     // Zooming keeps the centre of the view where it was, which is the only behaviour that
     // does not feel like the image jumped.
     model.pan.x = before.x - (vp.w * dpr()) / model.zoom / 2;
@@ -1948,6 +1954,26 @@
     return Math.min((vp.w * dpr()) / comp.w, (vp.h * dpr()) / comp.h, 1);
   };
 
+  // The space the picture is shown in changed (Rotem, 2026-09-15): the kept fit is measured
+  // again, and a view at the whole picture, or below it, takes the new whole picture, so 0,
+  // the HUD's "fit" and the zoom-out stop stay one number. True when the zoom moved.
+  // Under 2 px either way the stage has no area: nothing is painted there and no whole picture
+  // is measured, so the zoom-out stop and the follow both use the fit kept from before.
+  const stageHasArea = () => { const vp = viewport(); return vp.w >= 2 && vp.h >= 2; };
+  const wholeNow = () => (stageHasArea() ? computeFit() : model.fitZoom);
+  const followFit = () => {
+    // A stage with no area, a timeline dragged to the top of a short window, has no whole
+    // picture to follow; the view waits for the space to come back.
+    if (!stageHasArea()) return false;
+    const wasFit = Math.abs(model.zoom - model.fitZoom) < 0.0005;
+    model.fitZoom = computeFit();
+    if ((wasFit || model.zoom < model.fitZoom) && model.zoom !== model.fitZoom) {
+      model.zoom = model.fitZoom;
+      return true;
+    }
+    return false;
+  };
+
   const marginString = () =>
     `${model.margin.left},${model.margin.top},${model.margin.right},${model.margin.bottom}`;
 
@@ -1964,7 +1990,7 @@
   // The stage changed size: the window was resized, or the strip was dragged (S2.8).
   const stageResized = async () => {
     await measureRatio();
-    model.fitZoom = computeFit();
+    followFit();
     paintRegion();
   };
   window.addEventListener('resize', () => {
@@ -2206,6 +2232,7 @@
     model,
     loadImage,
     setZoom,
+    computeFit,
     paintRegion,
     layoutScene,
     measureRatio,

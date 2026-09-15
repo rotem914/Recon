@@ -158,7 +158,9 @@ export async function runChecks(editor, invoke) {
     const box = el(callout);
     const heights = [];
     for (const zoom of [model.fitZoom, 1, 2, model.fitZoom / 2, model.fitZoom]) {
-      await editor.setZoom(zoom);
+      // Below fit the zoom is set directly: the controls and a change of space never leave a
+      // picture below the whole of it (Rotem, 2026-09-15), so only a direct set tests that zoom.
+      if (zoom < model.fitZoom) { model.zoom = zoom; await editor.paintRegion(); } else await editor.setZoom(zoom);
       await sleep(60);
       heights.push({ zoom: Number(model.zoom.toFixed(4)), height: box.offsetHeight, lines: box.querySelector('.t').getClientRects().length });
     }
@@ -794,6 +796,166 @@ export async function runChecks(editor, invoke) {
     await sleep(200);
     check('a sideways wheel pans and does not zoom', model.zoom === sideways.zoom && model.pan.x > sideways.x,
       `zoom ${sideways.zoom} to ${model.zoom}, pan ${sideways.x.toFixed(1)} to ${model.pan.x.toFixed(1)}`);
+
+    // Rotem, 2026-09-15: the whole picture, as the stage is now and at most its actual size, is
+    // the most it zooms out, by the wheel and by the key alike. Each input starts above the
+    // stop, so an input that did nothing fails.
+    await editor.loadImage(await invoke('editor_load_probe', { width: 3840, height: 2160 }));
+    await editor.refreshStrip();
+    await sleep(100);
+    const floor = editor.computeFit();
+    const minusKey = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: '-', code: 'Minus', bubbles: true, cancelable: true }));
+    // A change of space is followed after a round trip to the host (the ratio is measured first),
+    // so the checks wait for the kept fit to meet the stage, up to a second and a half.
+    const followSettled = async () => {
+      for (let i = 0; i < 60 && model.fitZoom !== editor.computeFit(); i += 1) await sleep(25);
+      await sleep(50);
+    };
+    // Full screen resizes the window after the call returns, so the checks wait for the page's
+    // size to change before waiting for the follow.
+    const resizeSettled = async (before) => {
+      for (let i = 0; i < 60 && window.innerWidth === before.w && window.innerHeight === before.h; i += 1) await sleep(25);
+      await followSettled();
+    };
+    await editor.setZoom(floor * 1.1);
+    wheelAt({ deltaY: 120 });
+    await sleep(200);
+    const wheeledOut = model.zoom;
+    await editor.setZoom(floor * 1.2);
+    minusKey();
+    await sleep(200);
+    check('zooming out stops at the whole picture, by the wheel and by the - key', floor < 1 && wheeledOut === floor && model.zoom === floor,
+      `whole at ${floor.toFixed(3)}, the wheel from ${(floor * 1.1).toFixed(3)} to ${wheeledOut.toFixed(3)}, - from ${(floor * 1.2).toFixed(3)} to ${model.zoom.toFixed(3)}`);
+    // The stop is read from the stage, not from the fit the page keeps, so a kept fit left
+    // stale on purpose here stops neither input short of the whole picture.
+    model.fitZoom = floor * 1.05;
+    await editor.setZoom(floor * 1.2);
+    wheelAt({ deltaY: 120 });
+    await sleep(200);
+    const liveWheel = model.zoom;
+    await editor.setZoom(floor * 1.2);
+    minusKey();
+    await sleep(200);
+    check('the stop is the stage as it is, not a kept fit gone stale, by the wheel and by the - key', liveWheel === floor && model.zoom === floor,
+      `kept ${(floor * 1.05).toFixed(3)}, the wheel to ${liveWheel.toFixed(3)}, - to ${model.zoom.toFixed(3)}, whole at ${floor.toFixed(3)}`);
+    // A zoom already below the whole picture, as for the moment the page takes to measure a
+    // grown stage, is never enlarged by a zoom out.
+    const below = floor * 0.9;
+    model.zoom = below;
+    await editor.paintRegion();
+    wheelAt({ deltaY: 120 });
+    await sleep(200);
+    const belowWheel = model.zoom;
+    minusKey();
+    await sleep(200);
+    check('a zoom out never enlarges a picture already below the whole of it, by the wheel or the - key', belowWheel === below && model.zoom === below,
+      `below at ${below.toFixed(3)}, the wheel ${belowWheel.toFixed(3)}, - ${model.zoom.toFixed(3)}, whole at ${floor.toFixed(3)}`);
+    // Rotem, 2026-09-15: when the space changes, a view at the whole picture takes the new whole
+    // picture. Each change starts from a kept fit and a view left at a taller stage's fit.
+    const followers = [
+      ['the timeline refreshing', () => editor.refreshStrip()],
+      ['the trash showing', () => editor.renderTrash()],
+      ['the window resizing', async () => { window.dispatchEvent(new Event('resize')); }],
+    ];
+    // Two starts: a view at a taller stage's kept fit, and a zoomed-in view the grown whole
+    // picture has passed, below the whole but not at the kept fit.
+    const starts = [['at the kept fit', 1.05, 1.05], ['below the whole', 0.8, 0.9]];
+    const followed = [];
+    for (const [label, run] of followers) {
+      for (const [start, kept, zoom] of starts) {
+        model.fitZoom = floor * kept;
+        model.zoom = floor * zoom;
+        await run();
+        await followSettled();
+        followed.push({ label: `${label}, ${start}`, zoom: model.zoom, kept: model.fitZoom, whole: editor.computeFit() });
+      }
+    }
+    await editor.refreshStrip();
+    await followSettled();
+    check('a view at the whole picture, or below it, follows the space when the timeline refreshes, the trash shows or the window resizes', followed.every((f) => f.zoom === f.whole && f.kept === f.whole),
+      followed.map((f) => `${f.label}: zoom ${f.zoom.toFixed(3)}, kept ${f.kept.toFixed(3)}, whole ${f.whole.toFixed(3)}`).join('; '));
+    const whole = editor.computeFit();
+    await editor.setZoom(whole * 1.2);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '0', code: 'Digit0', bubbles: true, cancelable: true }));
+    await sleep(200);
+    check('0 shows the same whole picture that zooming out stops at', model.zoom === whole && model.fitZoom === whole,
+      `0 from ${(whole * 1.2).toFixed(3)} to ${model.zoom.toFixed(3)}, kept ${model.fitZoom.toFixed(3)}, whole at ${whole.toFixed(3)}`);
+    // Full screen grows the space: the picture grows to the new whole picture, zooms out no
+    // further, and a zoom in comes back out to it; leaving full screen gives the smaller whole.
+    let sizeBefore = { w: window.innerWidth, h: window.innerHeight };
+    await editor.setFullscreen(true);
+    await resizeSettled(sizeBefore);
+    const grown = { zoom: model.zoom, whole: editor.computeFit() };
+    wheelAt({ deltaY: 120 });
+    await sleep(200);
+    const grownWheel = model.zoom;
+    wheelAt({ deltaY: -120 });
+    await sleep(200);
+    const grownIn = model.zoom;
+    wheelAt({ deltaY: 120 });
+    await sleep(200);
+    const grownBack = model.zoom;
+    sizeBefore = { w: window.innerWidth, h: window.innerHeight };
+    await editor.setFullscreen(false);
+    await resizeSettled(sizeBefore);
+    const shrunk = { zoom: model.zoom, whole: editor.computeFit() };
+    check('when the space grows the picture grows to the new whole picture, zooms out no further, and a zoom in comes back out to it',
+      grown.whole > whole && Math.abs(grown.zoom - grown.whole) < 1e-9 && Math.abs(grownWheel - grown.whole) < 1e-9 && grownIn > grown.whole * 1.2 && Math.abs(grownBack - grown.whole) < 1e-9,
+      `whole ${whole.toFixed(3)}, in full screen ${grown.whole.toFixed(3)}: the zoom ${grown.zoom.toFixed(3)}, the wheel out ${grownWheel.toFixed(3)}, in ${grownIn.toFixed(3)}, back out ${grownBack.toFixed(3)}`);
+    check('and out of full screen the whole picture follows the smaller space', Math.abs(shrunk.zoom - shrunk.whole) < 1e-9 && Math.abs(shrunk.whole - whole) < 1e-9,
+      `the zoom ${shrunk.zoom.toFixed(3)}, whole ${shrunk.whole.toFixed(3)}`);
+    // A stage with no area, here 1 px tall as a timeline dragged to the top of a short window
+    // can leave it, has no whole picture: the view keeps its zoom, a zoom out stops at the kept
+    // fit, and the pan stays a number through a zoom key and the space coming back.
+    await editor.setZoom(editor.computeFit());
+    const beforeEmpty = model.zoom;
+    stage.style.bottom = `${window.innerHeight - 33}px`;
+    window.dispatchEvent(new Event('resize'));
+    await sleep(250);
+    const empty = { h: stage.clientHeight, zoom: model.zoom, kept: model.fitZoom };
+    minusKey();
+    await sleep(100);
+    const afterMinus = model.zoom;
+    wheelAt({ deltaY: 120 });
+    await sleep(100);
+    const afterWheel = model.zoom;
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: '+', code: 'Equal', bubbles: true, cancelable: true }));
+    await sleep(100);
+    const keyed = { zoom: model.zoom, x: model.pan.x, y: model.pan.y };
+    stage.style.bottom = '';
+    window.dispatchEvent(new Event('resize'));
+    await followSettled();
+    const restored = { x: model.pan.x, y: model.pan.y, whole: editor.computeFit() };
+    await editor.setZoom(restored.whole);
+    check('a stage with no area keeps the zoom, a zoom out there stops at the kept fit, by the key and the wheel, and the pan stays a number',
+      empty.h === 1 && empty.zoom === beforeEmpty && empty.kept > 0 && afterMinus === beforeEmpty && afterWheel === beforeEmpty && keyed.zoom > beforeEmpty
+        && [keyed.x, keyed.y, restored.x, restored.y].every(Number.isFinite),
+      `stage ${empty.h} px tall, zoom ${beforeEmpty.toFixed(3)} kept as ${empty.zoom.toFixed(3)}, - to ${afterMinus.toFixed(3)}, the wheel to ${afterWheel.toFixed(3)}, + to ${keyed.zoom.toFixed(3)}, pan ${keyed.x.toFixed(1)},${keyed.y.toFixed(1)}, back ${restored.x.toFixed(1)},${restored.y.toFixed(1)}`);
+    // A note that grows the margin follows the same way: a view left at a kept fit takes the
+    // whole composition once the margin has grown.
+    await editor.loadImage(await invoke('editor_load_probe', { width: 120, height: 80 }));
+    await editor.refreshStrip();
+    await followSettled();
+    await sleep(100);
+    model.callouts = []; model.nextNumber = 1;
+    model.fitZoom = 1.05;
+    model.zoom = 1.05;
+    editor.createCallout({ x: 60, y: 40 });
+    editor.layoutScene();
+    await editor.settle();
+    const margined = { zoom: model.zoom, kept: model.fitZoom, whole: editor.computeFit(), margin: `${model.margin.left},${model.margin.top},${model.margin.right},${model.margin.bottom}` };
+    model.callouts = [];
+    editor.layoutScene();
+    await editor.settle();
+    check('a note that grows the margin takes a view at the kept fit to the whole composition', margined.margin !== '0,0,0,0' && margined.zoom === margined.whole && margined.kept === margined.whole,
+      `margin ${margined.margin}, zoom ${margined.zoom.toFixed(3)}, kept ${margined.kept.toFixed(3)}, whole ${margined.whole.toFixed(3)}`);
+    // A picture that fits the window opens at its actual size, and that is its floor.
+    await editor.loadImage(await invoke('editor_load_probe', { width: 300, height: 200 }));
+    const small = model.zoom;
+    wheelAt({ deltaY: 120 });
+    await sleep(200);
+    check('a picture that fits the window opens at its actual size and zooms out no further', small === 1 && model.fitZoom === 1 && model.zoom === 1,
+      `opens at ${small}, after the wheel ${model.zoom}`);
 
     const on = await editor.setFullscreen(true);
     await sleep(300);

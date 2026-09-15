@@ -237,6 +237,11 @@ This is the part that has to be good enough to use all day with no annotation in
 
 - **Fit to window** on open, **actual size** on demand, zoom in and out, and pan. Zoom
   re-encodes nothing and never changes what an export would contain.
+- **Zooming out stops at the whole picture**: its actual size when it fits the window, the
+  whole of it when it does not. When the space changes, the window resized, full screen, or
+  the timeline, a picture shown whole, or smaller than whole, takes the new whole view, and a
+  zoomed-in view keeps its zoom. Rotem's word on 2026-09-15, both; until then it went down to
+  a quarter of the fit and nothing followed the space.
 - **Detail matches the zoom.** At 100% and beyond, the visible region shows the source's own
   pixels, not an enlarged fit-to-window preview. Fine text in a screenshot or a diagram has
   to be readable, since that is most of what gets viewed here.
@@ -393,7 +398,7 @@ is a contract broken on day one.
 | Undo and redo | While a note is being edited, undo works on the typing and never reaches object operations. Once editing ends, that text change takes its place in document history as one grouped step | 1 |
 | `Ctrl+O` | Open an image file | 1, built at S1.2 |
 | Previous and next image, outside text editing | Walk the active navigation context, folder or Recon history, in the §3.4 order | 1, built at S1.4 for the folder and at S1.9 for history: PageDown and PageUp, Home and End for the first and last; the ends stop |
-| Fit to window · actual size · zoom in · zoom out | Viewing controls, no effect on export resolution | 1, built: keys, and the wheel to zoom around the pointer, with Ctrl or without, at Rotem's call on 2026-09-14; a sideways wheel pans |
+| Fit to window · actual size · zoom in · zoom out | Viewing controls, no effect on export resolution; zoom out stops at the whole picture (§3.4) | 1, built: keys, and the wheel to zoom around the pointer, with Ctrl or without, at Rotem's call on 2026-09-14; a sideways wheel pans; the zoom-out floor at Rotem's word on 2026-09-15 |
 | `Space` held, outside text editing | The ordinary pointer, and a drag pans the picture whatever tool is in hand; letting go gives the tool back | 1, built at Rotem's word on 2026-09-14 |
 | Fullscreen | Enter fullscreen | 1, built: F11, and the same key or Escape out |
 | Annotate, and back to viewing | Switch the window between viewing, where no click creates anything, and annotation, where the tools are live and none is in hand until one is chosen (§3.3). The work stays either way | 1, built at S1.5: the `A` key and a button at the window's top right, both, Rotem's call on 2026-09-14 |
