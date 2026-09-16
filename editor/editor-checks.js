@@ -437,7 +437,7 @@ export async function runChecks(editor, invoke) {
   say('S0.6 check 1: every source pixel the notes do not cover is exact, on a semi-transparent source');
   const exportCheck = async (name, mode, extra = {}) => {
     const layer = await editor.exportLayer();
-    return invoke('editor_export_check', layer.bytes, { headers: { name, margin: layer.margin, blur: layer.blur, mode, ...extra } });
+    return invoke('editor_export_check', layer.bytes, { headers: { name, margin: layer.margin, blur: layer.blur, crop: layer.crop, mode, ...extra } });
   };
   // A fresh document every time: opening the same file again keeps the notes on purpose
   // (a stepped frame is the same picture), and these checks want an empty page.
@@ -1917,7 +1917,7 @@ export async function runChecks(editor, invoke) {
     const buttons = [...controls.querySelectorAll('button')];
     const boxes = buttons.map((b) => b.getBoundingClientRect());
     const iconWidth = (b) => Math.max(...[...b.querySelectorAll('svg')].map((s) => Math.round(s.getBoundingClientRect().width)));
-    check('ten icon buttons, 48 by 48 with a 32 by 32 icon drawn with a 2 px #C3C6CA line, 8 px apart, named, with no fill of their own', buttons.length === 10
+    check('eleven icon buttons, 48 by 48 with a 32 by 32 icon drawn with a 2 px #C3C6CA line, 8 px apart, named, with no fill of their own', buttons.length === 11
       && boxes.every((b) => Math.round(b.width) === 48 && Math.round(b.height) === 48)
       && boxes.every((b, i) => i === 0 || Math.round(b.top - boxes[i - 1].bottom) === 8)
       && buttons.every((b) => iconWidth(b) === 32 && [...b.querySelectorAll('svg')].every((v) => parseFloat(getComputedStyle(v).strokeWidth) * 32 / 20 === 2 && getComputedStyle(v).stroke === 'rgb(195, 198, 202)') && (b.getAttribute('aria-label') || '').length > 0)
@@ -1927,11 +1927,11 @@ export async function runChecks(editor, invoke) {
     check('a hover fills the square with #21222C, fading in by A1: 144 ms, ease-out', !!hoverRule && hoverRule.style.backgroundColor === 'rgb(33, 34, 44)'
       && buttons.every((b) => getComputedStyle(b).transitionProperty === 'background-color' && getComputedStyle(b).transitionDuration === '0.144s' && getComputedStyle(b).transitionTimingFunction === 'ease-out'),
       `${hoverRule && hoverRule.style.backgroundColor}, ${getComputedStyle(buttons[0]).transition}`);
-    // One container around the ten, centred across the sidebar; a tooltip on each button's right (Rotem, 2026-09-15).
+    // One container around the eleven, centred across the sidebar; a tooltip on each button's right (Rotem, 2026-09-15).
     const group = document.getElementById('buttons');
     const gbox = group.getBoundingClientRect();
     const stageBottom = Math.round(stage.getBoundingClientRect().bottom);
-    check('one container holds all ten buttons, centred in the sidebar\'s height and across it, the sidebar running from the top bar to the timeline', !!group && group.parentElement === controls && buttons.every((b) => group.contains(b))
+    check('one container holds all eleven buttons, centred in the sidebar\'s height and across it, the sidebar running from the top bar to the timeline', !!group && group.parentElement === controls && buttons.every((b) => group.contains(b))
       && Math.abs((gbox.left + gbox.right) / 2 - (cbox.left + cbox.right) / 2) < 0.5 && Math.round(gbox.width) === 48
       && Math.round(cbox.bottom) === stageBottom && Math.abs((gbox.top + gbox.bottom) / 2 - (cbox.top + cbox.bottom) / 2) < 0.5,
       `container ${Math.round(gbox.left)}-${Math.round(gbox.right)} by ${Math.round(gbox.top)}-${Math.round(gbox.bottom)}, centred at ${(gbox.left + gbox.right) / 2},${(gbox.top + gbox.bottom) / 2}; the sidebar ${Math.round(cbox.top)}-${Math.round(cbox.bottom)}, centred at ${(cbox.left + cbox.right) / 2},${(cbox.top + cbox.bottom) / 2}; the stage ends at ${stageBottom}`);
@@ -3404,6 +3404,141 @@ export async function runChecks(editor, invoke) {
     model.shapes = [];
     editor.layoutScene();
     editor.setTool(null);
+    for (let i = 0; i < 40 && !(await invoke('editor_window_visible')); i += 1) await sleep(50);
+    await invoke('editor_show');
+  }
+
+  // ---------------------------------------------------------------- 44. the crop
+  say('');
+  say('The crop (Rotem, 2026-09-17): K or the button, then a frame with eight handles sits on the picture\'s edges; a handle dragged inward cuts the picture to the frame at the release, on screen, in the size band, in every copy and in the thumbnail; the notes keep their place; one step of undo; saved and back after a restart; the source is never touched');
+  {
+    const stage = editor.stage;
+    await invoke('editor_store_reset');
+    const shot = await invoke('editor_capture_probe', { width: 400, height: 300 });
+    await editor.loadImage(shot);
+    await editor.setZoom(1);
+    const box = () => stage.getBoundingClientRect();
+    const css = (ix, iy) => ({ x: box().left + model.offset.x + ((ix - model.pan.x) * model.zoom) / editor.ratioOf(), y: box().top + model.offset.y + ((iy - model.pan.y) * model.zoom) / editor.ratioOf() });
+    const pointer = (type, target, ix, iy) => {
+      const at = css(ix, iy);
+      target.dispatchEvent(new PointerEvent(type, { pointerId: 14, button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: at.x, clientY: at.y, bubbles: true, cancelable: true }));
+    };
+    const press = (init) => { const e = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }); window.dispatchEvent(e); return e.defaultPrevented; };
+    const frame = document.getElementById('crop');
+    const handle = (edge) => frame.querySelector(`.h[data-edge="${edge}"]`);
+    const frameAt = () => `${frame.style.left} ${frame.style.top} ${frame.style.width} ${frame.style.height}`;
+    const cropText = () => editor.cropString() || 'none';
+    const sizeBand = () => document.getElementById('image-size').textContent;
+    const canvas = document.getElementById('canvas');
+    const dragHandle = async (edge, fromX, fromY, toX, toY) => {
+      pointer('pointerdown', handle(edge), fromX, fromY);
+      pointer('pointermove', stage, toX, toY);
+      pointer('pointerup', stage, toX, toY);
+      await editor.paintRegion();
+    };
+
+    press({ key: 'k', code: 'KeyK' });
+    check('K picks the crop, and its button in the sidebar is lit', model.tool === 'crop' && document.querySelector('#tools [data-tool="crop"]').classList.contains('active'));
+    const button = document.querySelector('#tools [data-tool="crop"]');
+    check('the crop button sits after Ruler, named Crop, an icon button like the others', !!button && button.previousElementSibling.dataset.tool === 'ruler' && button.getAttribute('aria-label') === 'Crop' && getComputedStyle(button).width === '48px');
+    check('with the tool in hand a frame sits on the picture\'s edges, with a handle at each corner and the middle of each side', getComputedStyle(frame).display === 'block' && frameAt() === '0px 0px 400px 300px' && frame.querySelectorAll('.h').length === 8
+      && ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se'].every((e) => !!handle(e)), `${getComputedStyle(frame).display}; ${frameAt()}; ${frame.querySelectorAll('.h').length} handles`);
+    const h1 = handle('e').getBoundingClientRect();
+    const edge1 = css(400, 150);
+    await editor.setZoom(2);
+    const h2 = handle('e').getBoundingClientRect();
+    const edge2 = css(400, 150);
+    check('a handle is 10 screen pixels centred on its edge at zoom 1 and at zoom 2 alike, the scene\'s scale undone on it', Math.abs(h1.width - 10) < 0.6 && Math.abs(h1.height - 10) < 0.6 && Math.abs(h2.width - 10) < 0.6 && Math.abs(h2.height - 10) < 0.6
+      && Math.abs(h1.left + h1.width / 2 - edge1.x) < 1.5 && Math.abs(h1.top + h1.height / 2 - edge1.y) < 1.5 && Math.abs(h2.left + h2.width / 2 - edge2.x) < 1.5 && Math.abs(h2.top + h2.height / 2 - edge2.y) < 1.5,
+      `zoom 1: ${h1.width.toFixed(1)}x${h1.height.toFixed(1)} centre ${(h1.left + h1.width / 2).toFixed(1)},${(h1.top + h1.height / 2).toFixed(1)} edge ${edge1.x.toFixed(1)},${edge1.y.toFixed(1)}; zoom 2: ${h2.width.toFixed(1)}x${h2.height.toFixed(1)} centre ${(h2.left + h2.width / 2).toFixed(1)},${(h2.top + h2.height / 2).toFixed(1)} edge ${edge2.x.toFixed(1)},${edge2.y.toFixed(1)}`);
+    await editor.setZoom(1);
+
+    // A note that fits inside every crop below, so the margin stays at zero and the sizes are the crop's.
+    const note = editor.createCallout({ x: 60, y: 50 });
+    editor.layoutScene();
+    note.text = 'kept';
+    editor.settle();
+    editor.record();
+    const noteEl = () => document.querySelector(`[data-id="${note.id}"]`);
+    const noteLeft = noteEl().style.left;
+
+    // The right edge dragged inward: while the drag lasts the frame follows and darkens the outside; released, the picture is the frame.
+    pointer('pointerdown', handle('e'), 400, 150);
+    pointer('pointermove', stage, 380, 150);
+    check('while a handle is dragged the frame follows it and darkens what it will cut away, and nothing is cut yet', !!model.cropping && model.cropping.w === 380 && model.cropping.h === 300 && frameAt() === '0px 0px 380px 300px' && frame.classList.contains('dragging') && getComputedStyle(frame).boxShadow !== 'none' && model.crop === null,
+      `${JSON.stringify(model.cropping)}; ${frameAt()}; ${getComputedStyle(frame).boxShadow}`);
+    pointer('pointerup', stage, 380, 150);
+    await editor.paintRegion();
+    const steps1 = model.history.index;
+    check('released, the picture is cut to the frame: 380 wide, the size band says so, and the frame sits on the new edges', cropText() === '0,0,380,300' && sizeBand() === '380x300' && editor.compositionSize().w === 380 && editor.compositionSize().h === 300 && frameAt() === '0px 0px 380px 300px' && !frame.classList.contains('dragging'),
+      `crop ${cropText()}; band ${sizeBand()}; ${frameAt()}`);
+    check('the crop is one step of history', steps1 >= 2, `index ${steps1}`);
+
+    // A corner dragged inward moves two edges; the picture on screen is the crop alone.
+    await dragHandle('nw', 0, 0, 40, 30);
+    check('a corner handle moves two edges: the crop starts at 40,30 and is 340 by 270', cropText() === '40,30,340,270' && sizeBand() === '340x270', `crop ${cropText()}; band ${sizeBand()}`);
+    check('the picture painted is the crop alone, centred, and the view starts at the crop\'s origin', canvas.width === 340 && canvas.height === 270 && model.pan.x === 40 && model.pan.y === 30 && Math.abs(parseFloat(canvas.style.left) - model.offset.x) < 1 && Math.abs(parseFloat(canvas.style.top) - model.offset.y) < 1,
+      `canvas ${canvas.width}x${canvas.height} at ${canvas.style.left},${canvas.style.top}; offset ${model.offset.x},${model.offset.y}; pan ${model.pan.x},${model.pan.y}`);
+    check('the note keeps its place in image pixels, and the margin stays at zero', note.anchor.x === 60 && note.anchor.y === 50 && noteEl().style.left === noteLeft && editor.marginString() === '0,0,0,0', `anchor ${note.anchor.x},${note.anchor.y}; box ${noteEl().style.left} was ${noteLeft}; margin ${editor.marginString()}`);
+
+    // Outward does nothing; the least a side can be cut to is 8.
+    await dragHandle('e', 380, 165, 500, 165);
+    check('a handle dragged outward moves nothing', cropText() === '40,30,340,270', `crop ${cropText()}`);
+    await dragHandle('w', 40, 165, 1000, 165);
+    check('a side cannot be cut under 8 pixels', cropText() === '372,30,8,270', `crop ${cropText()}`);
+    press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    await editor.paintRegion();
+    check('Ctrl+Z gives the cut back', cropText() === '40,30,340,270' && sizeBand() === '340x270', `crop ${cropText()}; band ${sizeBand()}`);
+
+    // The copy: the crop with the note over it, every pixel the source's own, the frame left out.
+    const layer = await editor.exportLayer();
+    check('the layer is drawn for the crop: the notes shifted by its origin, the frame left out', layer.crop === '40,30,340,270' && layer.markup.includes('left:-40px;top:-30px') && layer.markup.includes('kept') && !layer.markup.includes('data-edge'), `crop ${layer.crop}`);
+    const r = await invoke('editor_export_check', layer.bytes, { headers: { name: 's44-crop', margin: layer.margin, blur: layer.blur, crop: layer.crop, mode: 'source', sample: '0,0' } });
+    const region = await fetch('http://region.localhost/?x=40&y=30&w=1&h=1&ow=1&oh=1', { cache: 'no-store' });
+    const px = new Uint8Array(await region.arrayBuffer()).subarray(8, 11);
+    check('the copy is the crop\'s size, every uncovered pixel the source\'s own, its top left the source\'s pixel at 40,30', r.width === 340 && r.height === 270 && r.source_mismatches === 0 && !!r.sample && r.sample[0] === px[0] && r.sample[1] === px[1] && r.sample[2] === px[2],
+      `${r.width}x${r.height}, ${r.source_mismatches} mismatches, sample ${JSON.stringify(r.sample)} against ${Array.from(px)}`);
+
+    // The thumbnail follows the save: the crop with the note, fitted into the box.
+    await editor.saveNow();
+    const refreshed = await editor.thumbnailDone();
+    const response = await fetch(`http://region.localhost/?thumb=${shot.document_id}`, { cache: 'no-store' });
+    const bitmap = await createImageBitmap(await response.blob());
+    const scale = Math.min(320 / 340, 200 / 270, 1);
+    check('the thumbnail is the crop fitted into the box', refreshed === true && bitmap.width === Math.round(340 * scale) && bitmap.height === Math.round(270 * scale), `${refreshed}; ${bitmap.width}x${bitmap.height}`);
+
+    // Undo and redo walk the crops, the size band with them.
+    press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    await editor.paintRegion();
+    check('Ctrl+Z takes the corner\'s cut back', cropText() === '0,0,380,300' && sizeBand() === '380x300', `crop ${cropText()}; band ${sizeBand()}`);
+    press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    await editor.paintRegion();
+    check('and the edge\'s: the whole picture again, 400 by 300', cropText() === 'none' && sizeBand() === '400x300' && canvas.width === 400, `crop ${cropText()}; band ${sizeBand()}; canvas ${canvas.width}`);
+    press({ key: 'Z', code: 'KeyZ', ctrlKey: true, shiftKey: true });
+    press({ key: 'Z', code: 'KeyZ', ctrlKey: true, shiftKey: true });
+    await editor.paintRegion();
+    check('Ctrl+Shift+Z twice cuts it again to 40,30 340 by 270', cropText() === '40,30,340,270' && sizeBand() === '340x270', `crop ${cropText()}; band ${sizeBand()}`);
+
+    // Saved with the notes, back after a restart.
+    await editor.saveNow();
+    editor.documents.clear();
+    model.image = { width: 0, height: 0, source: '' };
+    await editor.loadImage(await invoke('editor_store_reload'));
+    check('after a restart the crop is back from the disk', cropText() === '40,30,340,270' && sizeBand() === '340x270' && model.callouts.length === 1, `crop ${cropText()}; band ${sizeBand()}`);
+
+    // The frame goes with its tool and comes back with it.
+    await editor.setMode('annotate');
+    press({ key: 'c', code: 'KeyC' });
+    const gone = getComputedStyle(frame).display;
+    press({ key: 'k', code: 'KeyK' });
+    check('the frame goes with another tool and comes back with the crop tool, on the crop\'s edges', gone === 'none' && getComputedStyle(frame).display === 'block' && frameAt() === '40px 30px 340px 270px', `${gone} then ${getComputedStyle(frame).display}; ${frameAt()}`);
+
+    model.callouts = [];
+    model.shapes = [];
+    await editor.applyCrop(null);
+    editor.setTool(null);
+    editor.record();
+    await editor.saveNow();
     for (let i = 0; i < 40 && !(await invoke('editor_window_visible')); i += 1) await sleep(50);
     await invoke('editor_show');
   }

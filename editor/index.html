@@ -280,6 +280,29 @@
   .ruler:hover .x { display: grid; }
   .ruler.drawing .x, body.plain .ruler .x { display: none; }
   .ruler .x:hover { background: #c0392b; }
+  /* The crop (Rotem, 2026-09-17): with the crop tool in hand a frame sits on the picture's edges
+     with a handle at each corner and at the middle of each side; a handle dragged inward cuts the
+     picture to the frame when it is released, on screen and in every copy, and the source is never
+     touched. The frame's line and the handles are screen pixels at every zoom, counter-scaled by
+     the scene's own scale (--k) like the ruler's x; while a drag lasts the frame darkens what it
+     will cut away. Editing UI, never in a copy: the export leaves the frame out. Its look is
+     provisional until Rotem states one: a 1 px white line, 10 px white squares with a 1 px dark
+     border, the outside dimmed by half. */
+  #crop { position: absolute; display: none; z-index: 2; box-sizing: border-box; pointer-events: none;
+          /* an outline, not a border, so the handles' percentages are the picture's own edges */
+          outline: calc(1px / var(--k, 1)) solid #fff; outline-offset: calc(-1px / var(--k, 1)); }
+  body.cropping:not(.viewing) #crop { display: block; }
+  #crop.dragging { box-shadow: 0 0 0 100000px rgba(0,0,0,.5); }
+  #crop .h { position: absolute; width: 10px; height: 10px; box-sizing: border-box; background: #fff; border: 1px solid #0d1014;
+             pointer-events: auto; transform-origin: 0 0; transform: scale(calc(1 / var(--k, 1))) translate(-50%, -50%); }
+  #crop .h[data-edge="nw"] { left: 0; top: 0; cursor: nwse-resize; }
+  #crop .h[data-edge="n"] { left: 50%; top: 0; cursor: ns-resize; }
+  #crop .h[data-edge="ne"] { left: 100%; top: 0; cursor: nesw-resize; }
+  #crop .h[data-edge="w"] { left: 0; top: 50%; cursor: ew-resize; }
+  #crop .h[data-edge="e"] { left: 100%; top: 50%; cursor: ew-resize; }
+  #crop .h[data-edge="sw"] { left: 0; top: 100%; cursor: nesw-resize; }
+  #crop .h[data-edge="s"] { left: 50%; top: 100%; cursor: ns-resize; }
+  #crop .h[data-edge="se"] { left: 100%; top: 100%; cursor: nwse-resize; }
   body.checking #stage { cursor: progress; }
   #report { position: absolute; inset: 0; display: none; padding: 18px 22px; overflow: auto;
             background: #0c0e10; font-family: ui-monospace, Consolas, monospace;
@@ -299,6 +322,7 @@
       <button type="button" data-tool="text" aria-label="Text"><svg viewBox="0 0 20 20"><path d="M4 4h12M10 4v12M7 16h6"/></svg></button>
       <button type="button" data-tool="blur" aria-label="Blur"><svg viewBox="0 0 20 20"><path d="M10 3c-3 4-5 6.5-5 9a5 5 0 0 0 10 0c0-2.5-2-5-5-9z"/></svg></button>
       <button type="button" data-tool="ruler" aria-label="Ruler"><svg viewBox="0 0 20 20"><rect x="2" y="7" width="16" height="6" rx="1"/><path d="M6 7v3M10 7v3M14 7v3"/></svg></button>
+      <button type="button" data-tool="crop" aria-label="Crop"><svg viewBox="0 0 20 20"><path d="M6 2v12h12"/><path d="M2 6h12v12"/></svg></button>
     </div>
     <button id="copy" type="button" aria-label="Copy"><svg viewBox="0 0 20 20"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M13 7V4.5A1.5 1.5 0 0 0 11.5 3h-7A1.5 1.5 0 0 0 3 4.5v7A1.5 1.5 0 0 0 4.5 13H7"/></svg></button>
     <button id="saveas" type="button" aria-label="Save As"><svg viewBox="0 0 20 20"><path d="M3 4.5A1.5 1.5 0 0 1 4.5 3H13l4 4v8.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 15.5z"/><path d="M6.5 3v4h6V3"/><rect x="6.5" y="11" width="7" height="6"/></svg></button>
@@ -318,6 +342,7 @@
   <div id="scene">
     <svg id="arrows"></svg>
     <svg id="handles"></svg>
+    <div id="crop"><div class="h" data-edge="nw"></div><div class="h" data-edge="n"></div><div class="h" data-edge="ne"></div><div class="h" data-edge="w"></div><div class="h" data-edge="e"></div><div class="h" data-edge="sw"></div><div class="h" data-edge="s"></div><div class="h" data-edge="se"></div></div>
   </div>
 </div>
 <div id="hud"></div>
@@ -352,6 +377,7 @@
   const scene = document.getElementById('scene');
   const arrows = document.getElementById('arrows');
   const handles = document.getElementById('handles');
+  const cropFrame = document.getElementById('crop');
   const hud = document.getElementById('hud');
   const imageSize = document.getElementById('image-size');
   const modeButton = document.getElementById('mode');
@@ -432,6 +458,13 @@
     shapes: [],
     nextShape: 1,
     selectedShape: null,
+    // The crop (S3.6; Rotem, 2026-09-17): the part of the source that is the picture now, in
+    // image pixels, or null for the whole source. A cut, never a change to what the notes are
+    // placed on: every stored coordinate stays in image space, the source is never touched,
+    // and the host cuts a copy at every output. Saved with the notes, one step of undo.
+    crop: null,
+    // The rect a crop handle is dragging, while the drag lasts; the crop takes it at the release.
+    cropping: null,
     fullscreen: false,
     // 'view' or 'annotate' (§3.3). A capture opens in annotation; a file opens in viewing,
     // where no click creates anything, and Annotate switches. Leaving annotation keeps
@@ -444,6 +477,14 @@
   // would make "actual size" wrong by a factor of the display scale, quietly.
   let ratio = 1;
   const dpr = () => ratio;
+
+  // The picture as it is now (S3.6): the crop when one is set, the whole source otherwise.
+  // Every place the picture's edges matter reads this, so the crop is one rect and the
+  // notes, the regions and the pan stay in image space.
+  const pictureRect = () => (model.crop ? { ...model.crop } : { x: 0, y: 0, w: model.image.width, h: model.image.height });
+  const cropString = () => (model.crop ? `${model.crop.x},${model.crop.y},${model.crop.w},${model.crop.h}` : '');
+  // A saved crop is kept only when it lies inside the picture it was saved for.
+  const cropFits = (c, width, height) => !!c && c.w >= 1 && c.h >= 1 && c.x >= 0 && c.y >= 0 && c.x + c.w <= width && c.y + c.h <= height;
 
   const measureRatio = async () => {
     const metrics = await invoke('editor_window_metrics');
@@ -470,10 +511,12 @@
     const visibleW = (vp.w * dpr()) / model.zoom;
     const visibleH = (vp.h * dpr()) / model.zoom;
     const comp = compositionSize();
-    const minX = comp.w <= visibleW ? 0 : -model.margin.left;
-    const maxX = comp.w <= visibleW ? 0 : model.image.width + model.margin.right - visibleW;
-    const minY = comp.h <= visibleH ? 0 : -model.margin.top;
-    const maxY = comp.h <= visibleH ? 0 : model.image.height + model.margin.bottom - visibleH;
+    const pic = pictureRect();
+    // Centred, the pan is the picture's own origin, so the picture starts at the offset.
+    const minX = comp.w <= visibleW ? pic.x : pic.x - model.margin.left;
+    const maxX = comp.w <= visibleW ? pic.x : pic.x + pic.w + model.margin.right - visibleW;
+    const minY = comp.h <= visibleH ? pic.y : pic.y - model.margin.top;
+    const maxY = comp.h <= visibleH ? pic.y : pic.y + pic.h + model.margin.bottom - visibleH;
     model.pan.x = Math.min(Math.max(minX, model.pan.x), maxX);
     model.pan.y = Math.min(Math.max(minY, model.pan.y), maxY);
   };
@@ -513,6 +556,7 @@
       nextNumber: model.nextNumber,
       shapes: model.shapes,
       nextShape: model.nextShape,
+      crop: model.crop,
       margin: { ...model.margin },
       marginFloor: { ...model.marginFloor },
       textSize: model.textSize,
@@ -529,12 +573,14 @@
 
     const visibleW = (vp.w * dpr()) / model.zoom;
     const visibleH = (vp.h * dpr()) / model.zoom;
-    // The image's part of the view: a pan inside the margin leaves the image starting
-    // right of, or below, the viewport's edge, and the region stops at the image's edge.
-    const x = Math.max(0, Math.round(model.pan.x));
-    const y = Math.max(0, Math.round(model.pan.y));
-    const srcW = Math.round(Math.min(model.image.width, model.pan.x + visibleW) - x);
-    const srcH = Math.round(Math.min(model.image.height, model.pan.y + visibleH) - y);
+    // The picture's part of the view: a pan inside the margin leaves the picture starting
+    // right of, or below, the viewport's edge, and the region stops at the picture's edge,
+    // which is the crop's when one is set.
+    const pic = pictureRect();
+    const x = Math.max(pic.x, Math.round(model.pan.x));
+    const y = Math.max(pic.y, Math.round(model.pan.y));
+    const srcW = Math.round(Math.min(pic.x + pic.w, model.pan.x + visibleW) - x);
+    const srcH = Math.round(Math.min(pic.y + pic.h, model.pan.y + visibleH) - y);
     const shown = srcW >= 1 && srcH >= 1;
     canvas.style.display = shown ? '' : 'none';
     const outW = Math.max(1, Math.round(srcW * model.zoom));
@@ -575,7 +621,7 @@
     context.putImageData(new ImageData(new Uint8ClampedArray(bytes), width, height), 0, 0);
     // The whole picture on the canvas is copied under it for the next drag, and an ordinary
     // paint landing ends the copy's showing (Rotem, 2026-09-15).
-    if (x === 0 && y === 0 && srcW === model.image.width && srcH === model.image.height) captureBackdrop(width, height);
+    if (x === pic.x && y === pic.y && srcW === pic.w && srcH === pic.h) captureBackdrop(width, height);
     if (!drag) document.body.classList.remove('panning');
     lastRegion = { x, y, w: srcW, h: srcH, width, height, zoom: model.zoom, ms: Math.round(performance.now() - askedAt) };
     // A pan drag may have moved on while this region was on its way: it is placed by its own
@@ -609,20 +655,21 @@
     model.offset.y = compH <= vp.h
       ? snap((vp.h - compH) / 2 + (model.margin.top * model.zoom) / dpr())
       : 0;
-    // The canvas holds the image from its first visible column, so it starts at the
-    // image's origin or at the viewport's edge, whichever is further right or down.
-    canvas.style.left = `${Math.max(0, snap(model.offset.x - (model.pan.x * model.zoom) / dpr()))}px`;
-    canvas.style.top = `${Math.max(0, snap(model.offset.y - (model.pan.y * model.zoom) / dpr()))}px`;
-    // The copy of the whole picture sits where the notes' layer puts the image, at its size.
-    backdrop.style.left = `${model.offset.x - (model.pan.x * model.zoom) / dpr()}px`;
-    backdrop.style.top = `${model.offset.y - (model.pan.y * model.zoom) / dpr()}px`;
-    backdrop.style.width = `${(model.image.width * model.zoom) / dpr()}px`;
-    backdrop.style.height = `${(model.image.height * model.zoom) / dpr()}px`;
-    const hasMargin = comp.w !== model.image.width || comp.h !== model.image.height;
+    // The canvas holds the picture from its first visible column, so it starts at the
+    // picture's origin or at the viewport's edge, whichever is further right or down.
+    const pic = pictureRect();
+    canvas.style.left = `${snap(model.offset.x + ((Math.max(pic.x, model.pan.x) - model.pan.x) * model.zoom) / dpr())}px`;
+    canvas.style.top = `${snap(model.offset.y + ((Math.max(pic.y, model.pan.y) - model.pan.y) * model.zoom) / dpr())}px`;
+    // The copy of the whole picture sits where the notes' layer puts the picture, at its size.
+    backdrop.style.left = `${model.offset.x - ((model.pan.x - pic.x) * model.zoom) / dpr()}px`;
+    backdrop.style.top = `${model.offset.y - ((model.pan.y - pic.y) * model.zoom) / dpr()}px`;
+    backdrop.style.width = `${(pic.w * model.zoom) / dpr()}px`;
+    backdrop.style.height = `${(pic.h * model.zoom) / dpr()}px`;
+    const hasMargin = comp.w !== pic.w || comp.h !== pic.h;
     mat.style.display = hasMargin ? 'block' : 'none';
     if (hasMargin) {
-      mat.style.left = `${model.offset.x - ((model.pan.x + model.margin.left) * model.zoom) / dpr()}px`;
-      mat.style.top = `${model.offset.y - ((model.pan.y + model.margin.top) * model.zoom) / dpr()}px`;
+      mat.style.left = `${model.offset.x - ((model.pan.x - pic.x + model.margin.left) * model.zoom) / dpr()}px`;
+      mat.style.top = `${model.offset.y - ((model.pan.y - pic.y + model.margin.top) * model.zoom) / dpr()}px`;
       mat.style.width = `${compW}px`;
       mat.style.height = `${compH}px`;
     }
@@ -707,9 +754,9 @@
       { x: anchor.x - Math.round(width / 2), y: anchor.y + gy }, // below
       { x: anchor.x - Math.round(width / 2), y: anchor.y - gy - height }, // above
     ];
-    const comp = compositionSize();
-    const inside = (c) => c.x >= -model.margin.left && c.y >= -model.margin.top
-      && c.x + width <= comp.w - model.margin.left && c.y + height <= comp.h - model.margin.top;
+    const pic = pictureRect();
+    const inside = (c) => c.x >= pic.x - model.margin.left && c.y >= pic.y - model.margin.top
+      && c.x + width <= pic.x + pic.w + model.margin.right && c.y + height <= pic.y + pic.h + model.margin.bottom;
     const clear = (c) => {
       const r = { x: c.x, y: c.y, w: width, h: height };
       return !others.some((o) => overlaps(r, rectOf(o)) || covers(r, o.anchor));
@@ -751,13 +798,14 @@
   const fitMargin = () => {
     if (drag || !model.image.width) return false;
     const need = { ...model.marginFloor };
+    const pic = pictureRect();
     for (const callout of model.callouts) {
       const r = rectOf(callout);
       const pad = Math.round((callout.textSize || model.textSize) * 0.4);
-      need.left = Math.max(need.left, pad - r.x);
-      need.top = Math.max(need.top, pad - r.y);
-      need.right = Math.max(need.right, r.x + r.w + pad - model.image.width);
-      need.bottom = Math.max(need.bottom, r.y + r.h + pad - model.image.height);
+      need.left = Math.max(need.left, pad - (r.x - pic.x));
+      need.top = Math.max(need.top, pad - (r.y - pic.y));
+      need.right = Math.max(need.right, r.x + r.w + pad - (pic.x + pic.w));
+      need.bottom = Math.max(need.bottom, r.y + r.h + pad - (pic.y + pic.h));
     }
     let changed = false;
     for (const edge of ['left', 'top', 'right', 'bottom']) {
@@ -783,6 +831,7 @@
     nextNumber: model.nextNumber,
     shapes: model.shapes,
     nextShape: model.nextShape,
+    crop: model.crop ? { ...model.crop } : null,
     margin: { ...model.margin },
     textSize: model.textSize,
   });
@@ -833,7 +882,7 @@
   // operation that changed nothing, an empty bubble discarded at commit for one, adds no
   // step. Undo restores a note with the number it had (§3.5); the margin follows the
   // restored notes through settle.
-  const snapshot = () => JSON.stringify({ callouts: model.callouts, nextNumber: model.nextNumber, shapes: model.shapes, nextShape: model.nextShape });
+  const snapshot = () => JSON.stringify({ callouts: model.callouts, nextNumber: model.nextNumber, shapes: model.shapes, nextShape: model.nextShape, crop: model.crop });
 
   // The last thing done is what Ctrl+Z takes (S2.9; Rotem, 2026-09-16): every note step
   // and every deletion of a document takes a number from this one counter as it happens,
@@ -878,13 +927,30 @@
     model.nextNumber = saved.nextNumber;
     model.shapes = saved.shapes || [];
     model.nextShape = saved.nextShape || 1;
+    const cropBefore = cropString();
+    model.crop = saved.crop || null;
     model.selected = null;
     model.selectedShape = null;
     model.editing = null;
     model.placing = null;
-    settle();
+    // A crop undone or redone is a new picture: the view and the paint follow it.
+    if (cropString() !== cropBefore) applyCrop(model.crop); else settle();
     markDirty();
     drawHud();
+  };
+
+  // The crop takes effect (S3.6): the picture is the rect now, or the whole source for none;
+  // the view at the whole picture follows to the new whole, the notes take the margin they
+  // need around it, and the picture is painted anew. The copy of the whole picture kept for
+  // a pan drag was the old picture's, so it is dropped until the new one is painted whole.
+  const applyCrop = (rect) => {
+    const whole = !rect || (rect.x === 0 && rect.y === 0 && rect.w === model.image.width && rect.h === model.image.height);
+    model.crop = whole ? null : { x: rect.x, y: rect.y, w: rect.w, h: rect.h };
+    backdropFor = null;
+    followFit();
+    layoutScene();
+    fitMargin();
+    return paintRegion();
   };
 
   // A deleted document comes back the way it went (S2.9): its folder out of the trash by
@@ -1093,6 +1159,15 @@
     for (const el of [...scene.querySelectorAll('.ruler')]) {
       if (!model.shapes.some((s) => s.id === el.dataset.shape)) el.remove();
     }
+    // The crop's frame (S3.6): on the picture's edges while the crop tool is in hand, on the
+    // rect a handle is dragging while the drag lasts.
+    const cropRect = model.cropping || pictureRect();
+    cropFrame.style.left = `${cropRect.x}px`;
+    cropFrame.style.top = `${cropRect.y}px`;
+    cropFrame.style.width = `${cropRect.w}px`;
+    cropFrame.style.height = `${cropRect.h}px`;
+    cropFrame.classList.toggle('dragging', !!model.cropping);
+    document.body.classList.toggle('cropping', model.tool === 'crop' && !!model.image.width);
 
     drawArrows();
   };
@@ -1191,7 +1266,24 @@
       button.classList.toggle('active', button.dataset.tool === tool);
     }
     document.body.classList.toggle('armed', !!tool);
+    layoutScene(); // the crop's frame shows with its tool and goes with it
     drawHud();
+  };
+
+  // The rect a crop handle's drag describes (S3.6): the edge it holds, or a corner's two,
+  // moved inward from where the picture was when the drag began, never past it, and never
+  // past the least a side can be. Inward only: the pixels outside are gone from the screen,
+  // and Ctrl+Z is the way back.
+  const MIN_CROP = 8; // provisional
+  const cropFrom = (from, edge, point) => {
+    const r = { ...from };
+    const px = Math.round(point.x);
+    const py = Math.round(point.y);
+    if (edge.includes('w')) { const x = Math.max(from.x, Math.min(px, from.x + from.w - MIN_CROP)); r.w = from.x + from.w - x; r.x = x; }
+    if (edge.includes('e')) { r.w = Math.min(from.x + from.w, Math.max(px, from.x + MIN_CROP)) - from.x; }
+    if (edge.includes('n')) { const y = Math.max(from.y, Math.min(py, from.y + from.h - MIN_CROP)); r.h = from.y + from.h - y; r.y = y; }
+    if (edge.includes('s')) { r.h = Math.min(from.y + from.h, Math.max(py, from.y + MIN_CROP)) - from.y; }
+    return r;
   };
   for (const button of document.querySelectorAll('#tools button')) {
     button.addEventListener('click', (event) => { setTool(button.dataset.tool); event.currentTarget.blur(); });
@@ -1216,7 +1308,9 @@
   let emptyText = '';
   // The picture's size in its container above the timeline (Rotem, 2026-09-16), as the HUD writes it.
   const drawImageSize = () => {
-    const text = model.image.width ? `${model.image.width}x${model.image.height}` : '';
+    // The picture as it is now: the crop's size once one is set.
+    const pic = pictureRect();
+    const text = model.image.width ? `${pic.w}x${pic.h}` : '';
     if (imageSize.textContent !== text) imageSize.textContent = text;
   };
   const drawHud = () => {
@@ -2159,6 +2253,20 @@
       return;
     }
 
+    // A crop handle (S3.6): the drag moves its edge, or a corner's two, inward, and the
+    // release cuts the picture to the frame.
+    const handleEl = target.closest && target.closest('#crop .h');
+    if (handleEl && model.tool === 'crop') {
+      if (model.editing) commitEditing();
+      const from = pictureRect();
+      model.cropping = { ...from };
+      drag = { kind: 'crop', edge: handleEl.dataset.edge, from };
+      try { stage.setPointerCapture(event.pointerId); } catch (e) { /* a synthetic pointer */ }
+      layoutScene();
+      event.preventDefault();
+      return;
+    }
+
     if (target.classList.contains('anchor')) {
       const callout = model.callouts.find((c) => c.id === target.dataset.anchorFor);
       const point = toImage(event);
@@ -2229,6 +2337,12 @@
       layoutScene();
       return;
     }
+    // The crop tool makes nothing by a click on the picture: only its handles cut, and a
+    // drag on the picture pans, as with no tool in hand.
+    if (model.tool === 'crop') {
+      startPan(event);
+      return;
+    }
     if (model.tool === 'arrow' || model.tool === 'rect' || model.tool === 'highlight' || model.tool === 'blur' || model.tool === 'ruler') {
       const shape = createShape(model.tool, toImage(event));
       drag = { kind: 'draw', shape };
@@ -2285,6 +2399,11 @@
       return;
     }
     const point = toImage(event);
+    if (drag.kind === 'crop') {
+      model.cropping = cropFrom(drag.from, drag.edge, point);
+      layoutScene();
+      return;
+    }
     if (drag.kind === 'draw') {
       drag.shape.b = { x: Math.round(point.x), y: Math.round(point.y) };
       if (drag.shape.kind === 'blur' || drag.shape.kind === 'ruler') layoutScene(); else drawArrows();
@@ -2318,6 +2437,21 @@
 
   const endDrag = () => {
     if (!drag) return;
+    // A crop handle released cuts the picture to the frame, one step of history; released
+    // where it was, nothing changes.
+    if (drag.kind === 'crop') {
+      const rect = model.cropping;
+      const was = drag.from;
+      model.cropping = null;
+      drag = null;
+      if (rect.x !== was.x || rect.y !== was.y || rect.w !== was.w || rect.h !== was.h) {
+        applyCrop(rect);
+        record();
+      } else {
+        layoutScene();
+      }
+      return;
+    }
     const moved = drag.kind !== 'pan';
     // A pan that moved ends painted the ordinary way, the canvas back on a physical pixel
     // (F74) after sliding by its region's origin while the drag lasted (Rotem, 2026-09-15).
@@ -2505,6 +2639,7 @@
       if (event.code === 'KeyT') { setTool('text'); event.preventDefault(); return; }
       if (event.code === 'KeyB') { setTool('blur'); event.preventDefault(); return; }
       if (event.code === 'KeyM') { setTool('ruler'); event.preventDefault(); return; }
+      if (event.code === 'KeyK') { setTool('crop'); event.preventDefault(); return; } // provisional key
     }
     if (event.key === 'Enter' && model.selected) { startEditing(model.selected); event.preventDefault(); return; }
 
@@ -2590,10 +2725,13 @@
     return paintRegion();
   };
 
-  const compositionSize = () => ({
-    w: model.image.width + model.margin.left + model.margin.right,
-    h: model.image.height + model.margin.top + model.margin.bottom,
-  });
+  const compositionSize = () => {
+    const pic = pictureRect();
+    return {
+      w: pic.w + model.margin.left + model.margin.right,
+      h: pic.h + model.margin.top + model.margin.bottom,
+    };
+  };
 
   const computeFit = () => {
     const vp = viewport();
@@ -2675,6 +2813,7 @@
           nextNumber: saved.nextNumber || 1,
           shapes: saved.shapes || [],
           nextShape: saved.nextShape || 1,
+          crop: cropFits(saved.crop, info.width, info.height) ? saved.crop : null,
           margin: saved.margin || { left: 0, top: 0, right: 0, bottom: 0 },
           marginFloor: { left: 0, top: 0, right: 0, bottom: 0 },
           textSize: saved.textSize || model.textSize,
@@ -2689,6 +2828,8 @@
     model.nextNumber = known ? known.nextNumber : 1;
     model.shapes = known && known.shapes ? known.shapes : [];
     model.nextShape = known && known.nextShape ? known.nextShape : 1;
+    model.crop = known && cropFits(known.crop, info.width, info.height) ? known.crop : null;
+    model.cropping = null;
     model.selectedShape = null;
     if (known) model.textSize = known.textSize;
     model.selected = null;
@@ -2708,7 +2849,8 @@
     if (openedWithArea) model.fitZoom = computeFit();
     openedWithoutArea = !openedWithArea;
     model.zoom = model.fitZoom;
-    model.pan = { x: 0, y: 0 };
+    const pic = pictureRect();
+    model.pan = { x: pic.x, y: pic.y };
     refreshStrip().catch(() => {});
     await paintRegion();
   };
@@ -2755,14 +2897,18 @@
     const root = document.createElementNS('http://www.w3.org/1999/xhtml', 'div');
     root.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
     root.setAttribute('style', `position:relative;width:${width}px;height:${height}px;margin:0;overflow:visible;`);
-    // Image space sits inside canvas space at the margin offset (part 5).
+    // Image space sits inside canvas space at the margin offset (part 5), less the crop's
+    // origin when one is set: the canvas is the crop with the margin around it, and every
+    // note keeps its image coordinate.
+    const pic = pictureRect();
     const inner = document.createElementNS('http://www.w3.org/1999/xhtml', 'div');
-    inner.setAttribute('style', `position:absolute;left:${model.margin.left}px;top:${model.margin.top}px;width:${model.image.width}px;height:${model.image.height}px;overflow:visible;`);
+    inner.setAttribute('style', `position:absolute;left:${model.margin.left - pic.x}px;top:${model.margin.top - pic.y}px;width:${model.image.width}px;height:${model.image.height}px;overflow:visible;`);
     root.appendChild(inner);
     try {
       for (const child of scene.children) {
         if (child.classList && child.classList.contains('anchor')) continue; // editing UI
         if (child.id === 'handles') continue; // editing UI
+        if (child.id === 'crop') continue; // the crop's frame, editing UI; the host cuts the source
         if (child.classList && child.classList.contains('blur')) continue; // the host blurs the source
         const clone = child.cloneNode(true);
         if (child.id === 'arrows') {
@@ -2810,7 +2956,7 @@
     }
     const encodeMs = performance.now() - started - rasterMs;
     const bytes = new Uint8Array(await blob.arrayBuffer());
-    return { bytes, svgChars: svg.length, rasterMs, encodeMs, originClean, margin: marginString(), blur: blurString(), markup };
+    return { bytes, svgChars: svg.length, rasterMs, encodeMs, originClean, margin: marginString(), blur: blurString(), crop: cropString(), markup };
   };
 
   // The timeline's thumbnail carries the notes (Rotem, 2026-09-16): after every save of the
@@ -2829,7 +2975,7 @@
       const { w, h } = compositionSize();
       const layer = await exportLayer(Math.min(THUMB_BOX.w / w, THUMB_BOX.h / h, 1));
       if (documentId !== model.image.document_id) return false;
-      await invoke('editor_thumbnail', layer.bytes, { headers: { margin: layer.margin, blur: layer.blur, document: String(documentId) } });
+      await invoke('editor_thumbnail', layer.bytes, { headers: { margin: layer.margin, blur: layer.blur, crop: layer.crop, document: String(documentId) } });
       dropThumb(documentId);
       const el = strip.querySelector(`.thumb[data-id="${documentId}"]`);
       if (el) {
@@ -2865,7 +3011,7 @@
     let report;
     try {
       layer = await exportLayer();
-      report = await invoke('editor_copy', layer.bytes, { headers: { margin: layer.margin, blur: layer.blur } });
+      report = await invoke('editor_copy', layer.bytes, { headers: { margin: layer.margin, blur: layer.blur, crop: layer.crop } });
     } catch (err) {
       notice(`NOT COPIED: ${err}. Your work is here; try again`, 0);
       throw err;
@@ -2919,7 +3065,7 @@
     let layer;
     try {
       layer = await exportLayer();
-      await invoke('editor_save_as', layer.bytes, { headers: { margin: layer.margin, blur: layer.blur } });
+      await invoke('editor_save_as', layer.bytes, { headers: { margin: layer.margin, blur: layer.blur, crop: layer.crop } });
       notice('Save As is open', 0);
     } catch (err) {
       saveAsOpen = false;
@@ -2988,6 +3134,10 @@
     createTextNote,
     blurRadius,
     blurString,
+    pictureRect,
+    cropString,
+    cropFrom,
+    applyCrop,
     handles,
     snapshot,
     copyAndReturn,

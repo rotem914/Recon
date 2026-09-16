@@ -193,6 +193,70 @@ pub fn parse_blurs(text: &str) -> Result<Vec<BlurRect>, String> {
     Ok(rects)
 }
 
+/// The crop an output is cut to (S3.6; Rotem, 2026-09-17), in image pixels: the part of the
+/// source that is the picture now. Like the blur it is applied to a copy at every output;
+/// the source in the document and on disk is never touched, so undoing the crop gives
+/// every pixel back.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CropRect {
+    pub x: u32,
+    pub y: u32,
+    pub w: u32,
+    pub h: u32,
+}
+
+/// "x,y,w,h", as the page sends it in a request header when a crop is set.
+pub fn parse_crop(text: &str) -> Result<CropRect, String> {
+    let parts: Vec<u32> = text
+        .split(',')
+        .map(|p| p.trim().parse::<u32>())
+        .collect::<Result<_, _>>()
+        .map_err(|_| format!("a crop is four numbers, not {text:?}"))?;
+    if parts.len() != 4 {
+        return Err(format!("a crop is four numbers, not {text:?}"));
+    }
+    if parts[2] == 0 || parts[3] == 0 {
+        return Err(format!(
+            "a crop of {}x{} pixels is not one",
+            parts[2], parts[3]
+        ));
+    }
+    Ok(CropRect {
+        x: parts[0],
+        y: parts[1],
+        w: parts[2],
+        h: parts[3],
+    })
+}
+
+/// The source an output composes: the document's own pixels, blurred inside the rects on
+/// a copy when any are named, cut to the crop on a copy when one is named, and the bytes
+/// themselves when neither is. The size returned is the size of what is returned.
+pub fn prepare_source<'a>(
+    rgba: &'a [u8],
+    width: u32,
+    height: u32,
+    blurs: &[BlurRect],
+    crop: Option<CropRect>,
+) -> Result<(std::borrow::Cow<'a, [u8]>, u32, u32), String> {
+    let mut source = std::borrow::Cow::Borrowed(rgba);
+    if !blurs.is_empty() {
+        let mut copy = rgba.to_vec();
+        blur_rects(&mut copy, width, height, blurs);
+        source = std::borrow::Cow::Owned(copy);
+    }
+    let Some(c) = crop else {
+        return Ok((source, width, height));
+    };
+    let cut = recon_pixels::crop(&source, width, height, c.x, c.y, c.w, c.h).ok_or_else(|| {
+        format!(
+            "the crop {},{} {}x{} does not fit the {width}x{height} picture",
+            c.x, c.y, c.w, c.h
+        )
+    })?;
+    Ok((std::borrow::Cow::Owned(cut), c.w, c.h))
+}
+
 /// The radius for a region, the same on screen and in the output: an eighth of the
 /// shorter side, no less than six and no more than forty pixels.
 pub fn blur_radius(rect: BlurRect) -> u32 {
@@ -297,6 +361,38 @@ fn blur_line(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The crop cuts a copy to the rect, byte for byte, and leaves the source as it was; a
+    /// rect past the edge is refused; with no crop and no blur the source itself is used.
+    #[test]
+    fn the_crop_cuts_a_copy_and_a_crop_past_the_edge_is_refused() {
+        let (w, h) = (4u32, 3u32);
+        let rgba: Vec<u8> = (0..w * h).flat_map(|i| [i as u8, 0, 0, 255]).collect();
+        let rect = CropRect {
+            x: 1,
+            y: 1,
+            w: 2,
+            h: 2,
+        };
+        let (cut, cw, ch) = prepare_source(&rgba, w, h, &[], Some(rect)).unwrap();
+        assert_eq!((cw, ch), (2, 2));
+        assert_eq!(cut.len(), 16);
+        assert_eq!([cut[0], cut[4], cut[8], cut[12]], [5, 6, 9, 10]);
+        assert_eq!(rgba[5 * 4], 5, "the source is untouched");
+        let past = CropRect {
+            x: 3,
+            y: 0,
+            w: 2,
+            h: 1,
+        };
+        assert!(prepare_source(&rgba, w, h, &[], Some(past)).is_err());
+        let (same, sw, sh) = prepare_source(&rgba, w, h, &[], None).unwrap();
+        assert!(matches!(same, std::borrow::Cow::Borrowed(_)));
+        assert_eq!((sw, sh), (w, h));
+        assert_eq!(parse_crop("1,1,2,2"), Ok(rect));
+        assert!(parse_crop("1,1,0,2").is_err());
+        assert!(parse_crop("1,1,2").is_err());
+    }
 
     /// The blur as it was first written, a direct sum of the window per pixel, kept here
     /// so the running sum is proved to give the same bytes.

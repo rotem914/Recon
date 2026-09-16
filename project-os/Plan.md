@@ -676,8 +676,9 @@ Out of scope for v1:
 **Viewing is in scope; managing files is not.** Recon opens, shows and annotates an image.
 It does not rename, move, delete, tag, rate or organize external files, does not run batch
 operations over a folder, does not build a browsable thumbnail grid of the file system, and
-does not edit an image beyond annotating it: no crop, no resize, no color adjustment in v1.
-Writing back into an external file, in any format, stays out.
+does not edit an image beyond annotating it: no resize, no color adjustment in v1. Crop
+came in at Rotem's word on 2026-09-17 (S3.6), as a cut the host makes on a copy at every
+output, the source untouched. Writing back into an external file, in any format, stays out.
 
 Full-window capture and further editor tools can be judged from observed use. They do not
 block the initial loop.
@@ -2305,6 +2306,18 @@ Annotate and Copy were settled.
       exported with the other shapes; the × is 16 screen pixels at every zoom and never
       in a copy. The look, a 2 px line in the callout line's blue and a dark 14 px label,
       is provisional, in `project-os/Design.md`. Section 43 of the editor checks.
+- [x] S3.6 Crop, at Rotem's word on 2026-09-17, over the v1 scope line that kept crop out:
+      a crop button in the sidebar, and with it in hand handles on the picture's edges that
+      are dragged inward to cut the picture. Model: Fable 5.1, it reaches the output path.
+      **Built 2026-09-17.** The crop is one rect in image pixels beside the notes: the
+      picture on screen, the size band, every copy and the thumbnail are the crop, the notes
+      keep their image coordinates, the host cuts a copy of the source at every output and
+      the document's own pixels are never touched, so Ctrl+Z gives every pixel back. Eight
+      handles, corners and sides, inward only, a side no smaller than 8 px; a click on the
+      picture with the tool in hand makes nothing and a drag pans. K and the button after
+      Ruler, the key provisional. Saved with the notes, one step of undo, back after a
+      restart. The look is provisional, in `project-os/Design.md`. Section 44 of the editor
+      checks.
 - [x] S2.6 Export beyond PNG: Save As offering JPEG beside PNG, the same never-overwrite
       path, the quality fixed rather than asked. Model: Opus 5, the path exists.
       **Built 2026-09-14, on Fable at Rotem's word.** The Save As dialog offers JPEG beside

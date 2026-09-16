@@ -1640,13 +1640,35 @@ fn blur_header(request: &tauri::ipc::Request<'_>) -> Result<Vec<crate::compose::
         .map(|b| b.unwrap_or_default())
 }
 
+/// The crop the page sends in a header (S3.6): none when the header is absent or empty.
+fn crop_header(
+    request: &tauri::ipc::Request<'_>,
+) -> Result<Option<crate::compose::CropRect>, String> {
+    request
+        .headers()
+        .get("crop")
+        .and_then(|v| v.to_str().ok())
+        .filter(|v| !v.trim().is_empty())
+        .map(crate::compose::parse_crop)
+        .transpose()
+}
+
 fn compose_layer(
     png: &[u8],
     margin: crate::compose::Margin,
     blurs: &[crate::compose::BlurRect],
+    crop: Option<crate::compose::CropRect>,
 ) -> Result<(crate::compose::Composite, Vec<u8>, u128), String> {
     let image = state().image().ok_or("no image is loaded")?;
-    let (w, h) = (image.frame.width(), image.frame.height());
+    // The blur and the crop are applied to a copy, never to the document's own pixels
+    // (S3.4, S3.6).
+    let (source, w, h) = crate::compose::prepare_source(
+        &image.frame.rgba,
+        image.frame.width(),
+        image.frame.height(),
+        blurs,
+        crop,
+    )?;
     let (cw, ch) = margin.canvas(w, h);
     let started = Instant::now();
     let layer = image::load_from_memory_with_format(png, image::ImageFormat::Png)
@@ -1660,17 +1682,7 @@ fn compose_layer(
         ));
     }
     let layer = layer.into_raw();
-    // The blur is applied to a copy, never to the document's own pixels (S3.4).
-    let blurred;
-    let source: &[u8] = if blurs.is_empty() {
-        &image.frame.rgba
-    } else {
-        let mut copy = image.frame.rgba.clone();
-        crate::compose::blur_rects(&mut copy, w, h, blurs);
-        blurred = copy;
-        &blurred
-    };
-    let composite = crate::compose::compose(source, w, h, &layer, margin, crate::compose::MAT)?;
+    let composite = crate::compose::compose(&source, w, h, &layer, margin, crate::compose::MAT)?;
     Ok((composite, layer, started.elapsed().as_millis()))
 }
 
@@ -1703,7 +1715,8 @@ pub fn editor_copy(request: tauri::ipc::Request<'_>) -> Result<CopyReport, Strin
         }
     };
     let blurs = blur_header(&request)?;
-    let (composite, _, compose_ms) = compose_layer(&bytes, margin, &blurs)?;
+    let crop = crop_header(&request)?;
+    let (composite, _, compose_ms) = compose_layer(&bytes, margin, &blurs, crop)?;
     let published = crate::clipboard::publish(&composite.rgba, composite.width, composite.height)?;
     println!(
         "copied {}x{} to the clipboard: composed in {compose_ms} ms, encoded in {} ms, published in {} ms as {}",
@@ -1767,7 +1780,16 @@ pub fn editor_thumbnail(request: tauri::ipc::Request<'_>) -> Result<(), String> 
         return Err(format!("document {id} is not on disk yet"));
     }
     let image = state().image().ok_or("no image is loaded")?;
-    let (w, h) = (image.frame.width(), image.frame.height());
+    // The blur and the crop are applied to a copy at full size before the resample, as a
+    // copy applies them; the document's pixels are never touched (S3.4, S3.6).
+    let crop = crop_header(&request)?;
+    let (source, w, h) = crate::compose::prepare_source(
+        &image.frame.rgba,
+        image.frame.width(),
+        image.frame.height(),
+        &blurs,
+        crop,
+    )?;
     let (cw, ch) = margin.canvas(w, h);
     let layer = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)
         .map_err(|err| format!("the layer did not decode: {err}"))?
@@ -1793,16 +1815,7 @@ pub fn editor_thumbnail(request: tauri::ipc::Request<'_>) -> Result<(), String> 
         right: tw - left - sw,
         bottom: th - top - sh,
     };
-    let blurred;
-    let source: &[u8] = if blurs.is_empty() {
-        &image.frame.rgba
-    } else {
-        let mut copy = image.frame.rgba.clone();
-        crate::compose::blur_rects(&mut copy, w, h, &blurs);
-        blurred = copy;
-        &blurred
-    };
-    let small = recon_pixels::resample(source, w, h, sw, sh)
+    let small = recon_pixels::resample(&source, w, h, sw, sh)
         .ok_or_else(|| format!("document {id}: the thumbnail did not resample"))?;
     let composite = crate::compose::compose(
         &small,
@@ -2073,7 +2086,8 @@ pub fn editor_save_as(app: AppHandle, request: tauri::ipc::Request<'_>) -> Resul
         }
     };
     let blurs = blur_header(&request)?;
-    let (composite, _, compose_ms) = compose_layer(&bytes, margin, &blurs)?;
+    let crop = crop_header(&request)?;
+    let (composite, _, compose_ms) = compose_layer(&bytes, margin, &blurs, crop)?;
     let window = app
         .get_webview_window("editor")
         .ok_or("there is no editor window")?;
@@ -2971,17 +2985,21 @@ mod checks {
         };
 
         let blurs = blur_header(&request)?;
-        let (composite, layer, compose_ms) = compose_layer(&bytes, margin, &blurs)?;
+        let crop = crop_header(&request)?;
+        let (composite, layer, compose_ms) = compose_layer(&bytes, margin, &blurs, crop)?;
         let image = state().image().ok_or("no image is loaded")?;
-        let (sw, sh) = (image.frame.width(), image.frame.height());
-        let source_mismatches = crate::compose::source_mismatches(
-            &composite,
+        // The source the output is checked against is the one it was cut from: the crop of
+        // the frame when one is named, unblurred, so a blur still counts as a difference and
+        // a crop's copy is exact inside its own pixels.
+        let (source, sw, sh) = crate::compose::prepare_source(
             &image.frame.rgba,
-            sw,
-            sh,
-            &layer,
-            margin,
-        );
+            image.frame.width(),
+            image.frame.height(),
+            &[],
+            crop,
+        )?;
+        let source_mismatches =
+            crate::compose::source_mismatches(&composite, &source, sw, sh, &layer, margin);
         let covered = layer
             .as_chunks::<4>()
             .0
@@ -3726,7 +3744,8 @@ mod checks {
             }
         };
         let blurs = blur_header(&request)?;
-        let (composite, _, _) = compose_layer(&bytes, margin, &blurs)?;
+        let crop = crop_header(&request)?;
+        let (composite, _, _) = compose_layer(&bytes, margin, &blurs, crop)?;
         let target = std::path::Path::new(&path);
         let encoded =
             crate::export::encode(&composite.rgba, composite.width, composite.height, target)?;
