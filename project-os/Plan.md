@@ -562,6 +562,13 @@ rendering library's private, unversioned serialization.
 - Stage 2 adds the thumbnail strip and a way to reach older documents inside the same
   editor, with simple date grouping if it helps.
 - Changing a Rogers target never clears history.
+- The strip has tabs (Rotem, 2026-09-16, built the same day): a plus at the left of the
+  picture's size band makes Main and New tab at its first press, and another New tab at
+  every press after, the new one selected. Main is the whole library, pinned first and
+  never deleted. Every other tab is a feed: a capture taken while it is selected lands in
+  the library, so in Main, and in that tab too, so a client's remarks in a call become a
+  feed of tasks. A tab is deleted by its ×, its captures staying in Main, and dragged into
+  another place after Main. The list is kept whole in `tabs.json` beside the documents.
 - Full-resolution image data is loaded when needed. Thumbnails and inactive documents must
   not make memory grow with the size of the library.
 - The same discipline applies to a folder walk: one decoded image at a time, plus whatever

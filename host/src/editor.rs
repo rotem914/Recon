@@ -735,6 +735,49 @@ pub fn editor_notes(document_id: u64) -> Option<serde_json::Value> {
     })
 }
 
+/// The timeline's tabs as the page last saved them (Rotem, 2026-09-16): the page's own
+/// object, kept whole in `tabs.json` beside the documents and never interpreted here, like a
+/// document's notes. None when no tab was ever made. A file that does not parse is set aside
+/// under a dated name and answered as none, so the page starts with Main alone and the next
+/// save never writes over what was there.
+#[tauri::command]
+pub fn editor_tabs() -> Option<serde_json::Value> {
+    let path = crate::store::tabs_path().ok()?;
+    let text = std::fs::read(&path).ok()?;
+    match serde_json::from_slice(&text) {
+        Ok(value) => Some(value),
+        Err(err) => {
+            let aside = path.with_extension(format!(
+                "broken-{}.json",
+                crate::store::millis(std::time::SystemTime::now())
+            ));
+            let moved = std::fs::rename(&path, &aside);
+            crate::log(&format!(
+                "{}: {err}; set aside as {}: {}",
+                path.display(),
+                aside.display(),
+                match moved {
+                    Ok(()) => "moved".to_string(),
+                    Err(err) => format!("NOT moved, {err}"),
+                }
+            ));
+            None
+        }
+    }
+}
+
+/// Writes the tabs whole, through a temporary file and a rename like every record (QA §5).
+#[tauri::command]
+pub fn editor_save_tabs(tabs: serde_json::Value) -> Result<(), String> {
+    let path = crate::store::tabs_path()?;
+    let text = serde_json::to_vec_pretty(&tabs).map_err(|err| err.to_string())?;
+    let result = crate::store::write_atomic(&path, &text);
+    if let Err(err) = &result {
+        crate::log(&format!("tabs NOT saved: {err}"));
+    }
+    result
+}
+
 /// The page's answer to "save now": it has saved what was pending.
 static FLUSHES: AtomicU64 = AtomicU64::new(0);
 
@@ -1475,6 +1518,8 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_trash_documents,
         editor_trash_restore,
         editor_trash_rejoin,
+        editor_tabs,
+        editor_save_tabs,
         checks::editor_trash_list,
         checks::editor_trash_age,
         checks::editor_trash_break,
@@ -1550,6 +1595,8 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_trash_documents,
         editor_trash_restore,
         editor_trash_rejoin,
+        editor_tabs,
+        editor_save_tabs,
     ]);
     builder.register_asynchronous_uri_scheme_protocol("region", |_ctx, request, responder| {
         let query = request.uri().query().unwrap_or_default().to_string();

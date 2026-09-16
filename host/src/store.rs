@@ -151,6 +151,16 @@ pub fn trash_root() -> Result<PathBuf, String> {
         .unwrap_or_else(|| root.join("trash")))
 }
 
+/// The timeline's tabs (Rotem, 2026-09-16), beside the documents and the trash: one file the
+/// page owns whole, like a document's notes, and the host never reads.
+pub fn tabs_path() -> Result<PathBuf, String> {
+    let root = root()?;
+    Ok(root
+        .parent()
+        .map(|p| p.join("tabs.json"))
+        .unwrap_or_else(|| root.join("tabs.json")))
+}
+
 pub const TRASH_DAYS: u64 = 30;
 
 /// Moves a document's folder into the trash, whole, with the time it was trashed written

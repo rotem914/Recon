@@ -2866,6 +2866,123 @@ export async function runChecks(editor, invoke) {
     editor.layoutScene();
   }
 
+  // ---------------------------------------------------------------- 40. the timeline's tabs
+  say('');
+  say('The tabs (Rotem, 2026-09-16): a plus at the left of the size band; its first press makes Main and New tab; a capture on a tab lands in Main and in that tab; a tab is deleted by its ×, never Main; a tab after Main is dragged into another place; the list survives a reload');
+  {
+    const tabbar = editor.tabbar;
+    const plus = document.getElementById('tab-add');
+    const sizeEl = document.getElementById('image-size');
+    const until = async (test) => { for (let i = 0; i < 80 && !test(); i += 1) await sleep(50); return test(); };
+    const thumbs = () => editor.stripCells().filter((c) => c.kind === 'doc').map((c) => c.doc.id);
+    const tabNames = () => [...tabbar.querySelectorAll('.tab')].map((t) => t.querySelector('.name').textContent);
+    const selectedName = () => { const t = tabbar.querySelector('.tab.selected'); return t ? t.querySelector('.name').textContent : ''; };
+    await invoke('editor_store_reset');
+    await invoke('editor_save_tabs', { tabs: { schema: 1, selected: 0, tabs: [] } });
+    await editor.loadTabs();
+    editor.setStripHeight(96);
+    const a = await invoke('editor_capture_probe', { width: 320, height: 200 });
+    await editor.loadImage(a);
+    const b = await invoke('editor_capture_probe', { width: 340, height: 200 });
+    await editor.loadImage(b);
+    await editor.refreshStrip();
+
+    // The plus: an icon button at the left of the band, 32 by 32, centred in the band's height, a 20 by 20 icon; no tab yet.
+    const plusBox = plus.getBoundingClientRect();
+    const bandTop = Math.round(sizeEl.getBoundingClientRect().top) - 16;
+    const icon = plus.querySelector('svg').getBoundingClientRect();
+    check('the plus sits at the left of the size band, 32 by 32, 8 px in and centred in the band, with a 20 by 20 icon and no text',
+      getComputedStyle(tabbar).display === 'flex' && Math.round(plusBox.width) === 32 && Math.round(plusBox.height) === 32 && Math.round(plusBox.left) === 8
+        && Math.round(plusBox.top) === bandTop + 8 && Math.round(icon.width) === 20 && Math.round(icon.height) === 20 && plus.textContent.trim() === '' && plus.getAttribute('aria-label') === 'New tab',
+      `${Math.round(plusBox.left)},${Math.round(plusBox.top)} ${Math.round(plusBox.width)}x${Math.round(plusBox.height)}, the band from ${bandTop}, icon ${Math.round(icon.width)}x${Math.round(icon.height)}`);
+    check('before any press there is no tab, and the timeline lists the whole library', tabbar.querySelectorAll('.tab').length === 0 && thumbs().length === 2, `${tabbar.querySelectorAll('.tab').length} tabs, ${thumbs().length} thumbnails`);
+
+    // The first press: Main and New tab, the new one selected, its feed empty.
+    plus.click();
+    await sleep(150);
+    check('the first press puts Main and New tab beside the plus, New tab selected', tabNames().join('|') === 'Main|New tab' && selectedName() === 'New tab', `${tabNames().join('|')}, selected "${selectedName()}"`);
+    check('Main is right after the plus, and it has no ×', plus.nextElementSibling === tabbar.querySelector('.tab') && !tabbar.querySelector('.tab').querySelector('.x') && !!tabbar.querySelectorAll('.tab')[1].querySelector('.x'));
+    check('the new tab\'s feed is empty, so the timeline shows nothing yet, and stays', await until(() => thumbs().length === 0) && document.body.classList.contains('strip'), `${thumbs().length} thumbnails`);
+
+    // A capture on the new tab: in the library, so in Main, and in the tab's feed.
+    const c = await invoke('editor_capture_probe', { width: 360, height: 200 });
+    await editor.loadImage(c);
+    check('a capture taken on the tab shows in its feed', await until(() => thumbs().length === 1 && thumbs()[0] === c.document_id), JSON.stringify(thumbs()));
+    let saved = await invoke('editor_tabs');
+    const t1 = editor.tabsOf().list[0];
+    check('and it is recorded in the tab\'s list on disk, the selected tab with it', !!saved && saved.selected === t1.id && saved.tabs.length === 1 && saved.tabs[0].docs.join() === String(c.document_id), JSON.stringify(saved));
+    tabbar.querySelector('.tab').click();
+    check('a click on Main shows the whole library, the capture among it', await until(() => thumbs().length === 3) && selectedName() === 'Main', `${thumbs().length} thumbnails, selected "${selectedName()}"`);
+    tabbar.querySelectorAll('.tab')[1].click();
+    check('back on the tab, its one capture', await until(() => thumbs().length === 1) && selectedName() === 'New tab');
+
+    // A reload of the list from disk: the same tabs, the same feed, the same selection.
+    await editor.loadTabs();
+    await editor.refreshStrip();
+    check('the tabs read back from disk as they were saved', tabNames().join('|') === 'Main|New tab' && selectedName() === 'New tab' && editor.tabsOf().list[0].docs.join() === String(c.document_id) && thumbs().length === 1,
+      `${tabNames().join('|')}, selected "${selectedName()}", feed ${JSON.stringify(editor.tabsOf().list[0].docs)}`);
+
+    // Two more presses, then a drag of the last one to right after Main, by the pointer.
+    plus.click();
+    plus.click();
+    await sleep(150);
+    const list = editor.tabsOf().list;
+    check('every press adds a New tab and selects it', list.length === 3 && tabNames().join('|') === 'Main|New tab|New tab|New tab' && editor.tabsOf().selected === list[2].id, tabNames().join('|'));
+    const els = [...tabbar.querySelectorAll('.tab')];
+    const third = els[3];
+    const firstAfterMain = els[1].getBoundingClientRect();
+    const start = third.getBoundingClientRect();
+    const pointer = (type, x, target) => target.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, button: 0, buttons: 1, clientX: x, clientY: start.top + 16 }));
+    pointer('pointerdown', start.left + 20, third);
+    pointer('pointermove', start.left + 12, third);
+    pointer('pointermove', firstAfterMain.left + 4, third);
+    const followed = third.classList.contains('dragging') && third.style.transform.startsWith('translateX(');
+    const orderDuring = editor.tabsOf().list.map((t) => t.id).join();
+    pointer('pointerup', firstAfterMain.left + 4, third);
+    third.click();
+    await sleep(100);
+    check('a press on the last tab and a move past the first one drags it there: it follows the hand and takes the place right after Main', followed && orderDuring === [list[2].id, list[0].id, list[1].id].join() && editor.tabsOf().list.map((t) => t.id).join() === orderDuring
+      && [...tabbar.querySelectorAll('.tab')][1] === third && third.style.transform === '' && !third.classList.contains('dragging'),
+      `followed ${followed}, order ${editor.tabsOf().list.map((t) => list.findIndex((l) => l.id === t.id) + 1).join()}`);
+    check('the drop that ends the drag selects nothing: the selection is where it was', editor.tabsOf().selected === list[2].id);
+    saved = await invoke('editor_tabs');
+    check('the new order is on disk', !!saved && saved.tabs.map((t) => t.id).join() === orderDuring, saved && saved.tabs.map((t) => t.id).join());
+    const mainEl = tabbar.querySelector('.tab');
+    const mainBox = mainEl.getBoundingClientRect();
+    pointer('pointerdown', mainBox.left + 10, mainEl);
+    pointer('pointermove', mainBox.left + 200, mainEl);
+    pointer('pointerup', mainBox.left + 200, mainEl);
+    check('Main cannot be dragged: a press and a move on it changes nothing', tabbar.querySelector('.tab') === mainEl && !mainEl.classList.contains('dragging') && editor.tabsOf().list.map((t) => t.id).join() === orderDuring);
+    check('and a move of it by the page is refused', editor.moveTab(0, 1) === false && editor.deleteTab(0) === false && tabNames()[0] === 'Main');
+
+    // A delete by the ×: the tab goes, its capture stays in Main; the selected tab deleted selects Main.
+    const t1El = [...tabbar.querySelectorAll('.tab')].find((el) => Number(el.dataset.tab) === t1.id);
+    t1El.click();
+    await until(() => thumbs().length === 1);
+    t1El.querySelector('.x').click();
+    check('the × on the selected tab deletes it and selects Main: the whole library again, the capture still there', await until(() => thumbs().length === 3) && selectedName() === 'Main' && editor.tabsOf().list.length === 2 && !editor.tabsOf().list.some((t) => t.id === t1.id),
+      `${thumbs().length} thumbnails, selected "${selectedName()}", ${editor.tabsOf().list.length} tabs`);
+    saved = await invoke('editor_tabs');
+    check('the deletion is on disk', !!saved && saved.tabs.length === 2 && saved.selected === 0, JSON.stringify(saved && saved.tabs.map((t) => t.id)));
+    editor.deleteTab(editor.tabsOf().list[0].id);
+    editor.deleteTab(editor.tabsOf().list[0].id);
+    await sleep(100);
+    check('with every tab deleted, Main goes too and only the plus is left', tabbar.querySelectorAll('.tab').length === 0 && thumbs().length === 3, `${tabbar.querySelectorAll('.tab').length} tabs`);
+
+    // Fullscreen puts the bar away with the band.
+    plus.click();
+    await sleep(100);
+    await editor.setFullscreen(true);
+    check('fullscreen puts the tabs away', getComputedStyle(tabbar).display === 'none', getComputedStyle(tabbar).display);
+    await editor.setFullscreen(false);
+    check('and they come back, above the timeline', getComputedStyle(tabbar).display === 'flex' && Math.round(tabbar.getBoundingClientRect().bottom) === Math.round(editor.strip.getBoundingClientRect().top) - 8,
+      `${getComputedStyle(tabbar).display}, the bar to ${Math.round(tabbar.getBoundingClientRect().bottom)}, the strip from ${Math.round(editor.strip.getBoundingClientRect().top)}`);
+    editor.deleteTab(editor.tabsOf().list[0].id);
+    await invoke('editor_save_tabs', { tabs: { schema: 1, selected: 0, tabs: [] } });
+    await editor.loadTabs();
+    await editor.refreshStrip();
+  }
+
   say('');
   const unrun = notRun ? `, ${notRun} not run` : '';
   if (failures === 0) {

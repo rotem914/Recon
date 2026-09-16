@@ -103,6 +103,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-16 · A deleted document is undone by the same Ctrl+Z as a note, the last thing done first.
 - 2026-09-16 · Google Sans is bundled with the page, the medium Latin subset, for the image size only.
 - 2026-09-16 · A new capture is copied by the page's own copy, after it loads, not by the host at present.
+- 2026-09-16 · The timeline's tabs are the page's own file beside the documents, Main implicit, a feed a list of ids.
 
 ---
 
@@ -1040,3 +1041,42 @@ is an empty layer export before the copy, and the copy lands after the window sh
 than before; a check's capture probe copies too, since it announces itself as a capture. Revisit
 if the copy ever shows on the capture-to-usable marks, or if the pixels are wanted on the
 clipboard before the window is up.
+
+---
+
+## 2026-09-16 · The timeline's tabs are the page's own file beside the documents, Main implicit, a feed a list of ids
+
+### Context
+
+Rotem asked on 2026-09-16 for tabs on the timeline: a plus makes Main and New tab, a capture
+taken on a tab lands in Main and in that tab, a tab can be deleted but never Main, and the
+tabs after Main can be reordered. A tab is a list of tasks from a client, so it has to
+survive a restart, and the host owns every file Recon keeps.
+
+### Options
+
+1. A tab recorded on each document: a `tab` field in `document.json`, the strip grouping
+   by it.
+2. One list the page owns, `tabs.json` beside the documents, each tab naming the ids of its
+   captures, the host writing it whole and never reading it, like a document's notes.
+3. The page's own browser storage, like the timeline's remembered height.
+
+### Decision
+
+Option 2, by the assistant. Main is not stored: it is the whole library, as the timeline
+always was, so no document changes when a tab is made, deleted or reordered, and the
+document format stays at schema 1. Option 1 would rewrite a document's record for a tab
+change and could put a capture in one tab only, where Rotem's feeds are lists a capture may
+join. Option 3 is cleared with the web view's data and cannot be backed up with the store.
+The plus and the tabs sit in the picture's size band, at its left, where Rotem placed the
+plus; the tabs' look is provisional until he states one (`project-os/Design.md`).
+
+### Consequences
+
+A feed is a list of document ids, so a document deleted to the trash leaves its tab when the
+library does and returns with a restore or Ctrl+Z; a document swept from the trash leaves a
+dangling id that lists nothing. The file is written through a temporary file and a rename
+like every record, one write at a time from the page, and a file that does not parse is set
+aside under a dated name rather than written over. The plus lives in the band, so no tab can
+be made before the first picture is on screen. Revisit if a tab needs a name of its own, a
+place for a file opened rather than captured, or more tabs than the band's left half holds.
