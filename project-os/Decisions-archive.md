@@ -4,6 +4,179 @@ NOT read by default - consult only when digging into an old entry.
 Moved here verbatim by project-os/rotate.ps1. Movement only: nothing is rewritten, compressed, or deleted.
 
 ## Archived decisions
+## 2026-09-13 · The clipboard is published by the host in three formats, PNG first
+
+### Context
+
+S0.6 delivers the clipboard operation, and part 6a makes acceptance the paste actually
+working in Claude and ChatGPT. Tauri ships a clipboard plugin, and the web view has a
+clipboard API of its own; either would have been less code than talking to Win32.
+
+### Options
+
+1. The web view's clipboard API: the page writes an image blob.
+2. Tauri's clipboard plugin: one bitmap format, written from the host.
+3. Win32 from the host: several formats in one transaction, chosen here.
+
+### Decision
+
+Option 3, by the assistant at S0.6. Part 5 keeps the web view off the clipboard, which
+rules out option 1 on its own; and a web view can only put a canvas-encoded image on the
+clipboard, which is the premultiplied round trip the preserved source must never take.
+Option 2 publishes one bitmap; a Chromium page reads the registered `PNG` format first
+and losslessly, and older Windows applications read `CF_DIB` only, so one format serves
+one kind of destination. Three formats built before the clipboard is touched serve all of
+them from the same composite.
+
+### Consequences
+
+`PNG` carries the exact composite, alpha included; `CF_DIBV5` carries it with alpha for
+system readers; `CF_DIB` is flattened over white for readers that ignore alpha. Both
+destinations took the paste as a PNG on 2026-09-13. The cost is one PNG encode plus two
+bitmap copies per copy, 51 plus 22 ms in release for a 5120x1440 capture, and a Win32
+module the product owns. Revisit if a destination turns out to need a fourth format, or if
+the encode time ever shows on the copy path in S1.12.
+
+---
+
+## 2026-09-13 · Stage 0 verdict: the candidate stack is adopted, every component kept
+
+### Context
+
+The stack was recorded on 2026-09-10 as a recommended candidate, not a decision, with Stage 0
+holding permission to reject it (part 8 of the plan). Eight steps ran, and S0.8 read every
+part 8 row against their evidence.
+
+### Options
+
+1. Adopt the candidate as measured.
+2. Replace one component the evidence accuses.
+3. Reopen the stack against part 5's comparison table.
+
+### Decision
+
+Option 1, recommended by the assistant at S0.8 and adopted by Rotem's word to start Stage 1.
+No part 8 row fired: the freeze is exact and 41 to 50 ms; the overlay is usable within 87 ms
+of the hotkey and the editor within 134 ms of the selection; the export is pixel-identical to
+the live editor mid-typing; twenty-eight real files decode; both paste destinations take the
+clipboard. Nothing accuses a component.
+
+### Consequences
+
+The 2026-09-10 entry that called the stack a candidate is superseded by this one; the
+architecture entries it pointed at stand. Three calls were open when this was written, none of
+them a stack question: the 170 MB tray floor (F59), the wide-gamut main display against
+the sRGB decision (F60, decided the same day: sRGB stays), and the hotkey against an
+elevated application, which only a key press could measure (F62, measured the same day:
+it fires). Replacing Tauri later would mean re-implementing the tray, the
+global shortcut, the file activation and the updater, as part 8 says; that is the cost
+this entry accepts. Revisit if Stage 1 use finds a cost the measurements did not.
+
+---
+
+## 2026-09-13 · A capture stays sRGB on a wide-gamut display; the trigger moves to a managed desktop
+
+### Context
+
+The sRGB decision of 2026-09-10 named one trigger for revisiting it: the record of what this
+machine's displays are. S0.8 made that record, and the main display is wide gamut, 132% of
+sRGB's area by its own EDID primaries. Rotem was asked whether a capture should stay sRGB or
+be tagged with its display's profile, and delegated the call.
+
+### Options
+
+1. Keep treating a capture as sRGB, untagged, as every other screenshot tool does.
+2. Tag each capture with the profile of the display it was taken on.
+3. Convert each capture from the display's profile to sRGB at freeze.
+
+### Decision
+
+Option 1, by the assistant at Rotem's delegation. On a Windows desktop that is not colour
+managed, an application draws sRGB numbers and a wide-gamut panel shows them more saturated
+than meant; the freeze copies those numbers. Treating them as sRGB keeps the application's
+intent, which is what a designer annotating a UI is judging, and what the people who receive
+the paste see on their own screens. Option 2 would make the paste reproduce the panel's
+exaggeration everywhere else. Option 3 would change the very numbers the application drew,
+which is the rule 11 discipline broken at the freeze.
+
+### Consequences
+
+Nothing changes in the pipeline. The revisit trigger changes: a desktop that Windows colour
+manages, with automatic colour management or HDR on, stops handing plain sRGB numbers to
+GDI, and `host/src/platform.rs` reads that state per display. When that state is seen on
+the machine, or a client's colours are questioned, this entry is the one to supersede.
+
+---
+
+## 2026-09-14 · The web view's security posture: a strict policy, and the region scheme answers the page's origin only
+
+### Context
+
+Stage 0 ran with no content security policy and with the region scheme, which serves the
+screen's pixels, answering any origin (review T12). Fine while the only page is Recon's own
+and nothing remote loads; not the setting an open-source release ships with. S1.1 is where
+the product path first builds the window, so the plan put the decision here.
+
+### Options
+
+1. Leave both open and rely on the page never loading anything remote.
+2. A policy that names what the page uses and nothing else, and a region scheme that
+   answers the page's own origin only.
+3. A policy plus a nonce per load and a token on every region request.
+
+### Decision
+
+Option 2, by the assistant at S1.1. The policy allows the page's own origin for scripts
+and styles, inline styles (the export writes computed styles inline), images from data and
+blob URLs (the export layer travels as a data URL), and connections to the region scheme
+and Tauri's IPC origin; objects, frames, form posts and other bases are refused. The region
+scheme's CORS header names the page's origin. Option 3 buys nothing while the page is the
+only code in the web view and costs a token on the hot path.
+
+### Consequences
+
+Every editor check passes under the policy, on a 100% and a 225% display. The S0.3 bench's
+local socket route is refused by it (F76); that step is closed and the bench runs with the
+policy off if it is ever needed. Anything the page loads in future, a web font or a remote
+resource, must be added to the policy deliberately, which is the point. Revisit if a second
+page or remote content ever enters the web view.
+
+---
+
+## 2026-09-14 · Previous captures are kept in memory, encoded and capped, until the store exists
+
+_Superseded on 2026-09-14 by the store entry below: the cap and the in-memory list are gone._
+
+### Context
+
+§3.3 says a new capture never overwrites the previous one, and the store that keeps
+documents on disk is S1.8. Stage 0 simply dropped the previous capture. S1.1 had to keep it
+somewhere, and thirty raw captures a day would be a gigabyte of memory, which §3.8 forbids.
+
+### Options
+
+1. Keep dropping the previous capture until S1.8.
+2. Keep every previous capture raw in memory.
+3. Keep previous captures PNG-encoded, on a thread off the capture path, capped in number.
+4. Bring S1.8's disk store forward.
+
+### Decision
+
+Option 3, by the assistant at S1.1, as a stopgap this entry names as one. A full-screen
+capture encodes to about 3.5 MB in 50 ms in release, on its own thread; fifty of them is
+under 200 MB, and the fifty-first drops the oldest with a log line. The page keeps each
+document's notes by the host's document number. Option 4 would have pulled the schema and
+the save discipline of S1.8 into a step about the lifecycle.
+
+### Consequences
+
+Nothing captured in a session is overwritten by the next capture, and S1.9's navigation has
+something to navigate. What is lost: a capture past the cap, and everything at quit, until
+S1.8. That entry supersedes this one when the store lands; the cap and the in-memory list go
+with it. An opened file is never retained here, because an external file is never taken.
+
+---
+
 ## 2026-09-10 · Why the required format set is affordable, superseding one paragraph
 
 ### Context
