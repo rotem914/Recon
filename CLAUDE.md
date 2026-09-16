@@ -488,6 +488,19 @@ their rule, and never wait to be asked. The line is exact, and it has exactly
 one place: you run the checks, you write the message, you commit, you stop. They
 push.
 
+### 23. Every new action joins undo and redo
+
+Whatever a person can do in Recon that changes something they see or keep, Ctrl+Z
+takes back and Ctrl+Shift+Z does again, from the day it lands: a note, a deletion, a
+tab added, deleted or renamed, a mark on a picture. The rule is in the plan's keyboard
+contract, "the last thing done is what Ctrl+Z undoes", and a feature built without its
+undo is unfinished, not shipped small. Stated by Rotem on 2026-09-16, when the tabs
+landed without theirs.
+
+At pickup, say what the new action's undo is, and prove it in the checks with the
+rest. The mechanism is one list of numbered acts in `editor/index.html` (`recordAct`),
+so joining costs an undo and a redo function, nothing more.
+
 ## Review & QA commands (owner-triggered)
 
 Two phrases that start a calibrated pass. Each LOADS its calibration doc first

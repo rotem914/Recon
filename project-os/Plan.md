@@ -401,7 +401,7 @@ is a contract broken on day one.
 | `Esc` in fullscreen | Leave fullscreen | 1, built at S1.3 |
 | `Esc` in the otherwise idle editor | Save pending changes and hide the editor | 1, the hide and the focus return built at S1.1, the save at S1.8 |
 | Delete outside text editing | Delete the selected annotation | 1, built; Backspace does the same |
-| Undo and redo | While a note is being edited, undo works on the typing and never reaches object operations. Once editing ends, that text change takes its place in document history as one grouped step. A document deleted from the timeline is in the same history: Ctrl+Z brings it back, Ctrl+Shift+Z deletes it again, the last thing done first | 1; the deletion at S2.9, built 2026-09-16 |
+| Undo and redo | While a note is being edited, undo works on the typing and never reaches object operations. Once editing ends, that text change takes its place in document history as one grouped step. A document deleted from the timeline is in the same history: Ctrl+Z brings it back, Ctrl+Shift+Z deletes it again, the last thing done first. The timeline's tabs too: a tab added, deleted or renamed, and a done mark on a picture, and every new action from here on (`CLAUDE.md` rule 23) | 1; the deletion at S2.9, built 2026-09-16; the tabs the same day |
 | `Ctrl+O` | Open an image file | 1, built at S1.2 |
 | Previous and next image, outside text editing | Walk the active navigation context, folder or Recon history, in the §3.4 order | 1, built at S1.4 for the folder and at S1.9 for history: PageDown and PageUp, Home and End for the first and last; the ends stop |
 | Fit to window · actual size · zoom in · zoom out | Viewing controls, no effect on export resolution; zoom out stops at the whole picture (§3.4) | 1, built: keys, and the wheel to zoom around the pointer, with Ctrl or without, at Rotem's call on 2026-09-14; a sideways wheel pans; the zoom-out floor at Rotem's word on 2026-09-15 |
@@ -567,8 +567,12 @@ rendering library's private, unversioned serialization.
   every press after, the new one selected. Main is the whole library, pinned first and
   never deleted. Every other tab is a feed: a capture taken while it is selected lands in
   the library, so in Main, and in that tab too, so a client's remarks in a call become a
-  feed of tasks. A tab is deleted by its ×, its captures staying in Main, and dragged into
-  another place after Main. The list is kept whole in `tabs.json` beside the documents.
+  feed of tasks. A tab is deleted by its ×, pressed twice, its captures staying in Main,
+  dragged into another place after Main, and renamed by a click on its name when it is
+  selected. In a tab every thumbnail carries a round done mark at its top left, shown on
+  hover and kept once pressed, to say that picture is dealt with in that tab; nothing else
+  follows from it. Adding, deleting and renaming a tab and the mark are in undo. The list
+  is kept whole in `tabs.json` beside the documents.
 - Full-resolution image data is loaded when needed. Thumbnails and inactive documents must
   not make memory grow with the size of the library.
 - The same discipline applies to a folder walk: one decoded image at a time, plus whatever

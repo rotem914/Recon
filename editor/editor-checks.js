@@ -2868,15 +2868,19 @@ export async function runChecks(editor, invoke) {
 
   // ---------------------------------------------------------------- 40. the timeline's tabs
   say('');
-  say('The tabs (Rotem, 2026-09-16): a plus at the left of the size band; its first press makes Main and New tab; a capture on a tab lands in Main and in that tab; a tab is deleted by its ×, never Main; a tab after Main is dragged into another place; the list survives a reload');
+  say('The tabs (Rotem, 2026-09-16): a plus at the left of the size band; its first press makes Main and New tab; a capture on a tab lands in Main and in that tab; the × pressed twice deletes a tab, never Main; a tab after Main is dragged into another place; a click on the selected tab\'s name edits it; adding, deleting and renaming are in undo; the list survives a reload');
   {
     const tabbar = editor.tabbar;
     const plus = document.getElementById('tab-add');
     const sizeEl = document.getElementById('image-size');
     const until = async (test) => { for (let i = 0; i < 80 && !test(); i += 1) await sleep(50); return test(); };
     const thumbs = () => editor.stripCells().filter((c) => c.kind === 'doc').map((c) => c.doc.id);
-    const tabNames = () => [...tabbar.querySelectorAll('.tab')].map((t) => t.querySelector('.name').textContent);
+    const tabEls = () => [...tabbar.querySelectorAll('.tab')];
+    const tabNames = () => tabEls().map((t) => t.querySelector('.name').textContent);
     const selectedName = () => { const t = tabbar.querySelector('.tab.selected'); return t ? t.querySelector('.name').textContent : ''; };
+    const press = (init) => window.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
+    const undoKey = () => press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    const redoKey = () => press({ key: 'Z', code: 'KeyZ', ctrlKey: true, shiftKey: true });
     await invoke('editor_store_reset');
     await invoke('editor_save_tabs', { tabs: { schema: 1, selected: 0, tabs: [] } });
     await editor.loadTabs();
@@ -2895,13 +2899,15 @@ export async function runChecks(editor, invoke) {
       getComputedStyle(tabbar).display === 'flex' && Math.round(plusBox.width) === 32 && Math.round(plusBox.height) === 32 && Math.round(plusBox.left) === 8
         && Math.round(plusBox.top) === bandTop + 8 && Math.round(icon.width) === 20 && Math.round(icon.height) === 20 && plus.textContent.trim() === '' && plus.getAttribute('aria-label') === 'New tab',
       `${Math.round(plusBox.left)},${Math.round(plusBox.top)} ${Math.round(plusBox.width)}x${Math.round(plusBox.height)}, the band from ${bandTop}, icon ${Math.round(icon.width)}x${Math.round(icon.height)}`);
-    check('before any press there is no tab, and the timeline lists the whole library', tabbar.querySelectorAll('.tab').length === 0 && thumbs().length === 2, `${tabbar.querySelectorAll('.tab').length} tabs, ${thumbs().length} thumbnails`);
+    check('before any press there is no tab, and the timeline lists the whole library', tabEls().length === 0 && thumbs().length === 2, `${tabEls().length} tabs, ${thumbs().length} thumbnails`);
 
-    // The first press: Main and New tab, the new one selected, its feed empty.
+    // The first press: Main and New tab, the new one selected, its feed empty; the tabs 14 px text on a 10 px radius (Rotem, 2026-09-16).
     plus.click();
     await sleep(150);
     check('the first press puts Main and New tab beside the plus, New tab selected', tabNames().join('|') === 'Main|New tab' && selectedName() === 'New tab', `${tabNames().join('|')}, selected "${selectedName()}"`);
-    check('Main is right after the plus, and it has no ×', plus.nextElementSibling === tabbar.querySelector('.tab') && !tabbar.querySelector('.tab').querySelector('.x') && !!tabbar.querySelectorAll('.tab')[1].querySelector('.x'));
+    check('Main is right after the plus, and it has no ×', plus.nextElementSibling === tabEls()[0] && !tabEls()[0].querySelector('.x') && !!tabEls()[1].querySelector('.x'));
+    const tabStyle = getComputedStyle(tabEls()[1]);
+    check('a tab is 32 px tall with 14 px text on a 10 px radius', tabStyle.fontSize === '14px' && tabStyle.borderRadius === '10px' && Math.round(tabEls()[1].getBoundingClientRect().height) === 32, `${tabStyle.fontSize}, radius ${tabStyle.borderRadius}`);
     check('the new tab\'s feed is empty, so the timeline shows nothing yet, and stays', await until(() => thumbs().length === 0) && document.body.classList.contains('strip'), `${thumbs().length} thumbnails`);
 
     // A capture on the new tab: in the library, so in Main, and in the tab's feed.
@@ -2911,10 +2917,41 @@ export async function runChecks(editor, invoke) {
     let saved = await invoke('editor_tabs');
     const t1 = editor.tabsOf().list[0];
     check('and it is recorded in the tab\'s list on disk, the selected tab with it', !!saved && saved.selected === t1.id && saved.tabs.length === 1 && saved.tabs[0].docs.join() === String(c.document_id), JSON.stringify(saved));
-    tabbar.querySelector('.tab').click();
+    tabEls()[0].click();
     check('a click on Main shows the whole library, the capture among it', await until(() => thumbs().length === 3) && selectedName() === 'Main', `${thumbs().length} thumbnails, selected "${selectedName()}"`);
-    tabbar.querySelectorAll('.tab')[1].click();
+    tabEls()[1].click();
     check('back on the tab, its one capture', await until(() => thumbs().length === 1) && selectedName() === 'New tab');
+
+    // The done mark (Rotem, 2026-09-16): in a tab, a round 20 by 20 button at the thumbnail's top left with a
+    // 16 by 16 icon, hidden until hover; pressed, it stays shown and ticked, on disk; Ctrl+Z clears it; Main has none.
+    const doneBtn = document.querySelector('#strip .thumb .done');
+    const doneStyle = doneBtn && getComputedStyle(doneBtn);
+    const doneIcon = doneBtn && getComputedStyle(doneBtn.querySelector('svg'));
+    check('in a tab a thumbnail carries a round 20 by 20 done mark at its top left with a 16 by 16 icon, hidden until hover',
+      !!doneBtn && doneStyle.display === 'none' && doneStyle.width === '20px' && doneStyle.height === '20px' && doneStyle.borderRadius === '10px' && doneStyle.left === '2px' && doneStyle.top === '2px'
+        && doneIcon.width === '16px' && doneIcon.height === '16px' && !doneBtn.closest('.thumb').classList.contains('checked'),
+      doneBtn ? `${doneStyle.display}, ${doneStyle.width}x${doneStyle.height} radius ${doneStyle.borderRadius} at ${doneStyle.left},${doneStyle.top}, icon ${doneIcon.width}` : 'no mark');
+    doneBtn.click();
+    await sleep(100);
+    saved = await invoke('editor_tabs');
+    check('pressed, the mark stays shown and ticked, and the picture is marked done in this tab on disk', doneBtn.closest('.thumb').classList.contains('checked') && getComputedStyle(doneBtn).display === 'grid' && getComputedStyle(doneBtn.querySelector('.tick')).display !== 'none'
+        && editor.tabsOf().list[0].done.join() === String(c.document_id) && !!saved && (saved.tabs[0].done || []).join() === String(c.document_id),
+      `checked ${doneBtn.closest('.thumb').classList.contains('checked')}, done ${JSON.stringify(editor.tabsOf().list[0].done)}, disk ${JSON.stringify(saved && saved.tabs[0].done)}`);
+    check('the picture is still on screen and its notes untouched: the mark changes nothing else', model.image.document_id === c.document_id && model.callouts.length === 0 && thumbs().length === 1);
+    undoKey();
+    await sleep(100);
+    check('Ctrl+Z clears the mark', !document.querySelector('#strip .thumb.checked') && editor.tabsOf().list[0].done.length === 0, JSON.stringify(editor.tabsOf().list[0].done));
+    redoKey();
+    await sleep(100);
+    check('Ctrl+Shift+Z marks it again', !!document.querySelector('#strip .thumb.checked') && editor.tabsOf().list[0].done.join() === String(c.document_id));
+    document.querySelector('#strip .thumb .done').click();
+    await sleep(100);
+    check('pressed again, the mark goes', !document.querySelector('#strip .thumb.checked') && editor.tabsOf().list[0].done.length === 0);
+    tabEls()[0].click();
+    await until(() => thumbs().length === 3);
+    check('in Main no thumbnail carries the mark', document.querySelectorAll('#strip .thumb').length === 3 && !document.querySelector('#strip .thumb .done'));
+    tabEls()[1].click();
+    await until(() => thumbs().length === 1);
 
     // A reload of the list from disk: the same tabs, the same feed, the same selection.
     await editor.loadTabs();
@@ -2922,13 +2959,35 @@ export async function runChecks(editor, invoke) {
     check('the tabs read back from disk as they were saved', tabNames().join('|') === 'Main|New tab' && selectedName() === 'New tab' && editor.tabsOf().list[0].docs.join() === String(c.document_id) && thumbs().length === 1,
       `${tabNames().join('|')}, selected "${selectedName()}", feed ${JSON.stringify(editor.tabsOf().list[0].docs)}`);
 
+    // The name: a click on the selected tab's name edits it in place, Enter keeps it; Ctrl+Z takes it back.
+    const nameEl = tabEls()[1].querySelector('.name');
+    nameEl.click();
+    check('a click on the selected tab\'s name opens it for editing', nameEl.isContentEditable && document.activeElement === nameEl, `editable ${nameEl.isContentEditable}, focus on ${document.activeElement && document.activeElement.className}`);
+    nameEl.textContent = 'Acme remarks';
+    nameEl.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Enter', code: 'Enter' }));
+    await sleep(100);
+    saved = await invoke('editor_tabs');
+    check('Enter keeps the name, on screen and on disk, and the editing ends', !nameEl.isContentEditable && tabNames()[1] === 'Acme remarks' && editor.tabsOf().list[0].name === 'Acme remarks' && !!saved && saved.tabs[0].name === 'Acme remarks', `"${tabNames()[1]}", disk "${saved && saved.tabs[0].name}"`);
+    tabEls()[0].querySelector('.name').click();
+    await sleep(50);
+    check('a click on another tab\'s name selects it rather than editing it, and Main is never edited', selectedName() === 'Main' && !tabEls()[0].querySelector('.name').isContentEditable);
+    tabEls()[0].click();
+    tabEls()[0].querySelector('.name').click();
+    check('Main\'s name is not edited even when it is selected', !tabEls()[0].querySelector('.name').isContentEditable);
+    undoKey();
+    await sleep(100);
+    check('Ctrl+Z takes the rename back', tabNames()[1] === 'New tab' && editor.tabsOf().list[0].name === 'New tab', `"${tabNames()[1]}"`);
+    redoKey();
+    await sleep(100);
+    check('Ctrl+Shift+Z renames it again', tabNames()[1] === 'Acme remarks', `"${tabNames()[1]}"`);
+
     // Two more presses, then a drag of the last one to right after Main, by the pointer.
     plus.click();
     plus.click();
     await sleep(150);
     const list = editor.tabsOf().list;
-    check('every press adds a New tab and selects it', list.length === 3 && tabNames().join('|') === 'Main|New tab|New tab|New tab' && editor.tabsOf().selected === list[2].id, tabNames().join('|'));
-    const els = [...tabbar.querySelectorAll('.tab')];
+    check('every press adds a New tab and selects it', list.length === 3 && tabNames().join('|') === 'Main|Acme remarks|New tab|New tab' && editor.tabsOf().selected === list[2].id, tabNames().join('|'));
+    const els = tabEls();
     const third = els[3];
     const firstAfterMain = els[1].getBoundingClientRect();
     const start = third.getBoundingClientRect();
@@ -2942,32 +3001,74 @@ export async function runChecks(editor, invoke) {
     third.click();
     await sleep(100);
     check('a press on the last tab and a move past the first one drags it there: it follows the hand and takes the place right after Main', followed && orderDuring === [list[2].id, list[0].id, list[1].id].join() && editor.tabsOf().list.map((t) => t.id).join() === orderDuring
-      && [...tabbar.querySelectorAll('.tab')][1] === third && third.style.transform === '' && !third.classList.contains('dragging'),
+      && tabEls()[1] === third && third.style.transform === '' && !third.classList.contains('dragging'),
       `followed ${followed}, order ${editor.tabsOf().list.map((t) => list.findIndex((l) => l.id === t.id) + 1).join()}`);
     check('the drop that ends the drag selects nothing: the selection is where it was', editor.tabsOf().selected === list[2].id);
     saved = await invoke('editor_tabs');
     check('the new order is on disk', !!saved && saved.tabs.map((t) => t.id).join() === orderDuring, saved && saved.tabs.map((t) => t.id).join());
-    const mainEl = tabbar.querySelector('.tab');
+    const mainEl = tabEls()[0];
     const mainBox = mainEl.getBoundingClientRect();
     pointer('pointerdown', mainBox.left + 10, mainEl);
     pointer('pointermove', mainBox.left + 200, mainEl);
     pointer('pointerup', mainBox.left + 200, mainEl);
-    check('Main cannot be dragged: a press and a move on it changes nothing', tabbar.querySelector('.tab') === mainEl && !mainEl.classList.contains('dragging') && editor.tabsOf().list.map((t) => t.id).join() === orderDuring);
+    check('Main cannot be dragged: a press and a move on it changes nothing', tabEls()[0] === mainEl && !mainEl.classList.contains('dragging') && editor.tabsOf().list.map((t) => t.id).join() === orderDuring);
     check('and a move of it by the page is refused', editor.moveTab(0, 1) === false && editor.deleteTab(0) === false && tabNames()[0] === 'Main');
 
-    // A delete by the ×: the tab goes, its capture stays in Main; the selected tab deleted selects Main.
-    const t1El = [...tabbar.querySelectorAll('.tab')].find((el) => Number(el.dataset.tab) === t1.id);
+    // The ×: the first press turns it into a ✓ and deletes nothing; the second deletes; the pointer leaving puts the × back.
+    const t1El = tabEls().find((el) => Number(el.dataset.tab) === t1.id);
     t1El.click();
     await until(() => thumbs().length === 1);
-    t1El.querySelector('.x').click();
-    check('the × on the selected tab deletes it and selects Main: the whole library again, the capture still there', await until(() => thumbs().length === 3) && selectedName() === 'Main' && editor.tabsOf().list.length === 2 && !editor.tabsOf().list.some((t) => t.id === t1.id),
+    const x = t1El.querySelector('.x');
+    x.click();
+    await sleep(50);
+    check('the first press on the × turns it into a ✓ and deletes nothing', x.classList.contains('armed') && getComputedStyle(x.querySelector('.tick')).display !== 'none' && getComputedStyle(x.querySelector('.cross')).display === 'none' && editor.tabsOf().list.length === 3,
+      `armed ${x.classList.contains('armed')}, ${editor.tabsOf().list.length} tabs`);
+    t1El.dispatchEvent(new PointerEvent('pointerleave', { pointerId: 7 }));
+    check('the pointer leaving the tab puts the × back', !x.classList.contains('armed') && getComputedStyle(x.querySelector('.cross')).display !== 'none');
+    x.click();
+    x.click();
+    check('two presses on the × delete the selected tab and select Main: the whole library again, the capture still there', await until(() => thumbs().length === 3) && selectedName() === 'Main' && editor.tabsOf().list.length === 2 && !editor.tabsOf().list.some((t) => t.id === t1.id),
       `${thumbs().length} thumbnails, selected "${selectedName()}", ${editor.tabsOf().list.length} tabs`);
     saved = await invoke('editor_tabs');
     check('the deletion is on disk', !!saved && saved.tabs.length === 2 && saved.selected === 0, JSON.stringify(saved && saved.tabs.map((t) => t.id)));
-    editor.deleteTab(editor.tabsOf().list[0].id);
-    editor.deleteTab(editor.tabsOf().list[0].id);
+
+    // Undo: Ctrl+Z brings the deleted tab back in its place, with its feed, selected as it was; Ctrl+Shift+Z deletes it again.
+    undoKey();
+    check('Ctrl+Z brings the deleted tab back in its place, with its name, its feed and the selection', await until(() => thumbs().length === 1) && editor.tabsOf().list.length === 3 && editor.tabsOf().list[1].id === t1.id && editor.tabsOf().list[1].name === 'Acme remarks' && editor.tabsOf().list[1].docs.join() === String(c.document_id) && selectedName() === 'Acme remarks',
+      `${editor.tabsOf().list.map((t) => t.name).join('|')}, selected "${selectedName()}", ${thumbs().length} thumbnails`);
+    saved = await invoke('editor_tabs');
+    check('and it is on disk again', !!saved && saved.tabs.length === 3 && saved.tabs[1].id === t1.id, JSON.stringify(saved && saved.tabs.map((t) => t.id)));
+    redoKey();
+    check('Ctrl+Shift+Z deletes it again', await until(() => thumbs().length === 3) && editor.tabsOf().list.length === 2 && selectedName() === 'Main', `${editor.tabsOf().list.length} tabs`);
+    undoKey();
+    await until(() => editor.tabsOf().list.length === 3);
+    // Undo of an addition: the press's tab goes, the selection returns to the tab before it.
+    tabEls().find((el) => Number(el.dataset.tab) === t1.id).click();
+    await until(() => thumbs().length === 1);
+    plus.click();
     await sleep(100);
-    check('with every tab deleted, Main goes too and only the plus is left', tabbar.querySelectorAll('.tab').length === 0 && thumbs().length === 3, `${tabbar.querySelectorAll('.tab').length} tabs`);
+    check('a press adds a fourth tab, selected', editor.tabsOf().list.length === 4 && selectedName() === 'New tab' && editor.tabsOf().selected === editor.tabsOf().list[3].id);
+    undoKey();
+    check('Ctrl+Z takes the added tab away and the selection returns to the tab before it', await until(() => editor.tabsOf().list.length === 3 && thumbs().length === 1) && editor.tabsOf().selected === t1.id, `${editor.tabsOf().list.length} tabs, selected "${selectedName()}"`);
+    redoKey();
+    check('Ctrl+Shift+Z adds it back, selected', await until(() => editor.tabsOf().list.length === 4) && editor.tabsOf().selected === editor.tabsOf().list[3].id);
+    // The last thing done first: a note step, then a tab deletion; Ctrl+Z takes the deletion, the note stays.
+    tabEls()[0].click();
+    await until(() => thumbs().length === 3);
+    await editor.loadImage(await invoke('editor_show_document', { id: c.document_id }));
+    const n = editor.createCallout({ x: 30, y: 30 });
+    n.text = 'a note before the tab went';
+    editor.layoutScene();
+    editor.record();
+    editor.deleteTab(editor.tabsOf().list[3].id);
+    await sleep(100);
+    undoKey();
+    check('a note, then a tab deleted: Ctrl+Z brings the tab back first, the note still there', await until(() => editor.tabsOf().list.length === 4) && model.callouts.length === 1, `${editor.tabsOf().list.length} tabs, ${model.callouts.length} notes`);
+    undoKey();
+    check('the next Ctrl+Z takes the note', await until(() => model.callouts.length === 0), `${model.callouts.length} notes`);
+    for (const tab of editor.tabsOf().list) editor.deleteTab(tab.id);
+    await sleep(100);
+    check('with every tab deleted, Main goes too and only the plus is left', tabEls().length === 0 && thumbs().length === 3, `${tabEls().length} tabs`);
 
     // Fullscreen puts the bar away with the band.
     plus.click();
@@ -2981,6 +3082,8 @@ export async function runChecks(editor, invoke) {
     await invoke('editor_save_tabs', { tabs: { schema: 1, selected: 0, tabs: [] } });
     await editor.loadTabs();
     await editor.refreshStrip();
+    model.callouts = [];
+    editor.layoutScene();
   }
 
   say('');

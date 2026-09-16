@@ -106,11 +106,29 @@ Stated by Rotem on 2026-09-16 for the timeline's tabs.
 |---|---|
 | Plus button | an icon button at the left of the image size container: 32 by 32, no fill of its own, a plus icon, 20 by 20, with round ends, the hover fill by A1 |
 | Tabs | beside the plus, once it was pressed: Main first, pinned and never deleted, then the tabs the plus made, in the order they are dragged into |
+| Tab text | 14 px |
+| Tab corners | 10 px radius |
+| Tab name | a click on the selected tab's name edits it in place; Enter keeps it |
+| Tab delete | the × on a tab after Main: the first press turns it into a ✓, the second deletes |
 
-The tabs' look is not stated yet. Provisional in the page until it is: 32 px tall, 12 px text in
-the top bar title's #cfd4da, a 4 px radius, 8 px between, the icon button hover colour as the
-selected tab's fill and as the hover; a 16 px × on every tab after Main, shown on hover and on
-the selected tab; the bar stops at the middle of the window less 80 px, short of the size text.
+The rest of the tabs' look is not stated yet. Provisional in the page until it is: 32 px tall,
+the top bar title's #cfd4da, 8 px between, the icon button hover colour as the selected tab's
+fill and as the hover; the × and ✓ 16 px icons, shown on hover and on the selected tab; the
+bar stops at the middle of the window less 80 px, short of the size text.
+
+### Done mark
+
+Stated by Rotem on 2026-09-16 for the thumbnails in a tab after Main.
+
+| Part | Value |
+|---|---|
+| Container | round, 20 by 20, at the thumbnail's top left |
+| Icon | 16 by 16 |
+| Shown | on hover over the thumbnail; once pressed, always, ticked |
+| Effect | none beyond the mark itself |
+
+The colours are not stated yet. Provisional in the page: the thumbnail ×'s dark fill, and the
+restore button's green once ticked.
 
 ### Window
 
