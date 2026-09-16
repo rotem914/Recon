@@ -1932,11 +1932,11 @@ export async function runChecks(editor, invoke) {
     const gbox = group.getBoundingClientRect();
     const stageBottom = Math.round(stage.getBoundingClientRect().bottom);
     check('one container holds all nine buttons, centred in the sidebar\'s height and across it, the sidebar running from the top bar to the timeline', !!group && group.parentElement === controls && buttons.every((b) => group.contains(b))
-      && Math.abs((gbox.left + gbox.right) / 2 - (cbox.left + cbox.right) / 2) < 0.5 && Math.round(gbox.width) === 32
+      && Math.abs((gbox.left + gbox.right) / 2 - (cbox.left + cbox.right) / 2) < 0.5 && Math.round(gbox.width) === 48
       && Math.round(cbox.bottom) === stageBottom && Math.abs((gbox.top + gbox.bottom) / 2 - (cbox.top + cbox.bottom) / 2) < 0.5,
       `container ${Math.round(gbox.left)}-${Math.round(gbox.right)} by ${Math.round(gbox.top)}-${Math.round(gbox.bottom)}, centred at ${(gbox.left + gbox.right) / 2},${(gbox.top + gbox.bottom) / 2}; the sidebar ${Math.round(cbox.top)}-${Math.round(cbox.bottom)}, centred at ${(cbox.left + cbox.right) / 2},${(cbox.top + cbox.bottom) / 2}; the stage ends at ${stageBottom}`);
     const tips = buttons.map((b) => getComputedStyle(b, '::after'));
-    check('each button carries its name as a tooltip 8 px to its right, hidden at rest, above the stage', tips.every((t, i) => t.content === `"${buttons[i].getAttribute('aria-label')}"` && t.position === 'absolute' && t.left === '40px' && t.opacity === '0' && t.visibility === 'hidden')
+    check('each button carries its name as a tooltip 8 px to its right, hidden at rest, above the stage', tips.every((t, i) => t.content === `"${buttons[i].getAttribute('aria-label')}"` && t.position === 'absolute' && t.left === '56px' && t.opacity === '0' && t.visibility === 'hidden')
       && getComputedStyle(controls).zIndex === '3',
       tips.map((t) => t.content).join(' '));
     const tipRule = [...document.styleSheets[0].cssRules].find((r) => r.selectorText === '#controls button:hover::after');
