@@ -102,6 +102,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-16 · The focus return target is used once: a hide with no capture since activates nothing.
 - 2026-09-16 · A deleted document is undone by the same Ctrl+Z as a note, the last thing done first.
 - 2026-09-16 · Google Sans is bundled with the page, the medium Latin subset, for the image size only.
+- 2026-09-16 · A new capture is copied by the page's own copy, after it loads, not by the host at present.
 
 ---
 
@@ -1007,3 +1008,35 @@ character. Another weight or script is one more file from the same stylesheet. T
 the system font, so the export needs no inlined font; putting Google Sans on the notes would
 bring part 5's inlining back, and whether the policy lets the serialized layer load it is not
 established here. Revisit when the font is wanted on the notes or on text in another script.
+
+---
+
+## 2026-09-16 · A new capture is copied by the page's own copy, after it loads, not by the host at present
+
+### Context
+
+Rotem asked on 2026-09-16 for every capture to land on the clipboard by itself, with no key
+pressed. The clipboard is the host's (part 5), and the host holds the captured pixels before
+the page hears of them, so the copy could be made in either place.
+
+### Options
+
+1. The host publishes the raw frame at `present`, before the window shows: no page involved,
+   but no notice on screen, and a failure only in the log.
+2. The host publishes the frame and tells the page in an event, which shows the notice: a
+   second copy path beside `editor_copy`, and a new event.
+3. The page calls its own `copyComposed` once the capture has loaded, the same call as
+   `Ctrl+C`: one copy path, the notice and the NOT COPIED line for free.
+
+### Decision
+
+Option 3, by the assistant, Rotem's to veto: a gate in the page's `capture-ready` listener on
+`source === 'capture'` and no file, so a file opened or a frame stepped is never copied unasked.
+
+### Consequences
+
+Every copy goes through one path, so a change to the copy reaches the automatic one. The cost
+is an empty layer export before the copy, and the copy lands after the window shows rather
+than before; a check's capture probe copies too, since it announces itself as a capture. Revisit
+if the copy ever shows on the capture-to-usable marks, or if the pixels are wanted on the
+clipboard before the window is up.

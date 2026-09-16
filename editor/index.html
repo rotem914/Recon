@@ -2476,6 +2476,13 @@
       await loadImage(event.payload);
       drawHud();
       console.log(`capture shown ${Math.round(performance.now() - arrived)} ms after the page heard of it`);
+      // A capture is on the clipboard the moment it opens (Rotem, 2026-09-16): the same
+      // copy as Ctrl+C, so the HUD says copied, or NOT COPIED with the reason and Ctrl+C
+      // copies by hand. A capture only: a file opened, or a frame of one stepped, arrives
+      // by the same event and is never copied unasked.
+      if (event.payload.source === 'capture' && !event.payload.file) {
+        copyComposed().catch((err) => console.error('the capture was not copied', err && err.stack ? err.stack : String(err)));
+      }
       // S0.7's two editor marks, each sent the moment it happens and stamped by the host
       // when it arrives, so late by one crossing and never early. Painted: the second
       // animation frame after the new pixels went into the canvas. Focused: the new image

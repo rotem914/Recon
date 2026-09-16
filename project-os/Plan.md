@@ -165,6 +165,9 @@ the editor with that region.
   replaces nothing.
 - Overlapping capture requests are ignored while a selection is already active.
 - No save dialog, no format choice, no intermediate confirmation.
+- The capture is on the clipboard the moment the editor opens with it, the same copy as
+  `Ctrl+C`, so a paste needs no key; the HUD says copied, or NOT COPIED with the reason. A
+  file opened is never copied unasked. Added 2026-09-16 at Rotem's ask.
 
 ## 3.3 One window, two entry behaviors
 
