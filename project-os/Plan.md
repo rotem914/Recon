@@ -281,12 +281,21 @@ Which one is active is not a guess. Four rules, and nothing else changes it:
 
 ### The callout, the primary object
 
-With the callout tool active:
+With the callout tool active, two clicks (Rotem, 2026-09-16; one click made the bubble
+and started the typing before):
 
-1. Click the point the note refers to.
-2. A bubble is created anchored near it, with the text cursor inside.
-3. Type. The visible text is immediately part of the composed image.
-4. `Esc` leaves text editing and keeps the text.
+1. Click the point the note refers to: the end of the line.
+2. A bubble appears near it, at its automatic place, and moves with the pointer from
+   there, keeping that offset, so the point it names stays visible. The line stays
+   attached to it.
+3. Click again where the bubble should stay. It locks there, with the text cursor inside.
+4. Type. The visible text is immediately part of the composed image.
+5. `Esc` leaves text editing and keeps the text. Between the two clicks, `Esc`, Ctrl+Z or a
+   change of tool drops the unplaced bubble, and its number goes back.
+
+Where the pointer sits in the bubble while it follows is provisional, the assistant's
+choice, Rotem's to change: the bubble keeps the offset it started with, so the pointer is
+beside it, not inside it.
 
 Clicking an existing bubble selects it rather than creating another. Double-click, or
 Enter on a selected bubble, starts text editing. A bubble left empty is discarded when

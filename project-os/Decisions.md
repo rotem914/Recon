@@ -104,6 +104,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-16 · Google Sans is bundled with the page, the medium Latin subset, for the image size only.
 - 2026-09-16 · A new capture is copied by the page's own copy, after it loads, not by the host at present.
 - 2026-09-16 · The timeline's tabs are the page's own file beside the documents, Main implicit, a feed a list of ids.
+- 2026-09-16 · Between a callout's two clicks the bubble keeps its automatic offset from the pointer, and a drop gives its number back.
 
 ---
 
@@ -1080,3 +1081,43 @@ like every record, one write at a time from the page, and a file that does not p
 aside under a dated name rather than written over. The plus lives in the band, so no tab can
 be made before the first picture is on screen. Revisit if a tab needs a name of its own, a
 place for a file opened rather than captured, or more tabs than the band's left half holds.
+
+---
+
+## 2026-09-16 · Between a callout's two clicks the bubble keeps its automatic offset from the pointer, and a drop gives its number back
+
+### Context
+
+Rotem asked on 2026-09-16 for the callout in two clicks: the first marks the end of the
+line, the bubble moves with the mouse, the second locks it and starts the typing. He did
+not say where the pointer sits in the bubble while it follows, nor what happens to a bubble
+abandoned between the clicks.
+
+### Options
+
+1. The pointer at the bubble's centre: the bubble jumps under the pointer at the first
+   move, covering the point just clicked, and the second click lands on the bubble.
+2. The bubble keeps the offset it started with, from its automatic place to the anchor:
+   no jump, the anchor stays visible beside the pointer, the second click lands on the
+   picture.
+3. A drag from the anchor to the bubble, as Snagit draws a callout: one press, not two
+   clicks, which is not what was asked.
+
+For the abandoned bubble: keep its number as a gap, as an empty bubble discarded at
+commit does; or give the number back, as a drawn shape shorter than four pixels does.
+
+### Decision
+
+Option 2, by the assistant, provisional and Rotem's to change (`project-os/Plan.md` §3.5
+says so). The number goes back: nothing of the bubble was ever shown as a note, so there
+is no gap for the numbering rule to keep, and the next callout takes the number the
+abandoned one would have. Escape, Ctrl+Z, a change of tool, leaving annotation and another
+picture arriving each drop it.
+
+### Consequences
+
+The first move never jumps the bubble, and the automatic place is a starting position as
+§3.5 promises. The pointer is beside the bubble, not inside it, so locking it exactly on a
+spot means aiming its corner, which is the cost. Ctrl+Z between the clicks takes back the
+first click and leaves nothing to redo. Revisit if Rotem wants the pointer inside the
+bubble, or a drag instead of the second click.
