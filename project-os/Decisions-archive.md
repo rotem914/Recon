@@ -4,6 +4,46 @@ NOT read by default - consult only when digging into an old entry.
 Moved here verbatim by project-os/rotate.ps1. Movement only: nothing is rewritten, compressed, or deleted.
 
 ## Archived decisions
+## 2026-09-14 · A bubble is placed from a fixed list of candidates, and the margin is what the notes need, recomputed at rest
+
+### Context
+
+§3.5 asks for a small deterministic set of candidate positions near the anchor, avoiding
+the anchor and existing bubbles where possible, and for the canvas to grow with a neutral
+margin when a bubble cannot fit, never shrinking the picture. It does not say what wins when
+no candidate is both inside and clear, when the margin is recomputed, or whether it ever
+shrinks. Each of those changes what a user sees under their hands.
+
+### Options
+
+1. One fixed offset, as the first version had, and a margin set by hand.
+2. Candidates in a fixed order; a clear candidate in the margin beats an overlapping one
+   inside; the margin is recomputed whenever the notes come to rest, and shrinks back.
+3. The same, but the margin only ever grows.
+4. Content-aware placement that looks at the pixels.
+
+### Decision
+
+Option 2, by the assistant at S1.6. The order is below right, below left, above right,
+above left, right, left, below, above, with gaps proportional to the text size, so the
+first candidate is exactly the first version's one place and the S0.6 references stand.
+Recomputing only at rest, never during a drag or a keystroke's layout, keeps the picture
+from shifting under a bubble being moved; recomputing on every input keystroke is
+allowed because typing only grows the bubble downward. Shrinking back means a note dragged
+back onto the picture leaves no blank band in the output. Option 4 is what §3.5 rules
+out as a prerequisite.
+
+### Consequences
+
+The same clicks on the same picture always give the same layout, which the checks assert
+by running them twice. A crowded corner grows the canvas rather than stacking bubbles;
+that half of the order is F81 and one line to reverse. The margin is never the user's
+to set in v1; the checks set a floor under it. Revisit if daily use shows the canvas
+growing when a user would rather have had the bubbles overlap, or if a margin that
+appears and disappears as notes move reads as jumpy.
+
+---
+
 ## 2026-09-13 · The clipboard is published by the host in three formats, PNG first
 
 ### Context
