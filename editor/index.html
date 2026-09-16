@@ -125,17 +125,19 @@
               cursor: pointer; display: none; padding: 0; }
   .thumb:hover .x { display: block; }
   .thumb .x:hover { background: #c0392b; }
-  /* The done mark (Rotem, 2026-09-16): in a tab after Main, a round 20 by 20 button at the
-     thumbnail's top left with a 16 by 16 icon, shown on hover; once pressed it stays shown,
-     ticked, to say this picture is dealt with. Nothing else follows from it. */
-  .thumb .done { position: absolute; left: 2px; top: 2px; width: 20px; height: 20px; border-radius: 10px;
-                 border: none; padding: 0; background: rgba(10,12,14,.75); color: #f2f2f2; cursor: pointer;
+  /* The done mark (Rotem, 2026-09-16): in a tab after Main, a round 24 by 24 button at the
+     thumbnail's top left, a 2 px white border, a 20 by 20 tick filling the inside with no gap,
+     shown on hover; once pressed it stays shown and the tick fades in by A1, to say this
+     picture is dealt with. Nothing else follows from it. */
+  .thumb .done { position: absolute; left: 2px; top: 2px; width: 24px; height: 24px; border-radius: 12px; box-sizing: border-box;
+                 border: 2px solid #fff; padding: 0; background: rgba(10,12,14,.75); color: #f2f2f2; cursor: pointer;
                  display: none; place-items: center; }
-  .thumb .done svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-  .thumb .done .tick { display: none; }
+  .thumb .done svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .thumb .done .tick { opacity: 0; }
   .thumb:hover .done, .thumb.checked .done { display: grid; }
   .thumb.checked .done { background: #2e7d32; }
-  .thumb.checked .done .tick { display: block; }
+  .thumb.checked .done .tick { opacity: 1; transition: opacity 144ms ease-out; /* A1, on the marking only */ }
+  @media (prefers-reduced-motion: reduce) { .thumb.checked .done .tick { transition: none; } }
   /* The trash (S2.7): a chip at the end of the timeline opens it in the same strip, each
      trashed document with a way back; another chip returns. Provisional, Rotem's to restyle. */
   .chip-cell { display: grid; place-items: center; }
@@ -1404,7 +1406,7 @@
         const done = document.createElement('button');
         done.className = 'done';
         done.type = 'button';
-        done.innerHTML = '<svg viewBox="0 0 16 16"><circle class="ring" cx="8" cy="8" r="6.5"/><path class="tick" d="M4.5 8.5l2.5 2.5 4.5-6"/></svg>';
+        done.innerHTML = '<svg viewBox="0 0 20 20"><path class="tick" d="M5 10.5l3.5 3.5 6.5-8.5"/></svg>';
         done.setAttribute('aria-label', 'Done with this picture');
         done.title = 'Done with this picture, in this tab; press again to clear';
         done.addEventListener('pointerdown', (event) => event.stopPropagation()); // no strip scroll from it

@@ -2923,18 +2923,26 @@ export async function runChecks(editor, invoke) {
     check('back on the tab, its one capture', await until(() => thumbs().length === 1) && selectedName() === 'New tab');
 
     // The done mark (Rotem, 2026-09-16): in a tab, a round 20 by 20 button at the thumbnail's top left with a
-    // 16 by 16 icon, hidden until hover; pressed, it stays shown and ticked, on disk; Ctrl+Z clears it; Main has none.
+    // 2 px white border and a 20 by 20 tick with no gap, hidden until hover; pressed, it stays shown and the tick fades in by A1,
+    // on disk; Ctrl+Z clears it; Main has none. The sizes are read from the rules, since a hidden element has no box.
     const doneBtn = document.querySelector('#strip .thumb .done');
     const doneStyle = doneBtn && getComputedStyle(doneBtn);
     const doneIcon = doneBtn && getComputedStyle(doneBtn.querySelector('svg'));
-    check('in a tab a thumbnail carries a round 20 by 20 done mark at its top left with a 16 by 16 icon, hidden until hover',
-      !!doneBtn && doneStyle.display === 'none' && doneStyle.width === '20px' && doneStyle.height === '20px' && doneStyle.borderRadius === '10px' && doneStyle.left === '2px' && doneStyle.top === '2px'
-        && doneIcon.width === '16px' && doneIcon.height === '16px' && !doneBtn.closest('.thumb').classList.contains('checked'),
-      doneBtn ? `${doneStyle.display}, ${doneStyle.width}x${doneStyle.height} radius ${doneStyle.borderRadius} at ${doneStyle.left},${doneStyle.top}, icon ${doneIcon.width}` : 'no mark');
+    check('in a tab a thumbnail carries a round 24 by 24 done mark at its top left, a 2 px white border, a 20 by 20 tick inside it with no gap, hidden until hover',
+      !!doneBtn && doneStyle.display === 'none' && doneStyle.width === '24px' && doneStyle.height === '24px' && doneStyle.borderRadius === '12px' && doneStyle.left === '2px' && doneStyle.top === '2px'
+        && doneStyle.borderTopWidth === '2px' && doneStyle.borderTopColor === 'rgb(255, 255, 255)' && doneStyle.boxSizing === 'border-box'
+        && doneIcon.width === '20px' && doneIcon.height === '20px' && !doneBtn.querySelector('.ring') && !doneBtn.closest('.thumb').classList.contains('checked'),
+      doneBtn ? `${doneStyle.display}, ${doneStyle.width}x${doneStyle.height} radius ${doneStyle.borderRadius} at ${doneStyle.left},${doneStyle.top}, border ${doneStyle.borderTopWidth} ${doneStyle.borderTopColor}, icon ${doneIcon.width}` : 'no mark');
+    const tickBefore = getComputedStyle(doneBtn.querySelector('.tick')).opacity;
     doneBtn.click();
-    await sleep(100);
+    const tickStyle = getComputedStyle(doneBtn.querySelector('.tick'));
+    const fade = `${tickStyle.transitionProperty} ${tickStyle.transitionDuration} ${tickStyle.transitionTimingFunction}`;
+    await sleep(300);
     saved = await invoke('editor_tabs');
-    check('pressed, the mark stays shown and ticked, and the picture is marked done in this tab on disk', doneBtn.closest('.thumb').classList.contains('checked') && getComputedStyle(doneBtn).display === 'grid' && getComputedStyle(doneBtn.querySelector('.tick')).display !== 'none'
+    check('the tick was clear before the press and fades in by A1, 144 ms ease-out, to full once pressed', tickBefore === '0' && fade === 'opacity 0.144s ease-out' && getComputedStyle(doneBtn.querySelector('.tick')).opacity === '1',
+      `before ${tickBefore}, ${fade}, after ${getComputedStyle(doneBtn.querySelector('.tick')).opacity}`);
+    check('pressed, the mark stays shown and ticked, and the picture is marked done in this tab on disk', doneBtn.closest('.thumb').classList.contains('checked') && getComputedStyle(doneBtn).display === 'grid'
+        && doneBtn.closest('.thumb').getBoundingClientRect().left + doneBtn.closest('.thumb').clientLeft + 2 === doneBtn.getBoundingClientRect().left && Math.round(doneBtn.getBoundingClientRect().width) === 24 && Math.round(doneBtn.querySelector('svg').getBoundingClientRect().width) === 20
         && editor.tabsOf().list[0].done.join() === String(c.document_id) && !!saved && (saved.tabs[0].done || []).join() === String(c.document_id),
       `checked ${doneBtn.closest('.thumb').classList.contains('checked')}, done ${JSON.stringify(editor.tabsOf().list[0].done)}, disk ${JSON.stringify(saved && saved.tabs[0].done)}`);
     check('the picture is still on screen and its notes untouched: the mark changes nothing else', model.image.document_id === c.document_id && model.callouts.length === 0 && thumbs().length === 1);

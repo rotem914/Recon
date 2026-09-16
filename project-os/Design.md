@@ -12,7 +12,7 @@ is looked up here, not guessed from a neighbour.
 
 | Token | Name | Duration | Easing | Where it is used |
 |---|---|---|---|---|
-| A1 | Fade in | 144 ms | ease-out | The hover fill of an icon button (`editor/index.html`, `#controls button`). |
+| A1 | Fade in | 144 ms | ease-out | The hover fill of an icon button (`editor/index.html`, `#controls button`); the tick of a done mark as it is pressed (Rotem, 2026-09-16). |
 
 A motion respects the reduced-motion preference: gated at its own surface, the final
 state reachable with no animation at all (`project-os/QA.md` §7).
@@ -122,12 +122,13 @@ Stated by Rotem on 2026-09-16 for the thumbnails in a tab after Main.
 
 | Part | Value |
 |---|---|
-| Container | round, 20 by 20, at the thumbnail's top left |
-| Icon | 16 by 16 |
+| Container | round, 24 by 24, at the thumbnail's top left, a 2 px white border |
+| Icon | 20 by 20, filling the inside of the border with no gap |
 | Shown | on hover over the thumbnail; once pressed, always, ticked |
+| Marking | the tick fades in by A1 |
 | Effect | none beyond the mark itself |
 
-The colours are not stated yet. Provisional in the page: the thumbnail ×'s dark fill, and the
+The fills are not stated yet. Provisional in the page: the thumbnail ×'s dark fill, and the
 restore button's green once ticked.
 
 ### Window
