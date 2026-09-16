@@ -2520,6 +2520,17 @@ export async function runChecks(editor, invoke) {
       `${window.innerWidth}x${window.innerHeight}`);
     check('the keys are still the page\'s after a click on a window button', document.activeElement !== document.getElementById('win-max'));
 
+    // A capture with the editor minimized brings it back (Rotem, 2026-09-16): the host's
+    // show, which a capture ends with, restores a minimized window before it focuses it.
+    document.getElementById('win-min').click();
+    for (let i = 0; i < 40 && !(await win.isMinimized()); i += 1) await sleep(50);
+    const minimized = await win.isMinimized();
+    await invoke('editor_show');
+    for (let i = 0; i < 40 && (await win.isMinimized()); i += 1) await sleep(50);
+    await sleep(200);
+    check('a minimized window comes back when the host shows it, as a capture does', minimized && !(await win.isMinimized()) && (await invoke('editor_window_visible')) === true,
+      `minimized ${minimized}, then minimized ${await win.isMinimized()}`);
+
     await editor.setFullscreen(true);
     const stageLeft = () => Math.round(stage.getBoundingClientRect().left);
     const sidebar = document.getElementById('controls');

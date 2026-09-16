@@ -121,6 +121,9 @@ image at a predictable size, and being one keystroke from annotating it.
 - Remember the last external application as the return target, including when another
   capture starts from inside Recon. If that application has closed, hide Recon without
   activating an unrelated one. A background completion never steals focus.
+- A capture brings the editor to the front the way a click on its taskbar button would: a
+  minimized editor is restored first, an editor behind another window comes forward
+  (Rotem, 2026-09-16).
 
 **Opening a file is a normal way in, not a special case.** All four reach the same window:
 

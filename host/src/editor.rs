@@ -1207,11 +1207,19 @@ pub fn create_hidden(app: &AppHandle) -> tauri::Result<()> {
 }
 
 /// Shows the editor and reports how long the show call itself took.
+///
+/// A minimized window is restored first (Rotem, 2026-09-16): show changes nothing on a
+/// window that is already visible, and the focus call skips a minimized one, so a capture
+/// taken with the editor minimized left it in the taskbar. Restored, it comes to the front
+/// the way a click on its taskbar button brings it.
 pub fn show(app: &AppHandle) -> Result<u128, String> {
     let started = Instant::now();
     let window = app
         .get_webview_window("editor")
         .ok_or("there is no editor window")?;
+    if window.is_minimized().map_err(|err| err.to_string())? {
+        window.unminimize().map_err(|err| err.to_string())?;
+    }
     window.show().map_err(|err| err.to_string())?;
     window.set_focus().map_err(|err| err.to_string())?;
     Ok(started.elapsed().as_millis())
