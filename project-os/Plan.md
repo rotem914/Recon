@@ -2290,6 +2290,18 @@ Annotate and Copy were settled.
       screen uses; the document's own pixels are never touched, so exporting twice gives
       the same blur and deleting the blur gives every source pixel back, which the checks
       see. Section 35 of the editor checks.
+- [x] S3.5 Ruler, at Rotem's word on 2026-09-16: a tool that marks an area and writes its
+      size in pixels, width and height, in a bubble beside the pointer the whole time the
+      drag lasts; released, the box and its size stay on the picture and in every copy,
+      like the rectangle (his pick, option 1 of two, over a measurement that leaves
+      nothing). Hovering it shows a round 16 px × with a 12 px X that deletes it (his
+      spec). M and the button after Blur. Model: Opus 5, the shape mechanics exist.
+      **Built 2026-09-16.** A box in the scene like the blur's, its size written beside
+      the corner the drag ends at, which is where the pointer is, and it stays there;
+      selected, moved whole, deleted by Delete or its ×, undone, redone, saved and
+      exported with the other shapes; the × is 16 screen pixels at every zoom and never
+      in a copy. The look, a 2 px line in the callout line's blue and a dark 14 px label,
+      is provisional, in `project-os/Design.md`. Section 43 of the editor checks.
 - [x] S2.6 Export beyond PNG: Save As offering JPEG beside PNG, the same never-overwrite
       path, the quality fixed rather than asked. Model: Opus 5, the path exists.
       **Built 2026-09-14, on Fable at Rotem's word.** The Save As dialog offers JPEG beside

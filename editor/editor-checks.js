@@ -1917,7 +1917,7 @@ export async function runChecks(editor, invoke) {
     const buttons = [...controls.querySelectorAll('button')];
     const boxes = buttons.map((b) => b.getBoundingClientRect());
     const iconWidth = (b) => Math.max(...[...b.querySelectorAll('svg')].map((s) => Math.round(s.getBoundingClientRect().width)));
-    check('nine icon buttons, 48 by 48 with a 32 by 32 icon drawn with a 2 px #C3C6CA line, 8 px apart, named, with no fill of their own', buttons.length === 9
+    check('ten icon buttons, 48 by 48 with a 32 by 32 icon drawn with a 2 px #C3C6CA line, 8 px apart, named, with no fill of their own', buttons.length === 10
       && boxes.every((b) => Math.round(b.width) === 48 && Math.round(b.height) === 48)
       && boxes.every((b, i) => i === 0 || Math.round(b.top - boxes[i - 1].bottom) === 8)
       && buttons.every((b) => iconWidth(b) === 32 && [...b.querySelectorAll('svg')].every((v) => parseFloat(getComputedStyle(v).strokeWidth) * 32 / 20 === 2 && getComputedStyle(v).stroke === 'rgb(195, 198, 202)') && (b.getAttribute('aria-label') || '').length > 0)
@@ -1927,11 +1927,11 @@ export async function runChecks(editor, invoke) {
     check('a hover fills the square with #21222C, fading in by A1: 144 ms, ease-out', !!hoverRule && hoverRule.style.backgroundColor === 'rgb(33, 34, 44)'
       && buttons.every((b) => getComputedStyle(b).transitionProperty === 'background-color' && getComputedStyle(b).transitionDuration === '0.144s' && getComputedStyle(b).transitionTimingFunction === 'ease-out'),
       `${hoverRule && hoverRule.style.backgroundColor}, ${getComputedStyle(buttons[0]).transition}`);
-    // One container around the nine, centred across the sidebar; a tooltip on each button's right (Rotem, 2026-09-15).
+    // One container around the ten, centred across the sidebar; a tooltip on each button's right (Rotem, 2026-09-15).
     const group = document.getElementById('buttons');
     const gbox = group.getBoundingClientRect();
     const stageBottom = Math.round(stage.getBoundingClientRect().bottom);
-    check('one container holds all nine buttons, centred in the sidebar\'s height and across it, the sidebar running from the top bar to the timeline', !!group && group.parentElement === controls && buttons.every((b) => group.contains(b))
+    check('one container holds all ten buttons, centred in the sidebar\'s height and across it, the sidebar running from the top bar to the timeline', !!group && group.parentElement === controls && buttons.every((b) => group.contains(b))
       && Math.abs((gbox.left + gbox.right) / 2 - (cbox.left + cbox.right) / 2) < 0.5 && Math.round(gbox.width) === 48
       && Math.round(cbox.bottom) === stageBottom && Math.abs((gbox.top + gbox.bottom) / 2 - (cbox.top + cbox.bottom) / 2) < 0.5,
       `container ${Math.round(gbox.left)}-${Math.round(gbox.right)} by ${Math.round(gbox.top)}-${Math.round(gbox.bottom)}, centred at ${(gbox.left + gbox.right) / 2},${(gbox.top + gbox.bottom) / 2}; the sidebar ${Math.round(cbox.top)}-${Math.round(cbox.bottom)}, centred at ${(cbox.left + cbox.right) / 2},${(cbox.top + cbox.bottom) / 2}; the stage ends at ${stageBottom}`);
@@ -3212,6 +3212,114 @@ export async function runChecks(editor, invoke) {
     model.callouts = []; model.shapes = []; model.nextNumber = 1;
     editor.layoutScene();
     editor.setTool(null);
+  }
+
+  // ---------------------------------------------------------------- 43. the ruler
+  say('');
+  say('The ruler (Rotem, 2026-09-16): M or the button, then a drag marks an area; its size in image pixels sits beside the pointer while the drag lasts and stays beside the corner it ended at; hovering it shows a round 16 px x with a 12 px X that deletes it; it moves, undoes, redoes, saves and exports like the other shapes, the x left out of the copy');
+  {
+    const stage = editor.stage;
+    await invoke('editor_store_reset');
+    const shot = await invoke('editor_capture_probe', { width: 400, height: 300 });
+    await editor.loadImage(shot);
+    await editor.setZoom(1);
+    const box = stage.getBoundingClientRect();
+    const css = (ix, iy) => ({ x: box.left + model.offset.x + ((ix - model.pan.x) * model.zoom) / editor.ratioOf(), y: box.top + model.offset.y + ((iy - model.pan.y) * model.zoom) / editor.ratioOf() });
+    const pointer = (type, target, ix, iy) => {
+      const at = css(ix, iy);
+      target.dispatchEvent(new PointerEvent(type, { pointerId: 13, button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: at.x, clientY: at.y, bubbles: true, cancelable: true }));
+    };
+    const press = (init) => { const e = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }); window.dispatchEvent(e); return e.defaultPrevented; };
+    const rulerEl = () => document.querySelector('#scene .ruler[data-shape]');
+    const sizeEl = () => rulerEl() && rulerEl().querySelector('.size');
+    const xEl = () => rulerEl() && rulerEl().querySelector('.x');
+    const geometry = () => { const r = editor.rectOfShape(model.shapes[0]); const el = rulerEl(); return `${r.x},${r.y} ${r.w}x${r.h}; box ${el ? `${el.style.left} ${el.style.top} ${el.style.width} ${el.style.height}` : 'none'}; size "${sizeEl() ? sizeEl().textContent : ''}" at ${sizeEl() ? `${sizeEl().style.left},${sizeEl().style.top}` : 'none'}`; };
+
+    press({ key: 'm', code: 'KeyM' });
+    check('M picks the ruler, and its button in the sidebar is lit', model.tool === 'ruler' && document.querySelector('#tools [data-tool="ruler"]').classList.contains('active'));
+    const button = document.querySelector('#tools [data-tool="ruler"]');
+    check('the ruler button sits after Blur, named Ruler, an icon button like the others', !!button && button.previousElementSibling.dataset.tool === 'blur' && button.getAttribute('aria-label') === 'Ruler' && getComputedStyle(button).width === '48px');
+
+    // The drag: the size beside the pointer while it lasts, the x hidden meanwhile.
+    pointer('pointerdown', stage, 100, 80);
+    pointer('pointermove', stage, 200, 150);
+    let ruler = model.shapes[0];
+    check('a drag makes a ruler, a box in the scene over the area crossed so far', !!ruler && ruler.kind === 'ruler' && !!rulerEl() && rulerEl().style.left === '100px' && rulerEl().style.top === '80px' && rulerEl().style.width === '100px' && rulerEl().style.height === '70px', geometry());
+    check('while the drag lasts the size is written beside the pointer, 8 px right of and below it, in image pixels', !!sizeEl() && sizeEl().textContent === '100x70' && sizeEl().style.left === '108px' && sizeEl().style.top === '78px', geometry());
+    check('while the drag lasts the x is hidden', !!xEl() && rulerEl().classList.contains('drawing') && getComputedStyle(xEl()).display === 'none');
+    pointer('pointermove', stage, 260, 200);
+    check('the size follows the pointer as it moves', sizeEl().textContent === '160x120' && sizeEl().style.left === '168px' && sizeEl().style.top === '128px', geometry());
+    pointer('pointerup', stage, 260, 200);
+    const r1 = editor.rectOfShape(ruler);
+    check('released, the ruler stays with its size beside the corner the drag ended at', model.shapes.length === 1 && r1.x === 100 && r1.y === 80 && r1.w === 160 && r1.h === 120 && sizeEl().textContent === '160x120' && sizeEl().style.left === '168px' && sizeEl().style.top === '128px' && !rulerEl().classList.contains('drawing'), geometry());
+    check('the ruler is one step of history', model.history.index >= 1);
+    check('the size label is in image pixels, 14 px medium on a dark bubble, and takes no pointer', getComputedStyle(sizeEl()).fontSize === '14px' && getComputedStyle(sizeEl()).fontWeight === '500' && getComputedStyle(sizeEl()).pointerEvents === 'none');
+
+    // The x: round, 16 by 16 with a 12 by 12 icon, at the top right corner, 16 screen pixels at any zoom.
+    const xs = getComputedStyle(xEl());
+    const xi = getComputedStyle(xEl().querySelector('svg'));
+    check('the x is a round 16 by 16 button with a 12 by 12 X, hidden until hover, at the top right corner', xs.display === 'none' && xs.width === '16px' && xs.height === '16px' && xs.borderRadius === '8px' && xi.width === '12px' && xi.height === '12px' && xEl().getAttribute('aria-label') === 'Delete',
+      `${xs.display} ${xs.width}x${xs.height} radius ${xs.borderRadius}, icon ${xi.width}x${xi.height}`);
+    xEl().style.display = 'grid';
+    const corner1 = css(260, 80);
+    const b1 = xEl().getBoundingClientRect();
+    await editor.setZoom(2);
+    const corner2 = css(260, 80);
+    const b2 = xEl().getBoundingClientRect();
+    check('the x is 16 screen pixels centred on the corner at zoom 1 and at zoom 2 alike, the scene\'s scale undone on it', Math.abs(b1.width - 16) < 0.6 && Math.abs(b1.height - 16) < 0.6 && Math.abs(b2.width - 16) < 0.6 && Math.abs(b2.height - 16) < 0.6
+      && Math.abs(b1.left + b1.width / 2 - corner1.x) < 1 && Math.abs(b1.top + b1.height / 2 - corner1.y) < 1 && Math.abs(b2.left + b2.width / 2 - corner2.x) < 1 && Math.abs(b2.top + b2.height / 2 - corner2.y) < 1,
+      `zoom 1: ${b1.width.toFixed(1)}x${b1.height.toFixed(1)} centre ${(b1.left + b1.width / 2).toFixed(1)},${(b1.top + b1.height / 2).toFixed(1)} corner ${corner1.x.toFixed(1)},${corner1.y.toFixed(1)}; zoom 2: ${b2.width.toFixed(1)}x${b2.height.toFixed(1)} centre ${(b2.left + b2.width / 2).toFixed(1)},${(b2.top + b2.height / 2).toFixed(1)} corner ${corner2.x.toFixed(1)},${corner2.y.toFixed(1)}`);
+    await editor.setZoom(1);
+    xEl().style.display = '';
+
+    // The copy: the box and its size, never the x.
+    const layer = await editor.exportLayer();
+    check('the export carries the ruler and its size, and not the x', layer.markup.includes('160x120') && !layer.markup.includes('<button') && !layer.markup.includes('data-ui'), `${layer.markup.includes('160x120')} ${layer.markup.includes('<button')}`);
+
+    // Moved whole, the size stays beside its corner; undo puts it back.
+    pointer('pointerdown', rulerEl(), 150, 150);
+    pointer('pointermove', stage, 160, 170);
+    pointer('pointerup', stage, 160, 170);
+    const r2 = editor.rectOfShape(model.shapes[0]);
+    check('a drag on the ruler moves it whole, the size with it', model.selectedShape === model.shapes[0] && r2.x === 110 && r2.y === 100 && r2.w === 160 && r2.h === 120 && sizeEl().style.left === '168px' && sizeEl().style.top === '128px', geometry());
+    press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    check('Ctrl+Z puts it back', editor.rectOfShape(model.shapes[0]).x === 100 && editor.rectOfShape(model.shapes[0]).y === 80, geometry());
+    press({ key: 'Escape', code: 'Escape' });
+
+    // A click with no drag makes nothing.
+    press({ key: 'm', code: 'KeyM' });
+    pointer('pointerdown', stage, 20, 20);
+    pointer('pointerup', stage, 21, 20);
+    check('a click with no drag makes no ruler', model.shapes.length === 1 && document.querySelectorAll('#scene .ruler').length === 1);
+
+    // Saved with the notes, back after a restart.
+    await editor.saveNow();
+    editor.documents.clear();
+    model.shapes = [];
+    model.image = { width: 0, height: 0, source: '' };
+    await editor.loadImage(await invoke('editor_store_reload'));
+    ruler = model.shapes[0];
+    check('after a restart the ruler is back from the disk with its size', model.shapes.length === 1 && ruler.kind === 'ruler' && ruler.b.x === 260 && ruler.b.y === 200 && !!sizeEl() && sizeEl().textContent === '160x120', geometry());
+
+    // The x deletes it, one step of undo; Ctrl+Shift+Z deletes it again.
+    await editor.setMode('annotate');
+    pointer('pointerdown', xEl(), 260, 80);
+    pointer('pointerup', stage, 260, 80);
+    check('a press on the x deletes the ruler', model.shapes.length === 0 && !rulerEl());
+    press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    check('Ctrl+Z brings it back, size and all', model.shapes.length === 1 && model.shapes[0].kind === 'ruler' && !!sizeEl() && sizeEl().textContent === '160x120', geometry());
+    press({ key: 'Z', code: 'KeyZ', ctrlKey: true, shiftKey: true });
+    check('Ctrl+Shift+Z deletes it again', model.shapes.length === 0 && !rulerEl());
+    press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    check('and Ctrl+Z once more brings it back', model.shapes.length === 1 && !!rulerEl());
+
+    press({ key: 'c', code: 'KeyC' });
+    model.callouts = [];
+    model.shapes = [];
+    editor.layoutScene();
+    editor.setTool(null);
+    for (let i = 0; i < 40 && !(await invoke('editor_window_visible')); i += 1) await sleep(50);
+    await invoke('editor_show');
   }
 
   say('');

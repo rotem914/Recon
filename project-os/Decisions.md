@@ -105,6 +105,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-16 · A new capture is copied by the page's own copy, after it loads, not by the host at present.
 - 2026-09-16 · The timeline's tabs are the page's own file beside the documents, Main implicit, a feed a list of ids.
 - 2026-09-16 · Between a callout's two clicks the bubble keeps its automatic offset from the pointer, and a drop gives its number back.
+- 2026-09-16 · The ruler is a box in the scene with its size in image pixels beside the corner the drag ended at, and its × is counter-scaled.
 
 ---
 
@@ -1121,3 +1122,41 @@ The first move never jumps the bubble, and the automatic place is a starting pos
 spot means aiming its corner, which is the cost. Ctrl+Z between the clicks takes back the
 first click and leaves nothing to redo. Revisit if Rotem wants the pointer inside the
 bubble, or a drag instead of the second click.
+
+---
+
+## 2026-09-16 · The ruler is a box in the scene with its size in image pixels beside the corner the drag ended at, and its × is counter-scaled
+
+### Context
+
+Rotem asked for a ruler: mark an area, and its size in pixels, width and height, shows the
+whole time in a bubble beside the pointer; he chose the reading where the box and its size
+stay on the picture and in every copy, and asked for a round 16 px × with a 12 px X on hover
+to delete it. Three things had to be placed: where the size goes once the pointer is gone,
+what scale the label and the × live at, and how the ruler is drawn.
+
+### Options
+
+1. The size in screen pixels, always readable, and some other size in the copy.
+2. The size in image pixels like a note, beside the corner the drag ended at; the × alone
+   counter-scaled to 16 screen pixels.
+3. The ruler drawn in the shapes' SVG with a `<text>` label, measured for its bubble.
+
+### Decision
+
+Option 2, by the assistant. The label goes into the copy, and the copy has one scale, so
+the label is laid out in image pixels like every note (the 2026-09-11 decision: no minimum
+on-screen size). It sits beside b, the corner the drag ends at, which is where the pointer
+is while the drag lasts, so "beside the pointer" and "stays where it was" are the same
+place. The × is editing UI, never in a copy, so it is the one part sized in screen pixels:
+the scene's scale is undone on it through a CSS variable the scene's transform sets. The
+ruler is an HTML box in the scene like the blur, not SVG, so the label's bubble sizes
+itself and the hover × is plain CSS; the export takes the × out by its `data-ui` mark.
+
+### Consequences
+
+At a fit view of a wide capture the size reads small, as a note does; the note's size
+ladder does not reach it. The × stays 16 px at every zoom, so it can cover a ruler smaller
+than 16 screen pixels. A shape with `kind: "ruler"` in a saved document is ignored by a
+page before this one, which draws nothing for a kind it does not know. Revisit if Rotem
+states a look for the label, or wants the size readable at every zoom on screen.

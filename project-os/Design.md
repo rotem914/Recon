@@ -46,7 +46,7 @@ Stated by Rotem on 2026-09-15 for the controls sidebar; the sizes restated on 20
 | Hover | the container fills with the icon button hover colour, fading in by A1 |
 | Name | every icon button carries its name and its key as a title, so it has a name without its text |
 
-Used by: the controls sidebar down the left edge of the editor, the six tools, Copy, Save
+Used by: the controls sidebar down the left edge of the editor, the seven tools, Copy, Save
 As and the mode.
 
 ### Button group
@@ -132,6 +132,22 @@ Stated by Rotem on 2026-09-16 for the thumbnails in a tab after Main.
 
 The fills are not stated yet. Provisional in the page: the thumbnail ×'s dark fill, and the
 restore button's green once ticked.
+
+### Ruler
+
+Stated by Rotem on 2026-09-16 for the annotation tools.
+
+| Part | Value |
+|---|---|
+| Use | a drag marks an area; its size in pixels, width and height, is written in a bubble beside the pointer the whole time the drag lasts |
+| After the release | the box and its size stay on the picture and in every copy (option 1 of two) |
+| Delete button | on hover over the ruler: a round 16 by 16 button with a 12 by 12 X, one press deletes the ruler |
+
+The rest is not stated yet. Provisional in the page until it is: the box a 2 px line in the
+callout line's #7aa7ff; the size bubble beside the corner the drag ended at, 8 px right of
+and below it, dark #1b1f24 with a 1 px #3a4149 border, 4 px corners, white 14 px medium
+text, all in image pixels like a note; the × centred on the box's top right corner, the
+thumbnail ×'s dark fill and its red on hover, a 1.5 px line, 16 screen pixels at every zoom.
 
 ### Window
 

@@ -261,6 +261,25 @@
   #arrows [data-shape] { pointer-events: visiblePainted; cursor: move; }
   #handles { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
   .blur { position: absolute; cursor: move; border: 1px dashed rgba(255,82,82,.6); box-sizing: border-box; }
+  /* The ruler (Rotem, 2026-09-16): a box in the scene like the blur, its size in image pixels
+     written beside the corner the drag ended at, so while the drag lasts the size sits beside
+     the pointer, and it stays there once released, on screen and in every copy. Its look is
+     provisional until Rotem states one: a 2 px line in the callout line's blue, the label
+     dark with white 14 px text, both in image pixels like a note. */
+  .ruler { position: absolute; cursor: move; border: 2px solid #7aa7ff; box-sizing: border-box; }
+  .ruler .size { position: absolute; padding: 2px 6px; border-radius: 4px; background: #1b1f24; color: #f2f2f2;
+                 border: 1px solid #3a4149; font: 500 14px/18px system-ui, sans-serif; white-space: nowrap; pointer-events: none; }
+  /* The ruler's x (Rotem, 2026-09-16): a round 16 px button with a 12 px X, shown on hover over the
+     ruler, centred on its top right corner. Counter-scaled by the scene's own scale (--k), so it is
+     16 screen pixels at every zoom; never in a copy, the export takes it out. Its fill is
+     provisional: the thumbnail x's. Hidden while the ruler is being drawn. */
+  .ruler .x { position: absolute; left: calc(100% + 2px); top: -2px; width: 16px; /* on the outer corner, past the 2 px border */ height: 16px; border-radius: 8px; border: none; padding: 0;
+              background: rgba(10,12,14,.75); color: #f2f2f2; cursor: pointer; display: none; place-items: center;
+              transform-origin: 0 0; transform: scale(calc(1 / var(--k, 1))) translate(-50%, -50%); }
+  .ruler .x svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; }
+  .ruler:hover .x { display: grid; }
+  .ruler.drawing .x, body.plain .ruler .x { display: none; }
+  .ruler .x:hover { background: #c0392b; }
   body.checking #stage { cursor: progress; }
   #report { position: absolute; inset: 0; display: none; padding: 18px 22px; overflow: auto;
             background: #0c0e10; font-family: ui-monospace, Consolas, monospace;
@@ -279,6 +298,7 @@
       <button type="button" data-tool="highlight" aria-label="Highlight"><svg viewBox="0 0 20 20"><path d="M3 17h5l8-8-4-4-8 8v4z"/><path d="M11 6l3 3"/><path d="M3 19h14"/></svg></button>
       <button type="button" data-tool="text" aria-label="Text"><svg viewBox="0 0 20 20"><path d="M4 4h12M10 4v12M7 16h6"/></svg></button>
       <button type="button" data-tool="blur" aria-label="Blur"><svg viewBox="0 0 20 20"><path d="M10 3c-3 4-5 6.5-5 9a5 5 0 0 0 10 0c0-2.5-2-5-5-9z"/></svg></button>
+      <button type="button" data-tool="ruler" aria-label="Ruler"><svg viewBox="0 0 20 20"><rect x="2" y="7" width="16" height="6" rx="1"/><path d="M6 7v3M10 7v3M14 7v3"/></svg></button>
     </div>
     <button id="copy" type="button" aria-label="Copy"><svg viewBox="0 0 20 20"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M13 7V4.5A1.5 1.5 0 0 0 11.5 3h-7A1.5 1.5 0 0 0 3 4.5v7A1.5 1.5 0 0 0 4.5 13H7"/></svg></button>
     <button id="saveas" type="button" aria-label="Save As"><svg viewBox="0 0 20 20"><path d="M3 4.5A1.5 1.5 0 0 1 4.5 3H13l4 4v8.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 15.5z"/><path d="M6.5 3v4h6V3"/><rect x="6.5" y="11" width="7" height="6"/></svg></button>
@@ -979,6 +999,7 @@
       `translate(${model.offset.x - (model.pan.x * model.zoom) / dpr()}px, ` +
       `${model.offset.y - (model.pan.y * model.zoom) / dpr()}px)` +
       ` scale(${model.zoom / dpr()})`;
+    scene.style.setProperty('--k', String(model.zoom / dpr()));
 
     for (const callout of model.callouts) {
       let el = scene.querySelector(`[data-id="${callout.id}"]`);
@@ -1043,6 +1064,32 @@
       el.style.backdropFilter = `blur(${blurRadius(r)}px)`;
     }
     for (const el of [...scene.querySelectorAll('.blur')]) {
+      if (!model.shapes.some((s) => s.id === el.dataset.shape)) el.remove();
+    }
+    for (const shape of model.shapes) {
+      if (shape.kind !== 'ruler') continue;
+      let el = scene.querySelector(`.ruler[data-shape="${shape.id}"]`);
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'ruler';
+        el.dataset.shape = shape.id;
+        el.innerHTML = '<div class="size"></div><button type="button" class="x" data-ui="x" aria-label="Delete"><svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg></button>';
+        scene.appendChild(el);
+      }
+      const r = rectOfShape(shape);
+      el.style.left = `${r.x}px`;
+      el.style.top = `${r.y}px`;
+      el.style.width = `${r.w}px`;
+      el.style.height = `${r.h}px`;
+      el.classList.toggle('drawing', !!drag && drag.kind === 'draw' && drag.shape === shape);
+      // The size, beside the corner the drag ends at: b, which is where the pointer is.
+      const size = el.firstElementChild;
+      const text = `${r.w}x${r.h}`;
+      if (size.textContent !== text) size.textContent = text;
+      size.style.left = `${shape.b.x - r.x + 8}px`;
+      size.style.top = `${shape.b.y - r.y + 8}px`;
+    }
+    for (const el of [...scene.querySelectorAll('.ruler')]) {
       if (!model.shapes.some((s) => s.id === el.dataset.shape)) el.remove();
     }
 
@@ -2123,6 +2170,16 @@
     const shapeEl = target.closest && target.closest('[data-shape]');
     if (shapeEl) {
       const shape = model.shapes.find((s) => s.id === shapeEl.dataset.shape);
+      // The ruler's x (Rotem, 2026-09-16): one press deletes it, one step of undo.
+      if (target.closest('.ruler .x')) {
+        if (model.editing) commitEditing();
+        removeShape(shape);
+        settle();
+        record();
+        drawHud();
+        event.preventDefault();
+        return;
+      }
       if (model.editing) commitEditing();
       model.selected = null;
       model.selectedShape = shape;
@@ -2171,7 +2228,7 @@
       layoutScene();
       return;
     }
-    if (model.tool === 'arrow' || model.tool === 'rect' || model.tool === 'highlight' || model.tool === 'blur') {
+    if (model.tool === 'arrow' || model.tool === 'rect' || model.tool === 'highlight' || model.tool === 'blur' || model.tool === 'ruler') {
       const shape = createShape(model.tool, toImage(event));
       drag = { kind: 'draw', shape };
       try { stage.setPointerCapture(event.pointerId); } catch (e) { /* a synthetic pointer */ }
@@ -2229,14 +2286,14 @@
     const point = toImage(event);
     if (drag.kind === 'draw') {
       drag.shape.b = { x: Math.round(point.x), y: Math.round(point.y) };
-      if (drag.shape.kind === 'blur') layoutScene(); else drawArrows();
+      if (drag.shape.kind === 'blur' || drag.shape.kind === 'ruler') layoutScene(); else drawArrows();
       return;
     }
     if (drag.kind === 'shape') {
       drag.shape.a = { x: Math.round(point.x + drag.dx), y: Math.round(point.y + drag.dy) };
       drag.shape.b = { x: Math.round(point.x + drag.bx), y: Math.round(point.y + drag.by) };
       drag.moved = true;
-      if (drag.shape.kind === 'blur') layoutScene(); else drawArrows();
+      if (drag.shape.kind === 'blur' || drag.shape.kind === 'ruler') layoutScene(); else drawArrows();
       return;
     }
     if (drag.kind === 'anchor') {
@@ -2446,6 +2503,7 @@
       if (event.code === 'KeyH') { setTool('highlight'); event.preventDefault(); return; }
       if (event.code === 'KeyT') { setTool('text'); event.preventDefault(); return; }
       if (event.code === 'KeyB') { setTool('blur'); event.preventDefault(); return; }
+      if (event.code === 'KeyM') { setTool('ruler'); event.preventDefault(); return; }
     }
     if (event.key === 'Enter' && model.selected) { startEditing(model.selected); event.preventDefault(); return; }
 
@@ -2709,6 +2767,7 @@
           clone.setAttribute('style', 'position:absolute;left:0;top:0;overflow:visible;');
         } else {
           inlineStyles(child, clone);
+          for (const ui of clone.querySelectorAll('[data-ui]')) ui.remove(); // the ruler's x, editing UI
         }
         inner.appendChild(clone);
       }
