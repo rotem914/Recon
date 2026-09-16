@@ -35,12 +35,12 @@ state reachable with no animation at all (`project-os/QA.md` §7).
 
 ### Icon button
 
-Stated by Rotem on 2026-09-15 for the controls sidebar.
+Stated by Rotem on 2026-09-15 for the controls sidebar; the sizes restated on 2026-09-16.
 
 | Part | Value |
 |---|---|
-| Container | 32 by 32, square, no fill of its own |
-| Icon | 20 by 20, centred, a stroke in the button's text colour |
+| Container | 48 by 48, square, no fill of its own (Rotem, 2026-09-16, from 32 by 32) |
+| Icon | 32 by 32, centred, a stroke in the button's text colour (Rotem, 2026-09-16, from 20 by 20) |
 | Between buttons | 8 px |
 | Hover | the container fills with the icon button hover colour, fading in by A1 |
 | Name | every icon button carries its name and its key as a title, so it has a name without its text |
@@ -56,6 +56,7 @@ Stated by Rotem on 2026-09-15 for the controls sidebar.
 |---|---|
 | Container | one container around all the sidebar's buttons, no look of its own |
 | Placement | centred in the sidebar's height, between the top bar and the image size above the timeline, and across its width |
+| Sidebar | 64 px wide, 8 px of air around the 48 px buttons, the picture starting at its right edge (Rotem, 2026-09-16, option 2 of two: from 48 wide) |
 
 ### Tooltip
 
@@ -123,7 +124,7 @@ Stated by Rotem on 2026-09-16 for the thumbnails in a tab after Main.
 | Part | Value |
 |---|---|
 | Container | round, 24 by 24, at the thumbnail's top left, a 2 px white border |
-| Icon | 20 by 20, filling the inside of the border with no gap |
+| Icon | 20 by 20, filling the inside of the border with no gap, a 1 px line |
 | Shown | on hover over the thumbnail; once pressed, always, ticked |
 | Marking | the tick fades in by A1 |
 | Effect | none beyond the mark itself |

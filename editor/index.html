@@ -28,7 +28,7 @@
   #winbtns svg { width: 10px; height: 10px; stroke: currentColor; fill: none; stroke-width: 1; }
   body.fullscreen #bar { display: none; }
 
-  #stage { position: absolute; inset: 32px 0 var(--size-band, 0px) 48px; overflow: hidden; cursor: crosshair; }
+  #stage { position: absolute; inset: 32px 0 var(--size-band, 0px) 64px; overflow: hidden; cursor: crosshair; }
   body.fullscreen #stage { top: 0; left: 0; }
   /* The timeline (S2.1): every document along the bottom, newest first, the current one
      marked. The stage ends above it while it is shown; fullscreen puts it away.
@@ -130,9 +130,9 @@
      shown on hover; once pressed it stays shown and the tick fades in by A1, to say this
      picture is dealt with. Nothing else follows from it. */
   .thumb .done { position: absolute; left: 2px; top: 2px; width: 24px; height: 24px; border-radius: 12px; box-sizing: border-box;
-                 border: 2px solid #fff; padding: 0; background: rgba(10,12,14,.75); color: #f2f2f2; cursor: pointer;
-                 display: none; place-items: center; }
-  .thumb .done svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+                 border: 2px solid #fff; padding: 0; background: rgba(10,12,14,.75); background-clip: padding-box; /* no fill under or past the border's curve */
+                 color: #f2f2f2; cursor: pointer; display: none; place-items: center; }
+  .thumb .done svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1; stroke-linecap: round; stroke-linejoin: round; } /* a 1 px tick (Rotem, 2026-09-16) */
   .thumb .done .tick { opacity: 0; }
   .thumb:hover .done, .thumb.checked .done { display: grid; }
   .thumb.checked .done { background: #2e7d32; }
@@ -211,8 +211,9 @@
      Rotem's call on 2026-09-14, both. Outside the stage so a click on it reaches no
      canvas handler. */
   /* The controls (§3.3, S1.5, S2.3, Stage 3): the tools, Copy, Save As and the mode, as a
-     sidebar of icon buttons down the left edge (Rotem, 2026-09-15). Each button is a 32 by
-     32 square with no fill of its own and a 20 by 20 icon in it, 8 px between buttons, and
+     sidebar of icon buttons down the left edge (Rotem, 2026-09-15). Each button is a 48 by
+     48 square with no fill of its own and a 32 by 32 icon in it (Rotem, 2026-09-16, from 32
+     and 20; the sidebar 64 wide with it, from 48), 8 px between buttons, and
      a hover fills the square with #21222C, fading in by the design system's A1
      (project-os/Design.md). Outside the stage so a click on them reaches no canvas handler;
      the stage starts at the sidebar's right edge, and fullscreen puts it away with the bar.
@@ -221,13 +222,13 @@
      stage, so a tooltip is not painted under the picture. */
   /* A height, not a bottom: the sidebar sits inside the top bar, so a bottom would be measured
      from the bar's own 32 px. Safe centring falls back to the top when the buttons do not fit. */
-  #controls { position: absolute; left: 0; top: 32px; height: calc(100vh - 32px - var(--size-band, 0px)); width: 48px; padding: 8px;
+  #controls { position: absolute; left: 0; top: 32px; height: calc(100vh - 32px - var(--size-band, 0px)); width: 64px; padding: 8px;
               display: flex; flex-direction: column; align-items: center; justify-content: safe center;
               gap: 8px; z-index: 3; }
   #buttons { flex: none; display: flex; flex-direction: column; align-items: center; gap: 8px; }
   body.strip #controls { height: calc(100vh - 32px - var(--strip-h, 96px) - var(--size-band, 0px)); }
   body.fullscreen #controls { display: none; }
-  #controls button { position: relative; flex: none; width: 32px; height: 32px; padding: 0; border: none; border-radius: 0;
+  #controls button { position: relative; flex: none; width: 48px; height: 48px; padding: 0; border: none; border-radius: 0;
                      background: transparent; color: #f2f2f2; cursor: pointer;
                      display: grid; place-items: center;
                      transition: background-color 144ms ease-out; /* A1 */ }
@@ -241,7 +242,7 @@
                             opacity: 0; visibility: hidden; transition: opacity 144ms ease-out, visibility 0s linear 144ms; }
   #controls button:hover::after { opacity: 1; visibility: visible; transition: opacity 144ms ease-out; /* A1 */ }
   @media (prefers-reduced-motion: reduce) { #controls button, #controls button::after { transition: none; } }
-  #controls svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.5;
+  #controls svg { width: 32px; height: 32px; stroke: currentColor; fill: none; stroke-width: 1.5;
                   stroke-linecap: round; stroke-linejoin: round; }
   /* The tools (Stage 3): which one a click on the picture uses. */
   #tools { flex: none; display: flex; flex-direction: column; gap: 8px; }
@@ -400,6 +401,9 @@
     nextNumber: 1,
     selected: null,
     editing: null,
+    // The callout between its two clicks (Rotem, 2026-09-16): anchored by the first, following
+    // the pointer until the second locks it and starts the typing.
+    placing: null,
     // Stage 3: the tool a click on the picture uses, and the shapes it makes. Shapes live
     // beside the callouts, in the same undo, the same save and the same export, and never
     // in the callouts' numbering. No tool is in hand until one is chosen, and every picture
@@ -424,7 +428,7 @@
   const measureRatio = async () => {
     const metrics = await invoke('editor_window_metrics');
     const css = viewport();
-    // Against the page's whole width, not the stage's: the sidebar takes 48 px of it.
+    // Against the page's whole width, not the stage's: the sidebar takes 64 px of it.
     const pageW = document.documentElement.clientWidth;
     const measured = pageW > 0 ? metrics.physical_width / pageW : 1;
     ratio = Math.max(0.5, Math.min(4, measured));
@@ -482,6 +486,7 @@
   const stashCurrent = (save = true) => {
     if (!model.image.document_id) return;
     if (model.editing) commitEditing();
+    if (model.placing) cancelPlacing(); // an unplaced bubble is not a note; it never reaches the stash or the disk
     if (save) saveNow().catch(() => {});
     documents.set(model.image.document_id, {
       callouts: model.callouts,
@@ -855,6 +860,7 @@
     model.selected = null;
     model.selectedShape = null;
     model.editing = null;
+    model.placing = null;
     settle();
     markDirty();
     drawHud();
@@ -1131,6 +1137,7 @@
   };
 
   const setTool = (tool) => {
+    if (model.placing && tool !== model.tool) cancelPlacing();
     model.tool = tool;
     for (const button of document.querySelectorAll('#tools button')) {
       button.classList.toggle('active', button.dataset.tool === tool);
@@ -1875,6 +1882,7 @@
     model.callouts = [];
     model.selected = null;
     model.editing = null;
+    model.placing = null;
     // No document, no steps: Ctrl+Z here reaches the deletion that emptied the editor.
     model.history = { steps: [], index: -1, seq: [] };
     canvas.style.display = 'none';
@@ -1972,6 +1980,7 @@
       refreshStrip().catch(() => {});
     } else {
       if (model.editing) commitEditing();
+      if (model.placing) cancelPlacing();
       model.selected = null;
       layoutScene();
       model.mode = 'view';
@@ -2045,6 +2054,32 @@
     document.body.classList.toggle('space', held);
   };
 
+  // The callout in two clicks (Rotem, 2026-09-16): the first click marks where the line
+  // ends and the bubble appears at its automatic place, the starting position §3.5 promises;
+  // from there it moves with the pointer, keeping that offset, so it never covers the point
+  // it names and the second click lands on the picture. The second click locks it where it
+  // is and starts the typing. Between the clicks Escape, Ctrl+Z or a change of tool drops
+  // the unplaced bubble and gives its number back, as a drawn shape shorter than four
+  // pixels gives back its own: nothing was ever shown as a note, so there is no gap to keep.
+  let placingOffset = { x: 0, y: 0 };
+  const beginPlacing = (callout, at) => {
+    model.placing = callout;
+    placingOffset = { x: callout.box.x - at.x, y: callout.box.y - at.y };
+  };
+  const followPointer = (point) => {
+    model.placing.box.x = Math.round(point.x + placingOffset.x);
+    model.placing.box.y = Math.round(point.y + placingOffset.y);
+  };
+  const cancelPlacing = () => {
+    const callout = model.placing;
+    if (!callout) return;
+    model.placing = null;
+    removeCallout(callout);
+    model.nextNumber -= 1;
+    settle();
+    drawHud();
+  };
+
   stage.addEventListener('pointerdown', (event) => {
     if (event.button !== 0) return;
     const target = event.target;
@@ -2055,6 +2090,18 @@
     if (model.mode !== 'annotate' || spaceHeld) {
       if (!model.image.width) return;
       startPan(event);
+      return;
+    }
+
+    // The second click of a callout: wherever it lands, the bubble or the picture, it locks
+    // the bubble where it is and the typing begins.
+    if (model.placing) {
+      const callout = model.placing;
+      followPointer(toImage(event));
+      model.placing = null;
+      settle();
+      startEditing(callout);
+      event.preventDefault();
       return;
     }
 
@@ -2132,9 +2179,18 @@
       event.preventDefault();
       return;
     }
-    const callout = model.tool === 'text' ? createTextNote(toImage(event)) : createCallout(toImage(event));
+    const at = toImage(event);
+    if (model.tool === 'text') {
+      const note = createTextNote(at);
+      layoutScene();
+      startEditing(note);
+      return;
+    }
+    // The first click: the anchor, and a bubble that follows the pointer until the second.
+    const callout = createCallout(at);
+    beginPlacing(callout, at);
     layoutScene();
-    startEditing(callout);
+    event.preventDefault();
   });
 
   // A drag moves faster than a region comes back, and every newer request makes the answer
@@ -2152,6 +2208,11 @@
   };
 
   stage.addEventListener('pointermove', (event) => {
+    if (!drag && model.placing) {
+      followPointer(toImage(event));
+      layoutScene();
+      return;
+    }
     if (!drag) return;
     if (drag.kind === 'pan') {
       model.pan.x = drag.pan.x - ((event.clientX - drag.x) * dpr()) / model.zoom;
@@ -2313,6 +2374,7 @@
       return;
     }
     if (event.key === 'Escape') {
+      if (model.placing) { cancelPlacing(); event.preventDefault(); return; }
       if (model.editing) { commitEditing(); event.preventDefault(); return; }
       if (model.selected || model.selectedShape) { model.selected = null; model.selectedShape = null; layoutScene(); event.preventDefault(); return; }
       // Fullscreen leaves first (§3.6); the hide is the Escape after it.
@@ -2347,6 +2409,9 @@
       return;
     }
     if (event.ctrlKey && !event.altKey && event.code === 'KeyZ') {
+      // Between a callout's two clicks the last thing done is the first click: Ctrl+Z takes
+      // it back, the unplaced bubble goes, and there is nothing of it to redo.
+      if (model.placing && !event.shiftKey) { cancelPlacing(); event.preventDefault(); return; }
       if (event.shiftKey) redo(); else undo();
       event.preventDefault();
       return;
@@ -2569,6 +2634,7 @@
     if (known) model.textSize = known.textSize;
     model.selected = null;
     model.editing = null;
+    model.placing = null;
     // A capture opens ready for annotation; a file opens in viewing, and a document
     // resumed for it opens where it left off (§3.3).
     model.mode = info.managed ? 'annotate' : 'view';

@@ -1092,7 +1092,11 @@ export async function runChecks(editor, invoke) {
     editor.setTool('callout');
     pointer('pointerdown', cx, cy);
     pointer('pointerup', cx, cy);
-    check('with the callout tool the same click creates a note', model.callouts.length === 1 && model.editing === model.callouts[0]);
+    check('with the callout tool the same click anchors a note and its bubble waits for the second click', model.callouts.length === 1 && model.placing === model.callouts[0] && model.editing === null);
+    pointer('pointermove', cx + 20, cy + 16);
+    pointer('pointerdown', cx + 20, cy + 16);
+    pointer('pointerup', cx + 20, cy + 16);
+    check('the second click locks the bubble and the typing begins', model.placing === null && model.editing === model.callouts[0]);
     document.querySelector(`[data-id="${model.callouts[0].id}"] .t`).textContent = 'kept across the modes';
     editor.commitEditing();
 
@@ -1908,15 +1912,15 @@ export async function runChecks(editor, invoke) {
     const cbox = controls.getBoundingClientRect();
     const stageLeft = Math.round(stage.getBoundingClientRect().left);
     check('the controls are a sidebar down the left edge, below the top bar, and the stage starts at its right edge', !controls.hidden && copyButton && saveButton && document.getElementById('mode')
-      && cbox.left === 0 && Math.round(cbox.top) === 32 && Math.round(cbox.width) === 48 && stageLeft === 48,
+      && cbox.left === 0 && Math.round(cbox.top) === 32 && Math.round(cbox.width) === 64 && stageLeft === 64,
       `sidebar ${Math.round(cbox.left)}-${Math.round(cbox.right)} from ${Math.round(cbox.top)}, the stage from ${stageLeft}`);
     const buttons = [...controls.querySelectorAll('button')];
     const boxes = buttons.map((b) => b.getBoundingClientRect());
     const iconWidth = (b) => Math.max(...[...b.querySelectorAll('svg')].map((s) => Math.round(s.getBoundingClientRect().width)));
-    check('nine icon buttons, 32 by 32 with a 20 by 20 icon, 8 px apart, named, with no fill of their own', buttons.length === 9
-      && boxes.every((b) => Math.round(b.width) === 32 && Math.round(b.height) === 32)
+    check('nine icon buttons, 48 by 48 with a 32 by 32 icon, 8 px apart, named, with no fill of their own', buttons.length === 9
+      && boxes.every((b) => Math.round(b.width) === 48 && Math.round(b.height) === 48)
       && boxes.every((b, i) => i === 0 || Math.round(b.top - boxes[i - 1].bottom) === 8)
-      && buttons.every((b) => iconWidth(b) === 20 && (b.getAttribute('aria-label') || '').length > 0)
+      && buttons.every((b) => iconWidth(b) === 32 && (b.getAttribute('aria-label') || '').length > 0)
       && buttons.every((b) => b.classList.contains('active') || getComputedStyle(b).backgroundColor === 'rgba(0, 0, 0, 0)'),
       `${buttons.length} buttons at ${boxes.map((b) => Math.round(b.top)).join(' ')}, icons ${buttons.map(iconWidth).join(' ')}, the sidebar ${Math.round(cbox.height)} tall`);
     const hoverRule = [...document.styleSheets[0].cssRules].find((r) => r.selectorText === '#controls button:hover');
@@ -2298,7 +2302,10 @@ export async function runChecks(editor, invoke) {
     press({ key: 'c', code: 'KeyC' });
     pointer('pointerdown', stage, 100, 100);
     pointer('pointerup', stage, 100, 100);
-    check('C picks the callout tool and a click makes a note as before', model.tool === 'callout' && model.callouts.length === 1 && model.editing === model.callouts[0]);
+    pointer('pointermove', stage, 140, 130);
+    pointer('pointerdown', stage, 140, 130);
+    pointer('pointerup', stage, 140, 130);
+    check('C picks the callout tool and two clicks make a note, typed after the second', model.tool === 'callout' && model.callouts.length === 1 && model.editing === model.callouts[0]);
     check('Space while a note is typed is the note\'s, never a pan', press({ key: ' ', code: 'Space' }) === false && !document.body.classList.contains('space'));
     editor.commitEditing();
     model.callouts = [];
@@ -2387,7 +2394,10 @@ export async function runChecks(editor, invoke) {
     press({ key: 'c', code: 'KeyC' });
     pointer('pointerdown', stage, 40, 40);
     pointer('pointerup', stage, 40, 40);
-    check('a click with the callout tool makes a note', model.callouts.length === 1);
+    pointer('pointermove', stage, 80, 70);
+    pointer('pointerdown', stage, 80, 70);
+    pointer('pointerup', stage, 80, 70);
+    check('two clicks with the callout tool make a note', model.callouts.length === 1);
     document.querySelector(`[data-id="${model.callouts[0].id}"] .t`).textContent = 'one';
     editor.commitEditing();
     // A committed note stays selected, and a click elsewhere clears that first, which is
@@ -2414,6 +2424,9 @@ export async function runChecks(editor, invoke) {
     press({ key: 'c', code: 'KeyC' });
     pointer('pointerdown', stage, 300, 200);
     pointer('pointerup', stage, 300, 200);
+    pointer('pointermove', stage, 340, 230);
+    pointer('pointerdown', stage, 340, 230);
+    pointer('pointerup', stage, 340, 230);
     const next = model.callouts[2];
     check('the next callout is number 2: the text note took no number', !!next && next.number === 2, JSON.stringify(next && next.number));
     document.querySelector(`[data-id="${next.id}"] .t`).textContent = 'two';
@@ -2537,7 +2550,7 @@ export async function runChecks(editor, invoke) {
     check('fullscreen puts the bar and the sidebar away and the stage takes the whole window', getComputedStyle(bar).display === 'none' && getComputedStyle(sidebar).display === 'none'
       && stageTop() === 0 && stageLeft() === 0 && stage.clientHeight === window.innerHeight && stage.clientWidth === window.innerWidth, `the stage from ${stageLeft()},${stageTop()}`);
     await editor.setFullscreen(false);
-    check('and they come back', getComputedStyle(bar).display !== 'none' && getComputedStyle(sidebar).display !== 'none' && stageTop() === 32 && stageLeft() === 48, `the stage from ${stageLeft()},${stageTop()}`);
+    check('and they come back', getComputedStyle(bar).display !== 'none' && getComputedStyle(sidebar).display !== 'none' && stageTop() === 32 && stageLeft() === 64, `the stage from ${stageLeft()},${stageTop()}`);
   }
 
   // ---------------------------------------------------------------- 37. S2.8: the timeline at scale
@@ -2930,8 +2943,8 @@ export async function runChecks(editor, invoke) {
     const doneIcon = doneBtn && getComputedStyle(doneBtn.querySelector('svg'));
     check('in a tab a thumbnail carries a round 24 by 24 done mark at its top left, a 2 px white border, a 20 by 20 tick inside it with no gap, hidden until hover',
       !!doneBtn && doneStyle.display === 'none' && doneStyle.width === '24px' && doneStyle.height === '24px' && doneStyle.borderRadius === '12px' && doneStyle.left === '2px' && doneStyle.top === '2px'
-        && doneStyle.borderTopWidth === '2px' && doneStyle.borderTopColor === 'rgb(255, 255, 255)' && doneStyle.boxSizing === 'border-box'
-        && doneIcon.width === '20px' && doneIcon.height === '20px' && !doneBtn.querySelector('.ring') && !doneBtn.closest('.thumb').classList.contains('checked'),
+        && doneStyle.borderTopWidth === '2px' && doneStyle.borderTopColor === 'rgb(255, 255, 255)' && doneStyle.boxSizing === 'border-box' && doneStyle.backgroundClip === 'padding-box'
+        && doneIcon.width === '20px' && doneIcon.height === '20px' && doneIcon.strokeWidth === '1px' && !doneBtn.querySelector('.ring') && !doneBtn.closest('.thumb').classList.contains('checked'),
       doneBtn ? `${doneStyle.display}, ${doneStyle.width}x${doneStyle.height} radius ${doneStyle.borderRadius} at ${doneStyle.left},${doneStyle.top}, border ${doneStyle.borderTopWidth} ${doneStyle.borderTopColor}, icon ${doneIcon.width}` : 'no mark');
     const tickBefore = getComputedStyle(doneBtn.querySelector('.tick')).opacity;
     doneBtn.click();
@@ -3092,6 +3105,113 @@ export async function runChecks(editor, invoke) {
     await editor.refreshStrip();
     model.callouts = [];
     editor.layoutScene();
+  }
+
+  // ---------------------------------------------------------------- 41. the callout in two clicks
+  say('');
+  say('The callout in two clicks (Rotem, 2026-09-16): the first click marks the end of the line, the bubble follows the pointer, the second click locks it and the typing begins; Escape, Ctrl+Z or another tool between them drops the unplaced bubble');
+  {
+    await openFixture('reference-scene.png');
+    await editor.setMode('annotate');
+    await editor.setMargin({ left: 0, top: 0, right: 0, bottom: 0 });
+    model.callouts = []; model.nextNumber = 1; model.shapes = [];
+    model.history = { steps: [editor.snapshot()], index: 0 };
+    editor.layoutScene();
+    const stage = editor.stage;
+    const box = stage.getBoundingClientRect();
+    const css = (ix, iy) => ({ x: box.left + model.offset.x + ((ix - model.pan.x) * model.zoom) / editor.ratioOf(), y: box.top + model.offset.y + ((iy - model.pan.y) * model.zoom) / editor.ratioOf() });
+    const pointer = (type, ix, iy) => {
+      const at = css(ix, iy);
+      stage.dispatchEvent(new PointerEvent(type, { pointerId: 15, button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: at.x, clientY: at.y, bubbles: true, cancelable: true }));
+    };
+    const click = (ix, iy) => { pointer('pointerdown', ix, iy); pointer('pointerup', ix, iy); };
+    const press = (init) => { const e = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }); window.dispatchEvent(e); return e.defaultPrevented; };
+    const line = () => { const l = document.querySelector('#arrows line'); return l ? { x1: Number(l.getAttribute('x1')), y1: Number(l.getAttribute('y1')) } : null; };
+
+    editor.setTool('callout');
+    click(200, 150);
+    const c = model.callouts[0];
+    check('the first click makes one note, anchored where it was, and nothing is typed yet',
+      model.callouts.length === 1 && c.anchor.x === 200 && c.anchor.y === 150 && model.placing === c && model.editing === null && model.selected === null,
+      `anchor ${c && c.anchor.x},${c && c.anchor.y}, editing ${model.editing ? 'yes' : 'no'}`);
+    const start = { ...c.box };
+    const gx = Math.round(c.textSize * 1.4); const gy = Math.round(c.textSize * 1.2);
+    check('its bubble starts at the automatic place, below and right of the anchor on an empty picture', start.x === 200 + gx && start.y === 150 + gy, `${start.x},${start.y} against ${200 + gx},${150 + gy}`);
+    pointer('pointermove', 300, 250);
+    check('the bubble follows the pointer, keeping its offset from it',
+      c.box.x === start.x + 100 && c.box.y === start.y + 100 && document.querySelector(`[data-id="${c.id}"]`).style.left === `${start.x + 100}px`,
+      `${start.x},${start.y} to ${c.box.x},${c.box.y}`);
+    check('the anchor stays where the first click was, and the line starts there', c.anchor.x === 200 && c.anchor.y === 150 && line() && line().x1 === 200 && line().y1 === 150);
+    pointer('pointermove', 360, 300);
+    click(360, 300);
+    check('the second click locks the bubble where it is and the typing begins',
+      model.placing === null && model.editing === c && c.box.x === start.x + 160 && c.box.y === start.y + 150 && document.activeElement === document.querySelector(`[data-id="${c.id}"] .t`),
+      `box ${c.box.x},${c.box.y}, editing ${model.editing === c}`);
+    pointer('pointermove', 500, 380);
+    check('after the lock the pointer moves the bubble no more', c.box.x === start.x + 160 && c.box.y === start.y + 150);
+    document.querySelector(`[data-id="${c.id}"] .t`).textContent = 'placed in two clicks';
+    editor.commitEditing();
+    check('the note is one step of history, its text kept', model.callouts.length === 1 && c.text === 'placed in two clicks' && model.history.index === 1, `index ${model.history.index}`);
+    press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    check('Ctrl+Z takes the note back', model.callouts.length === 0 && model.nextNumber === 1);
+    press({ key: 'Z', code: 'KeyZ', ctrlKey: true, shiftKey: true });
+    check('Ctrl+Shift+Z brings it back where it was locked', model.callouts.length === 1 && model.callouts[0].box.x === start.x + 160 && model.callouts[0].text === 'placed in two clicks');
+
+    // Between the clicks: Escape, Ctrl+Z and a change of tool each drop the unplaced bubble
+    // and give its number back.
+    const drops = [
+      ['Escape', () => press({ key: 'Escape', code: 'Escape' })],
+      ['Ctrl+Z', () => press({ key: 'z', code: 'KeyZ', ctrlKey: true })],
+      ['a change of tool', () => press({ key: 'l', code: 'KeyL' })],
+    ];
+    for (const [name, drop] of drops) {
+      editor.setTool('callout');
+      const stepsBefore = model.history.index;
+      click(100, 100);
+      pointer('pointermove', 180, 160);
+      const number = model.callouts[1] && model.callouts[1].number;
+      drop();
+      check(`${name} between the clicks drops the unplaced bubble, the earlier note untouched, the number given back`,
+        model.callouts.length === 1 && model.placing === null && model.editing === null && model.nextNumber === number && model.history.index === stepsBefore,
+        `${model.callouts.length} notes, next number ${model.nextNumber} after ${number}, history ${model.history.index}`);
+    }
+    check('the tool changed to is in hand after the drop', model.tool === 'arrow');
+
+    // The text tool is untouched: one click, typed where it lands.
+    editor.setTool('text');
+    click(400, 300);
+    check('the text tool still types at its one click', !!model.editing && model.editing.kind === 'text' && model.placing === null);
+    editor.commitEditing();
+
+    // The second click may land on the bubble itself, when the pointer stops over it.
+    editor.setTool('callout');
+    click(300, 200);
+    const d = model.placing;
+    const onBubble = document.querySelector(`[data-id="${d.id}"] .t`);
+    const at = css(d.box.x + 20, d.box.y + 10);
+    onBubble.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 15, button: 0, buttons: 1, clientX: at.x, clientY: at.y, bubbles: true, cancelable: true }));
+    onBubble.dispatchEvent(new PointerEvent('pointerup', { pointerId: 15, button: 0, buttons: 0, clientX: at.x, clientY: at.y, bubbles: true, cancelable: true }));
+    check('a second click on the bubble itself locks it too', model.placing === null && model.editing === d);
+    editor.commitEditing();
+
+    // Another picture arriving between the clicks: the unplaced bubble is dropped, never
+    // stashed with the picture it was started on.
+    const docId = model.image.document_id;
+    const notesBefore = model.callouts.length;
+    const numberBefore = model.nextNumber;
+    editor.setTool('callout');
+    click(150, 150);
+    pointer('pointermove', 250, 220);
+    const probe = await invoke('editor_load_probe', { width: 300, height: 200 });
+    await editor.loadImage(probe);
+    check('a picture arriving between the clicks drops the unplaced bubble', model.placing === null && model.callouts.length === 0);
+    await editor.loadImage(await invoke('editor_show_document', { id: docId }));
+    check('the picture it was started on comes back without it, its number given back',
+      model.image.document_id === docId && model.callouts.length === notesBefore && model.nextNumber === numberBefore,
+      `${model.callouts.length} notes against ${notesBefore}, next ${model.nextNumber} against ${numberBefore}`);
+    model.callouts = []; model.shapes = []; model.nextNumber = 1;
+    editor.layoutScene();
+    editor.setTool(null);
   }
 
   say('');
