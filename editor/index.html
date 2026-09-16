@@ -126,13 +126,13 @@
   .thumb:hover .x { display: block; }
   .thumb .x:hover { background: #c0392b; }
   /* The done mark (Rotem, 2026-09-16): in a tab after Main, a round 24 by 24 button at the
-     thumbnail's top left, a 2 px white border, a 20 by 20 tick filling the inside with no gap,
+     thumbnail's top left, a 1 px white border, a 20 by 20 tick inside it,
      shown on hover; once pressed it stays shown and the tick fades in by A1, to say this
      picture is dealt with. Nothing else follows from it. */
   .thumb .done { position: absolute; left: 2px; top: 2px; width: 24px; height: 24px; border-radius: 12px; box-sizing: border-box;
-                 border: 2px solid #fff; padding: 0; background: rgba(10,12,14,.75); background-clip: padding-box; /* no fill under or past the border's curve */
-                 color: #f2f2f2; cursor: pointer; display: none; place-items: center; }
-  .thumb .done svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1; stroke-linecap: round; stroke-linejoin: round; } /* a 1 px tick (Rotem, 2026-09-16) */
+                 border: 1px solid #fff; padding: 0; background: rgba(10,12,14,.75); color: #f2f2f2; cursor: pointer;
+                 display: none; place-items: center; }
+  .thumb .done svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; } /* a 2 px tick in a 1 px border (Rotem, 2026-09-16) */
   .thumb .done .tick { opacity: 0; }
   .thumb:hover .done, .thumb.checked .done { display: grid; }
   .thumb.checked .done { background: #2e7d32; }

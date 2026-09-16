@@ -124,8 +124,8 @@ Stated by Rotem on 2026-09-16 for the thumbnails in a tab after Main.
 
 | Part | Value |
 |---|---|
-| Container | round, 24 by 24, at the thumbnail's top left, a 2 px white border |
-| Icon | 20 by 20, filling the inside of the border with no gap, a 1 px line |
+| Container | round, 24 by 24, at the thumbnail's top left, a 1 px white border |
+| Icon | 20 by 20, a 2 px line |
 | Shown | on hover over the thumbnail; once pressed, always, ticked |
 | Marking | the tick fades in by A1 |
 | Effect | none beyond the mark itself |

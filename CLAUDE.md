@@ -479,6 +479,15 @@ the file.
 An assistant that pushes is an assistant whose mistakes reach production
 without a human between them and the world. The commit is the place to stop.
 
+**A commit from a shared tree carries only its own hunks.** Other sessions work in
+this same working tree and index. Right before every commit: read `git status` and
+`git diff` for every file about to go in, and stage nothing you did not write. A hunk
+you do not recognise is another session's, and it stays out, whatever the file. A
+staged entry you did not stage is stale, and it reverts that session's commit. When
+the file holds both, build the commit's copy of it by hand from HEAD plus your own
+edits. Written on 2026-09-16, after one commit undid ten files of another session's
+and a second swept its unfinished callout change into a one-line tick commit.
+
 **The other half, and it is not optional: you COMMIT.** Stopping before the
 commit is a failure of this rule, not a cautious reading of it. Handing the
 owner a pile of changed files with no commit leaves them writing the record of

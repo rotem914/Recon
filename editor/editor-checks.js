@@ -2936,15 +2936,15 @@ export async function runChecks(editor, invoke) {
     check('back on the tab, its one capture', await until(() => thumbs().length === 1) && selectedName() === 'New tab');
 
     // The done mark (Rotem, 2026-09-16): in a tab, a round 20 by 20 button at the thumbnail's top left with a
-    // 2 px white border and a 20 by 20 tick with no gap, hidden until hover; pressed, it stays shown and the tick fades in by A1,
+    // 1 px white border and a 20 by 20 tick of a 2 px line, hidden until hover; pressed, it stays shown and the tick fades in by A1,
     // on disk; Ctrl+Z clears it; Main has none. The sizes are read from the rules, since a hidden element has no box.
     const doneBtn = document.querySelector('#strip .thumb .done');
     const doneStyle = doneBtn && getComputedStyle(doneBtn);
     const doneIcon = doneBtn && getComputedStyle(doneBtn.querySelector('svg'));
-    check('in a tab a thumbnail carries a round 24 by 24 done mark at its top left, a 2 px white border, a 20 by 20 tick inside it with no gap, hidden until hover',
+    check('in a tab a thumbnail carries a round 24 by 24 done mark at its top left, a 1 px white border, a 20 by 20 tick of a 2 px line inside it, hidden until hover',
       !!doneBtn && doneStyle.display === 'none' && doneStyle.width === '24px' && doneStyle.height === '24px' && doneStyle.borderRadius === '12px' && doneStyle.left === '2px' && doneStyle.top === '2px'
-        && doneStyle.borderTopWidth === '2px' && doneStyle.borderTopColor === 'rgb(255, 255, 255)' && doneStyle.boxSizing === 'border-box' && doneStyle.backgroundClip === 'padding-box'
-        && doneIcon.width === '20px' && doneIcon.height === '20px' && doneIcon.strokeWidth === '1px' && !doneBtn.querySelector('.ring') && !doneBtn.closest('.thumb').classList.contains('checked'),
+        && doneStyle.borderTopWidth === '1px' && doneStyle.borderTopColor === 'rgb(255, 255, 255)' && doneStyle.boxSizing === 'border-box'
+        && doneIcon.width === '20px' && doneIcon.height === '20px' && doneIcon.strokeWidth === '2px' && !doneBtn.querySelector('.ring') && !doneBtn.closest('.thumb').classList.contains('checked'),
       doneBtn ? `${doneStyle.display}, ${doneStyle.width}x${doneStyle.height} radius ${doneStyle.borderRadius} at ${doneStyle.left},${doneStyle.top}, border ${doneStyle.borderTopWidth} ${doneStyle.borderTopColor}, icon ${doneIcon.width}` : 'no mark');
     const tickBefore = getComputedStyle(doneBtn.querySelector('.tick')).opacity;
     doneBtn.click();
