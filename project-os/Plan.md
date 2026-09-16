@@ -2005,7 +2005,10 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       one outlined and scrolled into view, the file's name or "capture" with the time on
       hover. The host makes each thumbnail once, on a thread of its own per request,
       from the document's own image, and keeps it as `thumb.png` beside the document;
-      the strip fetches it through the region scheme. A click shows that document with
+      the strip fetches it through the region scheme. Since 2026-09-16, at Rotem's word,
+      the thumbnail carries the notes: after every save of them the page draws its layer at
+      the thumbnail's scale and the host writes `thumb.png` anew with it composed over the
+      picture, margin and all, and the strip's cell takes the new picture. A click shows that document with
       its notes and history active; the keys walk the same list. Fullscreen puts the
       strip away and the stage takes the whole window. Checked: three captures listed
       oldest first with the third current, three thumbnails at 133x100, 75x100 and

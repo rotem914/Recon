@@ -898,11 +898,7 @@ fn thumbnail(id: u64) -> Result<Vec<u8>, String> {
         document.frame("thumbnail")?
     };
     let (w, h) = (frame.width(), frame.height());
-    let scale = (THUMB_W as f64 / w as f64)
-        .min(THUMB_H as f64 / h as f64)
-        .min(1.0);
-    let tw = ((w as f64 * scale).round() as u32).max(1);
-    let th = ((h as f64 * scale).round() as u32).max(1);
+    let (tw, th) = thumb_size(w, h);
     let small = recon_pixels::resample(&frame.rgba, w, h, tw, th)
         .ok_or_else(|| format!("document {id}: the thumbnail did not resample"))?;
     let mut png = Vec::new();
@@ -1513,6 +1509,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_save_as,
         editor_documents,
         editor_show_document,
+        editor_thumbnail,
         editor_storage,
         editor_delete_document,
         editor_trash_documents,
@@ -1590,6 +1587,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_save_as,
         editor_documents,
         editor_show_document,
+        editor_thumbnail,
         editor_storage,
         editor_delete_document,
         editor_trash_documents,
@@ -1724,6 +1722,119 @@ pub fn editor_copy(request: tauri::ipc::Request<'_>) -> Result<CopyReport, Strin
         compose_ms,
         published,
     })
+}
+
+/// The timeline's thumbnail with the notes on it (Rotem, 2026-09-16). After every save of
+/// the notes the page sends its layer already at the thumbnail's scale, the composition
+/// fitted into the thumbnail box, with the margin in image pixels in a header as a copy
+/// sends it; the host resamples the document's own image to that scale, composes the layer
+/// over it with the margin around, and writes `thumb.png` anew, so the strip shows what the
+/// export would. The blur rects are applied to a copy at full size before the resample, as
+/// a copy applies them; the document's pixels are never touched. Only the picture on screen
+/// can be thumbnailed this way, since the layer is the page's scene.
+#[tauri::command]
+pub fn editor_thumbnail(request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let margin = request
+        .headers()
+        .get("margin")
+        .and_then(|v| v.to_str().ok())
+        .map(crate::compose::Margin::parse)
+        .transpose()?
+        .unwrap_or_default();
+    let bytes = match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => bytes.clone(),
+        tauri::ipc::InvokeBody::Json(_) => {
+            return Err("the layer arrived as JSON, not as bytes".into())
+        }
+    };
+    let blurs = blur_header(&request)?;
+    // The page names the document its layer belongs to: a picture shown between the layer
+    // and its arrival would otherwise get the other picture's notes on its thumbnail.
+    let id = current_document_id();
+    let named: u64 = request
+        .headers()
+        .get("document")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.trim().parse().ok())
+        .ok_or("the layer names no document")?;
+    if named != id {
+        return Err(format!(
+            "the layer is document {named}'s and document {id} is on screen; nothing written"
+        ));
+    }
+    let dir = crate::store::folder(id)?;
+    if !dir.is_dir() {
+        return Err(format!("document {id} is not on disk yet"));
+    }
+    let image = state().image().ok_or("no image is loaded")?;
+    let (w, h) = (image.frame.width(), image.frame.height());
+    let (cw, ch) = margin.canvas(w, h);
+    let layer = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)
+        .map_err(|err| format!("the layer did not decode: {err}"))?
+        .into_rgba8();
+    let (tw, th) = layer.dimensions();
+    let (ew, eh) = thumb_size(cw, ch);
+    if (tw, th) != (ew, eh) {
+        return Err(format!(
+            "the layer is {tw}x{th} and the thumbnail of a {cw}x{ch} composition is {ew}x{eh}"
+        ));
+    }
+    // The picture and the margin at the same scale, the rounding taken up by the margin's
+    // far sides so the canvas is exactly the layer's size.
+    let scale = (tw as f64 / cw as f64).min(th as f64 / ch as f64);
+    let at = |n: u32| (n as f64 * scale).round() as u32;
+    let left = at(margin.left).min(tw - 1);
+    let top = at(margin.top).min(th - 1);
+    let sw = at(w).clamp(1, tw - left);
+    let sh = at(h).clamp(1, th - top);
+    let small_margin = crate::compose::Margin {
+        left,
+        top,
+        right: tw - left - sw,
+        bottom: th - top - sh,
+    };
+    let blurred;
+    let source: &[u8] = if blurs.is_empty() {
+        &image.frame.rgba
+    } else {
+        let mut copy = image.frame.rgba.clone();
+        crate::compose::blur_rects(&mut copy, w, h, &blurs);
+        blurred = copy;
+        &blurred
+    };
+    let small = recon_pixels::resample(source, w, h, sw, sh)
+        .ok_or_else(|| format!("document {id}: the thumbnail did not resample"))?;
+    let composite = crate::compose::compose(
+        &small,
+        sw,
+        sh,
+        layer.as_raw(),
+        small_margin,
+        crate::compose::MAT,
+    )?;
+    let mut png = Vec::new();
+    image::codecs::png::PngEncoder::new(&mut png)
+        .write_image(
+            &composite.rgba,
+            composite.width,
+            composite.height,
+            image::ExtendedColorType::Rgba8,
+        )
+        .map_err(|err| format!("document {id}: the thumbnail did not encode: {err}"))?;
+    crate::store::write_atomic(&dir.join("thumb.png"), &png)
+}
+
+/// The size a thumbnail of a `w` by `h` picture or composition takes: fitted into the box,
+/// never enlarged, never empty. One rule for the host's own thumbnail and for the page's
+/// layer, which must land on the same size.
+fn thumb_size(w: u32, h: u32) -> (u32, u32) {
+    let scale = (THUMB_W as f64 / w as f64)
+        .min(THUMB_H as f64 / h as f64)
+        .min(1.0);
+    (
+        ((w as f64 * scale).round() as u32).max(1),
+        ((h as f64 * scale).round() as u32).max(1),
+    )
 }
 
 /// The page's marks for S0.7: booted, painted, focused. Stamped here when they arrive, so

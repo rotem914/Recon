@@ -3214,6 +3214,92 @@ export async function runChecks(editor, invoke) {
     editor.setTool(null);
   }
 
+  // ---------------------------------------------------------------- 42. the thumbnail carries the notes
+  say('');
+  say('The thumbnail carries the notes (Rotem, 2026-09-16): after a save of the notes the host writes thumb.png anew with the layer composed over the picture at thumbnail scale, and the strip shows it');
+  {
+    const pixelsOf = async (id) => {
+      const response = await fetch(`http://region.localhost/?thumb=${id}`, { cache: 'no-store' });
+      const bitmap = await createImageBitmap(await response.blob());
+      const c = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const g = c.getContext('2d');
+      g.drawImage(bitmap, 0, 0);
+      const data = g.getImageData(0, 0, bitmap.width, bitmap.height).data;
+      return { w: bitmap.width, h: bitmap.height, at: (x, y) => [...data.slice((y * bitmap.width + x) * 4, (y * bitmap.width + x) * 4 + 3)] };
+    };
+    const same = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 2);
+    const until = async (test) => { for (let i = 0; i < 80 && !(await test()); i += 1) await sleep(50); return test(); };
+
+    // A capture the size of the box, so the thumbnail is the picture itself and a note's
+    // pixels sit where the note is.
+    const shot = await invoke('editor_capture_probe', { width: 320, height: 200 });
+    await editor.loadImage(shot);
+    await editor.setMargin({ left: 0, top: 0, right: 0, bottom: 0 });
+    model.callouts = []; model.nextNumber = 1; model.shapes = [];
+    editor.layoutScene();
+    await editor.refreshStrip();
+    const plain = await pixelsOf(shot.document_id);
+    check('the fresh capture\'s thumbnail is the picture at its size', plain.w === 320 && plain.h === 200, `${plain.w}x${plain.h}`);
+
+    // A note that fits inside the picture, so no margin grows: its bubble at 48,124, 260 wide.
+    const note = editor.createCallout({ x: 20, y: 100 });
+    editor.layoutScene();
+    editor.startEditing(note);
+    document.querySelector(`[data-id="${note.id}"] .t`).textContent = 'on the thumbnail too';
+    editor.commitEditing();
+    // Two points of the bubble: its number badge, the badge's blue, and its right-hand
+    // padding, the bubble's dark ground, clear of the text and the badge.
+    const inside = { x: note.box.x + 30, y: note.box.y + 20 };
+    const ground = { x: note.box.x + note.box.width - 6, y: note.box.y + 40 };
+    const badge = (px) => Math.abs(px[0] - 0x7a) <= 12 && Math.abs(px[1] - 0xa7) <= 12 && Math.abs(px[2] - 0xff) <= 12;
+    const bubble = (px) => Math.abs(px[0] - 0x1b) <= 6 && Math.abs(px[1] - 0x1f) <= 6 && Math.abs(px[2] - 0x24) <= 6; // the bubble's ground, #1b1f24
+    check('the note sits inside the picture, so the thumbnail keeps its size', editor.marginString() === '0,0,0,0' && note.box.x + note.box.width <= 320, `margin ${editor.marginString()}, box ${note.box.x},${note.box.y} ${note.box.width} wide`);
+    const cell = () => editor.strip.querySelector(`.thumb[data-id="${shot.document_id}"]`);
+    const srcBefore = cell() && cell().querySelector('img') ? cell().querySelector('img').src : '';
+    await editor.saveNow();
+    const refreshed = await editor.thumbnailDone();
+    check('the save is followed by a thumbnail refresh that the host accepted', refreshed === true, String(refreshed));
+    const noted = await pixelsOf(shot.document_id);
+    check('the thumbnail now shows the bubble where the note is: its number badge and its dark ground', noted.w === 320 && noted.h === 200 && badge(noted.at(inside.x, inside.y)) && !badge(plain.at(inside.x, inside.y)) && bubble(noted.at(ground.x, ground.y)) && !bubble(plain.at(ground.x, ground.y)),
+      `badge at ${inside.x},${inside.y}: ${plain.at(inside.x, inside.y)} before, ${noted.at(inside.x, inside.y)} after; ground at ${ground.x},${ground.y}: ${plain.at(ground.x, ground.y)} before, ${noted.at(ground.x, ground.y)} after`);
+    check('a pixel away from the note is the picture\'s own, unchanged', same(noted.at(5, 5), plain.at(5, 5)), `${plain.at(5, 5)} before, ${noted.at(5, 5)} after`);
+    if (cell()) {
+      check('the strip\'s cell took the new picture', await until(() => cell() && cell().querySelector('img') && cell().querySelector('img').src !== srcBefore), `src ${srcBefore ? 'changed' : 'appeared'}`);
+    } else {
+      skipped('the strip\'s cell took the new picture', 'the capture has no cell in the strip');
+    }
+
+    // The note gone: the thumbnail returns to the picture alone.
+    editor.removeCallout(note);
+    editor.settle();
+    editor.record();
+    await editor.saveNow();
+    await editor.thumbnailDone();
+    const cleared = await pixelsOf(shot.document_id);
+    check('with the note deleted the thumbnail is the picture alone again', same(cleared.at(inside.x, inside.y), plain.at(inside.x, inside.y)), `${cleared.at(inside.x, inside.y)} against ${plain.at(inside.x, inside.y)}`);
+
+    // A note that grows the margin: the thumbnail is the whole composition fitted into the
+    // box, margin and all, so it is smaller than the box in one direction.
+    const wide = editor.createCallout({ x: 310, y: 100 });
+    editor.layoutScene();
+    wide.text = 'a note that grows the margin';
+    await editor.settle();
+    editor.record();
+    await editor.saveNow();
+    const grown = await editor.thumbnailDone();
+    const withMargin = await pixelsOf(shot.document_id);
+    const comp = editor.compositionSize();
+    const scale = Math.min(320 / comp.w, 200 / comp.h, 1);
+    check('a margin makes the thumbnail the whole composition, fitted into the box', grown === true && editor.marginString() !== '0,0,0,0' && withMargin.w === Math.round(comp.w * scale) && withMargin.h === Math.round(comp.h * scale),
+      `composition ${comp.w}x${comp.h}, margin ${editor.marginString()}, thumbnail ${withMargin.w}x${withMargin.h}`);
+    model.callouts = []; model.shapes = []; model.nextNumber = 1;
+    await editor.setMargin({ left: 0, top: 0, right: 0, bottom: 0 });
+    editor.layoutScene();
+    editor.record();
+    await editor.saveNow();
+    await editor.thumbnailDone();
+  }
+
   // ---------------------------------------------------------------- 43. the ruler
   say('');
   say('The ruler (Rotem, 2026-09-16): M or the button, then a drag marks an area; its size in image pixels sits beside the pointer while the drag lasts and stays beside the corner it ended at; hovering it shows a round 16 px x with a 12 px X that deletes it; it moves, undoes, redoes, saves and exports like the other shapes, the x left out of the copy');

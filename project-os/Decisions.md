@@ -106,6 +106,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-16 · The timeline's tabs are the page's own file beside the documents, Main implicit, a feed a list of ids.
 - 2026-09-16 · Between a callout's two clicks the bubble keeps its automatic offset from the pointer, and a drop gives its number back.
 - 2026-09-16 · The ruler is a box in the scene with its size in image pixels beside the corner the drag ended at, and its × is counter-scaled.
+- 2026-09-16 · The thumbnail with the notes is composed by the host from a layer the page draws at thumbnail scale, at every save.
 
 ---
 
@@ -1122,6 +1123,47 @@ The first move never jumps the bubble, and the automatic place is a starting pos
 spot means aiming its corner, which is the cost. Ctrl+Z between the clicks takes back the
 first click and leaves nothing to redo. Revisit if Rotem wants the pointer inside the
 bubble, or a drag instead of the second click.
+
+---
+
+## 2026-09-16 · The thumbnail with the notes is composed by the host from a layer the page draws at thumbnail scale, at every save
+
+### Context
+
+Rotem asked on 2026-09-16 that the notes on a picture show on its thumbnail in the timeline
+too. The thumbnail was made once by the host from the document's own image and kept as
+`thumb.png`; the notes live in the page's scene, and only the page can draw them, since the
+host never renders an annotation (`project-os/Map.md`).
+
+### Options
+
+1. The page draws the notes over the thumbnail in the strip itself, from its scene: works
+   for the picture on screen only, and after a restart every other thumbnail loses its notes,
+   unless the page rebuilds a scene for each document from the saved notes.
+2. The page sends its full-size layer to the host at every save, as a copy does, and the
+   host composes and resamples it into `thumb.png`: a full-size rasterize and PNG encode on
+   the page's thread after every pause in typing, a few hundred milliseconds on a 4K capture.
+3. The page draws the layer at the thumbnail's own scale, the composition fitted into the
+   box, and the host resamples the picture to that scale, composes the small layer over it
+   with the margin around, and writes `thumb.png` anew. Chosen.
+
+### Decision
+
+Option 3, by the assistant. The cost on the page is a thumbnail-sized canvas and PNG, the
+host's work is one resample and a small compose, and the result is on disk, so a restart and
+every other picture in the strip keep their notes. The blur rects are applied to a copy at
+full size before the resample, exactly as a copy applies them. The refresh runs after each
+save of the notes, not awaited by the save, one at a time with the newest scene queued.
+
+### Consequences
+
+`thumb.png` is no longer made once: it follows the notes, so the timeline shows what an
+export would, margin and all, and a thumbnail of a composition with a margin is the whole
+composition fitted into the box. Only the picture on screen is thumbnailed this way; a
+document's notes changed while it is not on screen do not happen today. The page's box
+size, 320 by 200, is repeated in the page (`THUMB_BOX`) and must match the host's. Revisit
+if the notes should also show on a picture's thumbnail before its first save, or if the
+store gains a way to render notes without the page.
 
 ---
 

@@ -814,6 +814,7 @@
     saving = invoke('editor_save_notes', { documentId, notes }).then(() => {
       save.state = 'saved';
       save.error = '';
+      refreshThumbnail(documentId); // the thumbnail follows the notes; not awaited, a save is a save
     }, (err) => {
       save.dirty = true;
       save.state = 'failed';
@@ -2742,7 +2743,9 @@
   // with this on, and the check asserts the text box does not move by a pixel.
   const setPlain = (on) => document.body.classList.toggle('plain', !!on);
 
-  const exportLayer = async () => {
+  // At a scale below 1 the layer is drawn that much smaller, for the timeline's thumbnail;
+  // the margin and the blur headers stay in image pixels, the host scales them.
+  const exportLayer = async (scale = 1) => {
     const { w: width, h: height } = compositionSize();
     // The layer is a SNAPSHOT of the composition as it is, note being typed included
     // (§3.6: copy carries the current text edits). Nothing is committed and nothing loses
@@ -2791,10 +2794,10 @@
     const rasterMs = performance.now() - started;
 
     const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
     const context = canvas.getContext('2d');
-    context.drawImage(image, 0, 0);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
     let blob;
     let originClean = true;
     try {
@@ -2809,6 +2812,40 @@
     const bytes = new Uint8Array(await blob.arrayBuffer());
     return { bytes, svgChars: svg.length, rasterMs, encodeMs, originClean, margin: marginString(), blur: blurString(), markup };
   };
+
+  // The timeline's thumbnail carries the notes (Rotem, 2026-09-16): after every save of the
+  // notes the layer is drawn at the thumbnail's own scale, the composition fitted into the
+  // host's box, and the host writes thumb.png anew with it composed over the picture; the
+  // strip's cell then takes the new picture. One at a time: a save landing while one is on
+  // its way queues one more, of the scene as it is then. Only the picture on screen, since
+  // the layer is its scene; a save of a picture that has left the screen changes no thumbnail.
+  const THUMB_BOX = { w: 320, h: 200 }; // the host's box, THUMB_W and THUMB_H in editor.rs
+  let thumbnailing = null;
+  let thumbnailAgain = false;
+  const refreshThumbnail = (documentId) => {
+    if (!documentId || documentId !== model.image.document_id) return Promise.resolve(false);
+    if (thumbnailing) { thumbnailAgain = true; return thumbnailing; }
+    thumbnailing = (async () => {
+      const { w, h } = compositionSize();
+      const layer = await exportLayer(Math.min(THUMB_BOX.w / w, THUMB_BOX.h / h, 1));
+      if (documentId !== model.image.document_id) return false;
+      await invoke('editor_thumbnail', layer.bytes, { headers: { margin: layer.margin, blur: layer.blur, document: String(documentId) } });
+      dropThumb(documentId);
+      const el = strip.querySelector(`.thumb[data-id="${documentId}"]`);
+      if (el) {
+        for (const img of el.querySelectorAll('img')) img.remove();
+        loadThumb(documentId, el);
+      }
+      return true;
+    })().catch((err) => { console.warn(`thumbnail not refreshed: ${err}`); return false; })
+      .finally(() => {
+        thumbnailing = null;
+        if (thumbnailAgain) { thumbnailAgain = false; refreshThumbnail(model.image.document_id); }
+      });
+    return thumbnailing;
+  };
+  // For the checks: the refresh on its way, if one is.
+  const thumbnailDone = () => thumbnailing || Promise.resolve(null);
 
   // Copy the composed image (§3.6): the layer to the host, which composes it over the
   // untouched source and publishes the clipboard. The success line shows only after the
@@ -2920,6 +2957,8 @@
     undo,
     redo,
     saveNow,
+    refreshThumbnail,
+    thumbnailDone,
     markDirty,
     notice,
     saveAs,
@@ -2959,6 +2998,7 @@
     emptyStateText,
     setMargin,
     marginString,
+    compositionSize,
     setPlain,
     canvas,
     context,
