@@ -242,7 +242,7 @@
                             opacity: 0; visibility: hidden; transition: opacity 144ms ease-out, visibility 0s linear 144ms; }
   #controls button:hover::after { opacity: 1; visibility: visible; transition: opacity 144ms ease-out; /* A1 */ }
   @media (prefers-reduced-motion: reduce) { #controls button, #controls button::after { transition: none; } }
-  #controls svg { width: 32px; height: 32px; stroke: currentColor; fill: none; stroke-width: 1.5;
+  #controls svg { width: 32px; height: 32px; stroke: #C3C6CA; fill: none; stroke-width: 1.25; /* 2 px on screen at 32 px over the 20-unit drawing (Rotem, 2026-09-16) */
                   stroke-linecap: round; stroke-linejoin: round; }
   /* The tools (Stage 3): which one a click on the picture uses. */
   #tools { flex: none; display: flex; flex-direction: column; gap: 8px; }

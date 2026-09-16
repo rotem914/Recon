@@ -23,6 +23,7 @@ state reachable with no animation at all (`project-os/QA.md` §7).
 |---|---|---|
 | App background | `#111217` | The page ground behind the picture and the panels (Rotem, 2026-09-14). |
 | Icon button hover | `#21222C` | The fill of an icon button's square under the pointer (Rotem, 2026-09-15). |
+| Icon line | `#C3C6CA` | The line of an icon button's icon in the controls sidebar (Rotem, 2026-09-16). |
 | Scroller | `#21222C` | The thumb of the timeline's scroller, sideways in one row and vertical once its rows wrap (Rotem, 2026-09-15). |
 
 ## Fonts
@@ -40,7 +41,7 @@ Stated by Rotem on 2026-09-15 for the controls sidebar; the sizes restated on 20
 | Part | Value |
 |---|---|
 | Container | 48 by 48, square, no fill of its own (Rotem, 2026-09-16, from 32 by 32) |
-| Icon | 32 by 32, centred, a stroke in the button's text colour (Rotem, 2026-09-16, from 20 by 20) |
+| Icon | 32 by 32, centred, a 2 px stroke in the icon line colour (Rotem, 2026-09-16, from 20 by 20 with a 1.5 px stroke in the button's text colour) |
 | Between buttons | 8 px |
 | Hover | the container fills with the icon button hover colour, fading in by A1 |
 | Name | every icon button carries its name and its key as a title, so it has a name without its text |
