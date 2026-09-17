@@ -166,6 +166,9 @@ the editor with that region.
   pointer large enough to tell apart, with the selection's width and height in pixels
   written under it, the lit window's or the dragged area's; the look is in
   `project-os/Design.md`. Added 2026-09-17 and 2026-09-18 at Rotem's ask.
+  When the pointer moves from one window to the next, the lit area glides from the one to
+  the other rather than jumping; the motion is in `project-os/Design.md`. Added 2026-09-18
+  at Rotem's ask.
 - A region can be selected on any connected display. A single region spanning two displays
   is out of v1: selection stays within its starting display.
 - `Esc` cancels and restores the preceding context. A cancelled capture creates nothing and

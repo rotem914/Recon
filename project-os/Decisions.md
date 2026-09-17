@@ -113,6 +113,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-17 · The one row's scroller band replaces the 8 px under the thumbnails.
 - 2026-09-18 · The capture drag's size bubble is built pixel by pixel and blended on whole, not a GDI round rectangle.
 - 2026-09-18 · The magnifier is the frozen slice stretched pixel for pixel, up from the first pointer, the size under it: the picture's reading, not the words'.
+- 2026-09-18 · The lit window glides to the next one edge by edge on the frame's own clock, inside one display, and jumps when Windows does not animate.
 
 ---
 
@@ -1214,3 +1215,44 @@ in `project-os/Design.md`: the side of the pointer, the gap, the hover, the zoom
 the ring and the lines through the centre are each one number or one flag, and his word
 moves any of them. Revisit if the hover's constant repaint is ever felt, or if the size
 should not be shown while hovering after all.
+
+---
+
+## 2026-09-18 · The lit window glides to the next one edge by edge on the frame's own clock, inside one display, and jumps when Windows does not animate
+
+### Context
+
+Rotem asked for the lit area of the capture overlay, the dashed frame and the undimmed
+window inside it, to move from one window to the next instead of jumping there when the
+pointer crosses. The overlay is plain Win32 painting with no animation of its own; the
+marching frame already ticks about sixty times a second and reads its walk off the clock.
+
+### Options
+
+1. Glide the rectangle: each of its four edges moves from the old window's to the new
+   one's over a fixed time, eased, the dim and the frame following it, on the frame's own
+   ticks; a pointer that moves on mid-glide sets out again from wherever the area is.
+2. Cross-fade: the old area dims out while the new one lights, both rectangles fixed.
+3. Glide across displays too, painting the in-between rectangles on both surfaces.
+4. For the timing: a token of the overlay's own, or the design system's A1.
+
+### Decision
+
+Option 1, mine, on Rotem's ask: an animation of the area's movement is a move, and a
+move is what a picker of windows does. The glide is kept to one display, since a selection
+never spans two (§3.2) and each surface would otherwise have to paint a rectangle that is
+not its own; a move to a window on another display jumps as before. The timing is A1's,
+144 ms and ease-out, the design system's one motion token, provisional until Rotem states
+a move token. A click mid-glide picks the window under the pointer, never the rectangle
+on its way. With Windows' "Animation effects" off, the glide is off and the area jumps,
+which is QA §7's reduced-motion gate at this surface; a setting that cannot be read counts
+as on.
+
+### Consequences
+
+Each tick that moves the area repaints the union of where it was and where it is, the
+whole area and not only the frame's strips, for the 144 ms a glide lasts; at rest the
+cost is what it was. The self test reads the frame's band mid-glide and after it, so a
+jump or a glide that never arrives turns the overlay row red. Cost: the duration and the
+easing are guesses until Rotem has seen them. Revisit them by eye, and revisit the
+one-display rule if a glide between displays is ever wanted.

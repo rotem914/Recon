@@ -219,6 +219,20 @@ half; the marching frame's #00B9F7 through the middle of the centre pixel; a 2 p
 the text's white; every number at 100%, scaled by the display's own scale as the cursor is.
 The full-screen guide lines through the pointer in the picture are not built.
 
+### Capture window glide
+
+Stated by Rotem on 2026-09-18 for the capture overlay.
+
+| Part | Value |
+|---|---|
+| Use | when the pointer moves from one window to the next, the lit area and its dashed frame glide from the one to the other instead of jumping |
+
+The motion is not stated yet. Provisional in the overlay until it is: A1's numbers, 144 ms
+and ease-out, each edge of the area on its own; a pointer that moves on mid-glide sets it
+out again from where it is; it stays inside one display, a move to a window on another
+display jumping as before; and it is off when Windows' own animation effects are off, the
+reduced-motion gate above.
+
 ### Window
 
 Stated by Rotem on 2026-09-15.
