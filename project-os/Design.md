@@ -133,25 +133,6 @@ Stated by Rotem on 2026-09-16 for the thumbnails in a tab after Main.
 The fills are not stated yet. Provisional in the page: the thumbnail ×'s dark fill, and the
 restore button's green once ticked.
 
-### Callout
-
-Stated by Rotem on 2026-09-17 for the annotation tools. The pixels are at the default text
-size of 20; the bubble's padding, corners and text box are proportions of the text size
-(`project-os/Plan.md` §3.5), so they are exactly these pixels at 20 and grow with it.
-
-| Part | Value |
-|---|---|
-| Bubble | `#2D41D7`, 32 px of padding, 15 px corners, no number shown |
-| Shadow | x 0, y 8, blur 16, spread 6, black at 25% |
-| Text box | 36 px tall at the least, growing with the lines; not marked while it is typed in, transparent |
-| Line | 4 px thick, ending in an arrow at the point the note refers to: an open head of two strokes, never filled |
-| Enter | keeps the text and leaves the typing, as a click outside the bubble does |
-| Ctrl+Enter | breaks the line inside the text box |
-
-Not stated yet, so provisional in the page until it is: the line's and the head's #7aa7ff,
-the head 16 px long and 7 px to each side (the arrow shape's numbers), the text's #f2f2f2, the
-selected bubble's 1 px #7aa7ff ring, and the 12 px anchor dot on the point while editing.
-
 ### Ruler
 
 Stated by Rotem on 2026-09-16 for the annotation tools.
