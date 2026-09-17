@@ -111,6 +111,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-17 · An empty bubble gives its number back.
 - 2026-09-17 · A restore waits for an image still being encoded.
 - 2026-09-17 · The one row's scroller band replaces the 8 px under the thumbnails.
+- 2026-09-18 · The capture drag's size bubble is built pixel by pixel and blended on whole, not a GDI round rectangle.
 
 ---
 
@@ -1130,3 +1131,42 @@ In one row a cell's height is the strip's less 21 px at every height, the 96 flo
 below, since their scroller stands at the side. A height remembered on a machine from
 before stays until the strip's edge is double-clicked. Revisit if Rotem wants the 8 px
 below back as well, which makes the default 141.
+
+---
+
+## 2026-09-18 · The capture drag's size bubble is built pixel by pixel and blended on whole, not a GDI round rectangle
+
+### Context
+
+Rotem asked for the dragged area's size beside the crosshair while a capture drag lasts:
+14 px text in a bubble of the app's background with 8 px corners. The overlay is plain
+Win32 painting, whose own rounded rectangle has stepped corners, and whose text call clears
+the alpha of every pixel it touches, on a window whose pixels the compositor shows by their
+alpha (the dim's note in `host/src/overlay.rs`).
+
+### Options
+
+1. GDI's own round rectangle and text call, straight onto the window: two calls, stepped
+   corners, and the text's pixels left with no alpha.
+2. The bubble in a bitmap of its own: the fill written pixel by pixel, each corner pixel
+   covered by the fraction of it inside the arc, the text drawn into that, its alpha put
+   back, and one blend onto the window.
+3. A layered window of the bubble's own, moved with the pointer.
+
+### Decision
+
+Option 2, mine. The corners come out as smooth as the page's, the window never holds a
+pixel without its full alpha, and the cost is a bitmap of a few thousand pixels per paint,
+on the drag's own moves. A third window would be one more thing to place, focus and tear
+down on the latency path.
+
+### Consequences
+
+The bubble is the paint's fourth step, drawn wherever the dirty region touches it, so a
+tick's strip through it redraws that strip; a move invalidates its old and new places.
+Every number scales with the display's own scale, as the cursor does: 14 px text is 14 on
+Rotem's display and 32 on one at 225%. Cost: the app background is now written in the host
+too, beside the page's `--paper`, the second home Backlog F68 already names for the margin
+colour; a change to the token has to reach both until the page hands the host its value.
+Revisit if the text should be the page's Google Sans, which the host would have to load
+from the page's own file, or when the gap from the pointer or the text's colour is stated.

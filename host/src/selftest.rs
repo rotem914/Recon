@@ -364,12 +364,17 @@ fn drag_test(frame: &Frame) -> Result<(), String> {
         height: 140,
     };
 
+    let (looked, seen) = std::sync::mpsc::channel();
     let outcome = with_overlay(frame, move || {
         // Down at the anchor, a couple of intermediate moves so the paint path runs, then up.
         move_to(expected.x, expected.y);
         press_left();
         move_to(expected.x + 60, expected.y + 40);
         move_to(expected.x + 160, expected.y + 100);
+        // The size bubble beside the pointer (Rotem, 2026-09-17): a moment for the paint,
+        // then the screen beside the pointer is written to be looked at, and read.
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let _ = looked.send(size_bubble_seen((expected.x + 160, expected.y + 100)));
         move_to(
             expected.x + expected.width as i32,
             expected.y + expected.height as i32,
@@ -383,6 +388,11 @@ fn drag_test(frame: &Frame) -> Result<(), String> {
                 return Err(format!("dragged {expected:?} and got back {got:?}"));
             }
             println!("  the overlay returned exactly the dragged rectangle: {got:?}");
+            match seen.try_recv() {
+                Ok(Ok(())) => {}
+                Ok(Err(err)) => return Err(err),
+                Err(_) => return Err("the size bubble was never looked at".into()),
+            }
 
             // The overlay's own windows must be gone: a leaked one would sit over the
             // desktop, dimmed, until the process ended.
@@ -443,6 +453,76 @@ fn drag_test(frame: &Frame) -> Result<(), String> {
         }
         Outcome::Cancelled => Err("the drag came back as a cancellation".into()),
     }
+}
+
+/// Looks at the size bubble mid-drag: the screen right of and below the pointer is written
+/// beside the executable, and read for the bubble's ground, in the app's background colour
+/// 8 px from the pointer, and for the light pixels of its text, which the dimmed screen
+/// around it has none of. The offsets are the spec's own numbers, at the display's scale.
+fn size_bubble_seen(pointer: (i32, i32)) -> Result<(), String> {
+    let display = monitors()
+        .into_iter()
+        .find(|m| {
+            pointer.0 >= m.rect.x
+                && pointer.1 >= m.rect.y
+                && pointer.0 < m.rect.x + m.rect.width as i32
+                && pointer.1 < m.rect.y + m.rect.height as i32
+        })
+        .ok_or("the pointer is on no display")?;
+    let scaled = |px: i32| (px * display.scale_percent as i32 + 50) / 100;
+    let region = DesktopRect::from_points(
+        pointer.0,
+        pointer.1,
+        (pointer.0 + scaled(240)).min(display.rect.x + display.rect.width as i32),
+        (pointer.1 + scaled(80)).min(display.rect.y + display.rect.height as i32),
+    );
+    let pixels = copy_rect(region).map_err(|e| e.to_string())?;
+    if let Ok(exe) = std::env::current_exe() {
+        let path = exe.with_file_name("s02-drag-size.png");
+        match image::RgbaImage::from_raw(region.width, region.height, pixels.clone()) {
+            Some(buffer) => match buffer.save(&path) {
+                Ok(()) => println!("  the size bubble is at {}", path.display()),
+                Err(err) => println!("  the size bubble was not written: {err}"),
+            },
+            None => println!("  the size bubble was not written: size mismatch"),
+        }
+    }
+    let at = |x: i32, y: i32| -> Option<(u8, u8, u8)> {
+        if x < 0 || y < 0 || x >= region.width as i32 || y >= region.height as i32 {
+            return None;
+        }
+        let i = ((y * region.width as i32 + x) * 4) as usize;
+        Some((pixels[i], pixels[i + 1], pixels[i + 2]))
+    };
+    // The ground: 8 px right of and below the pointer, then 4 px in and 11 px down, inside
+    // the bubble's side padding, clear of the corner's arc and of the text.
+    let probe = (scaled(8 + 4), scaled(8 + 11));
+    let ground = at(probe.0, probe.1).ok_or("the probe pixel is off the copy")?;
+    if ground != (0x0D, 0x0E, 0x12) {
+        return Err(format!(
+            "the pixel {},{} from the pointer is {ground:?}, not the app background (13, 14, 18): no size bubble beside the pointer",
+            probe.0, probe.1
+        ));
+    }
+    let mut light = 0;
+    for y in scaled(8)..scaled(48).min(region.height as i32) {
+        for x in scaled(8)..scaled(208).min(region.width as i32) {
+            if let Some((r, g, b)) = at(x, y) {
+                if r > 0x80 && g > 0x80 && b > 0x80 {
+                    light += 1;
+                }
+            }
+        }
+    }
+    if light < 20 {
+        return Err(format!(
+            "only {light} light pixels beside the pointer: the size bubble has no text"
+        ));
+    }
+    println!(
+        "  the size bubble sits beside the pointer on the app background, {light} light pixels of text in it"
+    );
+    Ok(())
 }
 
 fn cancel_test(frame: &Frame) -> Result<(), String> {

@@ -23,15 +23,18 @@ use std::ffi::c_void;
 use std::time::Instant;
 
 use windows::core::{w, BOOL, PCWSTR};
-use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM};
 use windows::Win32::Graphics::Dwm::{
     DwmGetWindowAttribute, DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS,
 };
 use windows::Win32::Graphics::Gdi::{
-    AlphaBlend, BeginPaint, BitBlt, CreateCompatibleDC, CreateDIBSection, CreateSolidBrush,
-    DeleteDC, DeleteObject, EndPaint, FillRect, GetDC, InvalidateRect, ReleaseDC, SelectObject,
-    AC_SRC_OVER, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, DIB_RGB_COLORS, HBITMAP,
-    HBRUSH, HDC, HGDIOBJ, PAINTSTRUCT, SRCCOPY,
+    AlphaBlend, BeginPaint, BitBlt, CreateCompatibleDC, CreateDIBSection, CreateFontW,
+    CreateSolidBrush, DeleteDC, DeleteObject, EndPaint, FillRect, GdiFlush, GetDC,
+    GetTextExtentPoint32W, InvalidateRect, ReleaseDC, SelectObject, SetBkMode, SetTextColor,
+    TextOutW, AC_SRC_ALPHA, AC_SRC_OVER, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION,
+    CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, DEFAULT_CHARSET, DEFAULT_PITCH, DIB_RGB_COLORS,
+    FF_DONTCARE, FW_NORMAL, HBITMAP, HBRUSH, HDC, HFONT, HGDIOBJ, OUT_DEFAULT_PRECIS, PAINTSTRUCT,
+    SRCCOPY, TRANSPARENT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, VK_ESCAPE};
@@ -74,6 +77,21 @@ const ANTS_TIMER: usize = 1;
 const ANTS_DASH_RGB: (u8, u8, u8) = (0x00, 0xB9, 0xF7);
 const ANTS_GAP_RGB: (u8, u8, u8) = (0x20, 0x20, 0x20);
 
+/// The size bubble (Rotem, 2026-09-17): while a drag lasts, the dragged area's width and
+/// height in pixels sit beside the pointer, 14 px text in a bubble of the app's background
+/// colour, 8 px corners, 8 px of padding at the sides and 4 above and below. These are the
+/// numbers at 100%; each display's overlay scales them by its own scale, as the cursor
+/// scales. The gap from the pointer, and the text's colour and face, are not stated: the
+/// ruler's 8 px and white, in the page's UI font, until they are.
+const SIZE_TEXT_PX: i32 = 14;
+const SIZE_RADIUS_PX: i32 = 8;
+const SIZE_PAD_X_PX: i32 = 8;
+const SIZE_PAD_Y_PX: i32 = 4;
+const SIZE_GAP_PX: i32 = 8;
+/// The app background, `project-os/Design.md`; the page carries the same value as `--paper`.
+const SIZE_FILL_RGB: (u8, u8, u8) = (0x0D, 0x0E, 0x12);
+const SIZE_TEXT_RGB: (u8, u8, u8) = (0xF2, 0xF2, 0xF2);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
     /// A rectangle in desktop coordinates, physical pixels, origin at the primary display.
@@ -92,6 +110,8 @@ struct Surface {
     previous: HGDIOBJ,
     /// Whether this display's overlay has painted once, for S0.7's "overlay displayed".
     painted: bool,
+    /// The size bubble's text face at this display's scale.
+    font: HFONT,
 }
 
 struct Drag {
@@ -411,6 +431,27 @@ unsafe fn build_surface(frame: &Frame, monitor: &MonitorInfo, screen_dc: HDC) ->
     // The frame's clock. It dies with the window; a tick with nothing lit does nothing.
     unsafe { SetTimer(Some(hwnd), ANTS_TIMER, ANTS_FRAME_MS, None) };
 
+    // The size bubble's face: a negative height is the em size, so 14 px here is the 14 px
+    // the page means. A face that cannot be made leaves the bubble unmeasured and undrawn.
+    let font = unsafe {
+        CreateFontW(
+            -scaled(SIZE_TEXT_PX, monitor.scale_percent),
+            0,
+            0,
+            0,
+            FW_NORMAL.0 as i32,
+            0,
+            0,
+            0,
+            DEFAULT_CHARSET,
+            OUT_DEFAULT_PRECIS,
+            CLIP_DEFAULT_PRECIS,
+            CLEARTYPE_QUALITY,
+            (DEFAULT_PITCH.0 | FF_DONTCARE.0) as u32,
+            w!("Segoe UI"),
+        )
+    };
+
     Some(Surface {
         hwnd,
         monitor: monitor.clone(),
@@ -418,7 +459,13 @@ unsafe fn build_surface(frame: &Frame, monitor: &MonitorInfo, screen_dc: HDC) ->
         bitmap,
         previous,
         painted: false,
+        font,
     })
+}
+
+/// A size at 100%, as it is on a display at this scale.
+fn scaled(px: i32, scale_percent: u32) -> i32 {
+    (px * scale_percent as i32 + 50) / 100
 }
 
 fn solid_header(width: i32, height: i32) -> BITMAPINFO {
@@ -442,6 +489,9 @@ unsafe fn teardown(state: State) {
         unsafe { SelectObject(surface.dc, surface.previous) };
         let _ = unsafe { DeleteObject(HGDIOBJ(surface.bitmap.0)) };
         let _ = unsafe { DeleteDC(surface.dc) };
+        if !surface.font.is_invalid() {
+            let _ = unsafe { DeleteObject(HGDIOBJ(surface.font.0)) };
+        }
     }
     unsafe { SelectObject(state.dim_dc, state.dim_previous) };
     let _ = unsafe { DeleteObject(HGDIOBJ(state.dim_bitmap.0)) };
@@ -533,9 +583,13 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 unsafe { invalidate_hover_change(changed) };
                 return LRESULT(0);
             }
+            // The size bubble moves with the pointer, so where it was and where it goes are
+            // both repainted; it is measured on this window's DC with the display's face.
+            let hdc = unsafe { GetDC(Some(hwnd)) };
             let invalidate = STATE.with(|cell| {
                 let mut borrowed = cell.borrow_mut();
                 let state = borrowed.as_mut()?;
+                let bubble_before = state.size_bubble(hwnd, hdc).map(|b| b.rect);
                 let monitor = state.monitor_of(hwnd)?.rect;
                 let origin = (monitor.x, monitor.y);
                 let threshold = state.drag_threshold;
@@ -586,13 +640,18 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                     drag.current.0,
                     drag.current.1,
                 );
-                Some((before, after, origin))
+                let bubble_after = state.size_bubble(hwnd, hdc).map(|b| b.rect);
+                Some((before, after, origin, bubble_before, bubble_after))
             });
-            if let Some((before, after, origin)) = invalidate {
+            let _ = unsafe { ReleaseDC(Some(hwnd), hdc) };
+            if let Some((before, after, origin, bubble_before, bubble_after)) = invalidate {
                 // Only the union of the old and the new rectangle changed, so only that is
                 // repainted. A full repaint of a 5120 wide display per mouse move is the
                 // easiest way to make this surface feel slow.
                 unsafe { invalidate_union(hwnd, origin, before, after) };
+                for bubble in bubble_before.into_iter().chain(bubble_after) {
+                    let _ = unsafe { InvalidateRect(Some(hwnd), Some(&bubble), false) };
+                }
             }
             LRESULT(0)
         }
@@ -739,6 +798,58 @@ impl State {
             top: rect.y - origin.1,
             right: rect.x - origin.0 + rect.width as i32,
             bottom: rect.y - origin.1 + rect.height as i32,
+        })
+    }
+
+    /// The size bubble beside the pointer, while a drag on this window lasts: the dragged
+    /// area's width and height as text, measured with the display's face on the given DC,
+    /// and the bubble around it in client coordinates. None before the drag has moved, on
+    /// another window, or when the face could not be made.
+    fn size_bubble(&self, hwnd: HWND, hdc: HDC) -> Option<Bubble> {
+        let drag = self.drag.as_ref()?;
+        if !drag.moved || drag.hwnd != hwnd.0 as isize {
+            return None;
+        }
+        let surface = self.surface_of(hwnd)?;
+        if surface.font.is_invalid() {
+            return None;
+        }
+        let scale = surface.monitor.scale_percent;
+        let display = surface.monitor.rect;
+        let rect =
+            DesktopRect::from_points(drag.anchor.0, drag.anchor.1, drag.current.0, drag.current.1);
+        let text: Vec<u16> = format!("{}x{}", rect.width, rect.height)
+            .encode_utf16()
+            .collect();
+        let mut extent = SIZE::default();
+        let measured = unsafe {
+            let previous = SelectObject(hdc, HGDIOBJ(surface.font.0));
+            let ok = GetTextExtentPoint32W(hdc, &text, &mut extent).as_bool();
+            SelectObject(hdc, previous);
+            ok
+        };
+        if !measured || extent.cx <= 0 || extent.cy <= 0 {
+            return None;
+        }
+        let pad = (scaled(SIZE_PAD_X_PX, scale), scaled(SIZE_PAD_Y_PX, scale));
+        let size = (extent.cx + 2 * pad.0, extent.cy + 2 * pad.1);
+        let pointer = (drag.current.0 - display.x, drag.current.1 - display.y);
+        let (left, top) = place_bubble(
+            pointer,
+            size,
+            (display.width as i32, display.height as i32),
+            scaled(SIZE_GAP_PX, scale),
+        );
+        Some(Bubble {
+            rect: RECT {
+                left,
+                top,
+                right: left + size.0,
+                bottom: top + size.1,
+            },
+            text_at: pad,
+            text,
+            radius: scaled(SIZE_RADIUS_PX, scale),
         })
     }
 
@@ -1099,10 +1210,170 @@ unsafe fn paint(hwnd: HWND) {
                 let _ = unsafe { DeleteObject(HGDIOBJ(to_gap.0)) };
                 let _ = unsafe { DeleteObject(HGDIOBJ(to_dash.0)) };
             }
+
+            // 4. the size bubble beside the pointer, while a drag on this window lasts,
+            // wherever the dirty region touches it: a tick's strip through it redraws that
+            // strip of it, and a move redraws it whole.
+            if let Some(bubble) = state.size_bubble(hwnd, hdc) {
+                let touches = bubble.rect.right > dirty.left
+                    && bubble.rect.left < dirty.right
+                    && bubble.rect.bottom > dirty.top
+                    && bubble.rect.top < dirty.bottom;
+                if touches {
+                    unsafe { draw_bubble(hdc, surface.font, &bubble) };
+                }
+            }
         });
     }
 
     let _ = unsafe { EndPaint(hwnd, &ps) };
+}
+
+/// The size bubble as laid out on one window: its place in client coordinates, its text,
+/// where the text sits inside it, and its corners' radius at the display's scale.
+struct Bubble {
+    rect: RECT,
+    text_at: (i32, i32),
+    text: Vec<u16>,
+    radius: i32,
+}
+
+/// Where the bubble goes: right of and below the pointer by the gap, and to the other side
+/// of it when that would leave the display, so it is never cut off at an edge.
+fn place_bubble(
+    pointer: (i32, i32),
+    size: (i32, i32),
+    display: (i32, i32),
+    gap: i32,
+) -> (i32, i32) {
+    let mut left = pointer.0 + gap;
+    if left + size.0 > display.0 {
+        left = pointer.0 - gap - size.0;
+    }
+    let mut top = pointer.1 + gap;
+    if top + size.1 > display.1 {
+        top = pointer.1 - gap - size.1;
+    }
+    (left.max(0), top.max(0))
+}
+
+/// How much of a pixel a rounded rectangle of this size covers: 1 inside, 0 outside, and
+/// the fraction of it inside the arc at the corners, so the corners are smooth. The radius
+/// is cut down to half the shorter side, as a page's corners are.
+fn corner_coverage(w: i32, h: i32, radius: i32, x: i32, y: i32) -> f64 {
+    let r = radius.min(w / 2).min(h / 2).max(0) as f64;
+    let px = x as f64 + 0.5;
+    let py = y as f64 + 0.5;
+    let cx = if px < r {
+        r
+    } else if px > w as f64 - r {
+        w as f64 - r
+    } else {
+        return 1.0;
+    };
+    let cy = if py < r {
+        r
+    } else if py > h as f64 - r {
+        h as f64 - r
+    } else {
+        return 1.0;
+    };
+    let d = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt();
+    (r + 0.5 - d).clamp(0.0, 1.0)
+}
+
+/// Draws the bubble: the rounded fill built pixel by pixel in a bitmap of its own, the
+/// text drawn into that, and the whole blended onto the window in one call, so the
+/// corners are smooth where a GDI round rectangle's would step. Every pixel it leaves on
+/// the window keeps a full alpha: a GDI text call clears the alpha of the pixels it
+/// touches, and this window's pixels are shown by their alpha (see the dim's note).
+unsafe fn draw_bubble(hdc: HDC, font: HFONT, bubble: &Bubble) {
+    let w = bubble.rect.right - bubble.rect.left;
+    let h = bubble.rect.bottom - bubble.rect.top;
+    if w <= 0 || h <= 0 {
+        return;
+    }
+    let dc = unsafe { CreateCompatibleDC(Some(hdc)) };
+    if dc.is_invalid() {
+        return;
+    }
+    let mut info = solid_header(w, h);
+    let mut bits: *mut c_void = std::ptr::null_mut();
+    let bitmap =
+        match unsafe { CreateDIBSection(Some(hdc), &info, DIB_RGB_COLORS, &mut bits, None, 0) } {
+            Ok(bitmap) if !bitmap.is_invalid() && !bits.is_null() => bitmap,
+            _ => {
+                let _ = unsafe { DeleteDC(dc) };
+                return;
+            }
+        };
+    std::hint::black_box(&mut info);
+    let len = (w * h * 4) as usize;
+
+    // The fill, premultiplied by each pixel's coverage, BGRA as GDI wants it.
+    {
+        let pixels = unsafe { std::slice::from_raw_parts_mut(bits as *mut u8, len) };
+        let (r, g, b) = SIZE_FILL_RGB;
+        for y in 0..h {
+            for x in 0..w {
+                let coverage = corner_coverage(w, h, bubble.radius, x, y);
+                let at = ((y * w + x) * 4) as usize;
+                let over = |c: u8| (c as f64 * coverage).round() as u8;
+                pixels[at] = over(b);
+                pixels[at + 1] = over(g);
+                pixels[at + 2] = over(r);
+                pixels[at + 3] = (255.0 * coverage).round() as u8;
+            }
+        }
+    }
+
+    let previous_bitmap = unsafe { SelectObject(dc, HGDIOBJ(bitmap.0)) };
+    let previous_font = unsafe { SelectObject(dc, HGDIOBJ(font.0)) };
+    unsafe {
+        SetBkMode(dc, TRANSPARENT);
+        SetTextColor(dc, colorref(SIZE_TEXT_RGB));
+        let _ = TextOutW(dc, bubble.text_at.0, bubble.text_at.1, &bubble.text);
+        let _ = GdiFlush();
+        SelectObject(dc, previous_font);
+    }
+
+    // The text sits in the flat part of the bubble, where every pixel is wholly covered;
+    // the text call cleared the alpha of the pixels it touched, and this puts it back.
+    {
+        let pixels = unsafe { std::slice::from_raw_parts_mut(bits as *mut u8, len) };
+        for y in 0..h {
+            for x in 0..w {
+                if corner_coverage(w, h, bubble.radius, x, y) >= 1.0 {
+                    pixels[((y * w + x) * 4 + 3) as usize] = 255;
+                }
+            }
+        }
+    }
+
+    let blend = BLENDFUNCTION {
+        BlendOp: AC_SRC_OVER as u8,
+        BlendFlags: 0,
+        SourceConstantAlpha: 255,
+        AlphaFormat: AC_SRC_ALPHA as u8,
+    };
+    let _ = unsafe {
+        AlphaBlend(
+            hdc,
+            bubble.rect.left,
+            bubble.rect.top,
+            w,
+            h,
+            dc,
+            0,
+            0,
+            w,
+            h,
+            blend,
+        )
+    };
+    unsafe { SelectObject(dc, previous_bitmap) };
+    let _ = unsafe { DeleteObject(HGDIOBJ(bitmap.0)) };
+    let _ = unsafe { DeleteDC(dc) };
 }
 
 /// The frame's thickness inside a selection: the set width, or less when the selection
@@ -1546,6 +1817,54 @@ mod tests {
         let first_before = before[0].run.right - before[0].run.left;
         let first_after = after[0].run.right - after[0].run.left;
         assert_eq!(first_after, first_before - 1);
+    }
+
+    #[test]
+    fn the_bubble_sits_right_of_and_below_the_pointer() {
+        assert_eq!(
+            place_bubble((100, 100), (60, 27), (1920, 1080), 8),
+            (108, 108)
+        );
+    }
+
+    #[test]
+    fn the_bubble_flips_to_the_other_side_at_a_display_edge() {
+        // Too close to the right edge: left of the pointer. Too close to the bottom: above.
+        assert_eq!(
+            place_bubble((1900, 100), (60, 27), (1920, 1080), 8),
+            (1832, 108)
+        );
+        assert_eq!(
+            place_bubble((100, 1070), (60, 27), (1920, 1080), 8),
+            (108, 1035)
+        );
+        assert_eq!(
+            place_bubble((1900, 1070), (60, 27), (1920, 1080), 8),
+            (1832, 1035)
+        );
+    }
+
+    #[test]
+    fn the_corners_are_covered_by_the_arc_and_the_rest_whole() {
+        // Inside; on the flat edges between the corners; the corner pixels themselves.
+        assert_eq!(corner_coverage(60, 27, 8, 30, 13), 1.0);
+        assert_eq!(corner_coverage(60, 27, 8, 8, 0), 1.0);
+        assert_eq!(corner_coverage(60, 27, 8, 0, 8), 1.0);
+        assert_eq!(corner_coverage(60, 27, 8, 0, 0), 0.0);
+        assert_eq!(corner_coverage(60, 27, 8, 59, 26), 0.0);
+        // On the arc: the pixel at 2,2 sits 7.8 from the corner's centre, part in.
+        let edge = corner_coverage(60, 27, 8, 2, 2);
+        assert!(edge > 0.0 && edge < 1.0, "{edge}");
+        // A radius past half the shorter side is cut down to it.
+        assert_eq!(corner_coverage(20, 10, 8, 10, 5), 1.0);
+    }
+
+    #[test]
+    fn a_size_scales_with_the_display() {
+        assert_eq!(scaled(14, 100), 14);
+        assert_eq!(scaled(14, 150), 21);
+        assert_eq!(scaled(14, 225), 32);
+        assert_eq!(scaled(8, 125), 10);
     }
 
     #[test]

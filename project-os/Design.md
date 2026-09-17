@@ -183,6 +183,22 @@ screen pixels at every zoom; a 1 px white frame on the picture's edges while the
 hand; while a handle is dragged the frame follows it and the outside is dimmed by half; the
 cut lands at the release, inward only, a side no smaller than 8 px; the key K.
 
+### Capture size bubble
+
+Stated by Rotem on 2026-09-17 for the capture overlay.
+
+| Part | Value |
+|---|---|
+| Use | while a drag on the capture overlay lasts, the dragged area's width and height in pixels sit beside the crosshair, written as 160x100 |
+| Text | 14 px |
+| Bubble | the app background as its fill, 8 px corners, 8 px of padding at the sides and 4 above and below |
+
+The rest is not stated yet. Provisional in the overlay until it is: 8 px right of and below
+the pointer, as the ruler's label, and on the pointer's other side where that would leave
+the display; the text the ruler's #f2f2f2 in Segoe UI, regular; every number at 100%, scaled
+by the display's own scale as the cursor is. The fill is a constant in the host
+(`host/src/overlay.rs`), a second home for the app background beside the page's `--paper`.
+
 ### Window
 
 Stated by Rotem on 2026-09-15.
