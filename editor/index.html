@@ -14,18 +14,18 @@
 
   /* The top bar (Rotem's call, 2026-09-14): Recon draws its own in place of Windows'
      frame. The title on the left, the controls in the middle, and minimize, maximize and
-     close on the right at the size Windows draws them, 46 by 32. The bar itself is the
+     close on the right at 48 wide and the bar's 32 tall (Rotem, 2026-09-17). The bar itself is the
      drag region; fullscreen puts it away. Provisional look, Rotem's to restyle. */
   #bar { position: absolute; left: 0; right: 0; top: 0; height: 32px; display: flex;
          align-items: center; user-select: none; }
   #title { flex: 1 1 auto; min-width: 0; padding: 0 12px; font-size: 12px; color: #cfd4da;
            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #winbtns { display: flex; flex: 0 0 auto; height: 100%; }
-  #winbtns button { width: 46px; height: 100%; border: none; padding: 0; background: transparent;
+  #winbtns button { width: 48px; height: 100%; border: none; padding: 0; background: transparent;
                     color: #cfd4da; display: grid; place-items: center; cursor: default; }
   #winbtns button:hover { background: rgba(255,255,255,.09); color: #f2f2f2; }
   #winbtns #win-close:hover { background: #c42b1c; color: #fff; }
-  #winbtns svg { width: 10px; height: 10px; stroke: currentColor; fill: none; stroke-width: 1; }
+  #winbtns svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 1; }
   body.fullscreen #bar { display: none; }
 
   #stage { position: absolute; inset: 32px 0 var(--size-band, 0px) 64px; overflow: hidden; cursor: crosshair; }

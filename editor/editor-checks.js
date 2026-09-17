@@ -2571,9 +2571,9 @@ export async function runChecks(editor, invoke) {
     check('the title names the file, as the window title does', document.getElementById('title').textContent === 'reference-scene.png - Recon' && (await invoke('editor_window_title')) === 'reference-scene.png - Recon',
       document.getElementById('title').textContent);
     const boxes = buttons.map((b) => b.getBoundingClientRect());
-    // 46 wide, the bar's whole height above its bottom line: what Windows draws.
-    check('minimize, maximize and close sit in that order at the right edge, 46 wide and the bar tall', buttons.map((b) => b.id).join() === 'win-min,win-max,win-close'
-      && boxes.every((b) => Math.round(b.width) === 46 && Math.round(b.height) === bar.clientHeight && b.top === 0) && Math.round(boxes[2].right) === window.innerWidth && boxes[0].right <= boxes[1].left && boxes[1].right <= boxes[2].left,
+    // 48 wide, the bar's whole height above its bottom line (Rotem, 2026-09-17).
+    check('minimize, maximize and close sit in that order at the right edge, 48 wide and the bar tall', buttons.map((b) => b.id).join() === 'win-min,win-max,win-close'
+      && boxes.every((b) => Math.round(b.width) === 48 && Math.round(b.height) === bar.clientHeight && b.top === 0) && Math.round(boxes[2].right) === window.innerWidth && boxes[0].right <= boxes[1].left && boxes[1].right <= boxes[2].left,
       boxes.map((b) => `${Math.round(b.left)}-${Math.round(b.right)}, ${Math.round(b.height)} tall`).join(' '));
     check('every window button has a name', buttons.every((b) => b.title.length > 0), buttons.map((b) => b.title).join(', '));
 
