@@ -15,7 +15,9 @@
 //! are lit and framed as the pointer moves, and a click with no drag captures them. The
 //! windows are listed once, when the overlay comes up, because the picture under it is
 //! frozen at that moment too. A drag past the system's own drag threshold takes over and
-//! draws a free rectangle, exactly as before.
+//! draws a free rectangle, exactly as before. When the pointer moves from one window to
+//! the next, the lit area glides from the one to the other rather than jumping, unless
+//! Windows' own animations are off.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -30,11 +32,11 @@ use windows::Win32::Graphics::Dwm::{
 use windows::Win32::Graphics::Gdi::{
     AlphaBlend, BeginPaint, BitBlt, CreateCompatibleDC, CreateDIBSection, CreateFontW,
     CreateSolidBrush, DeleteDC, DeleteObject, EndPaint, FillRect, GdiFlush, GetDC,
-    GetTextExtentPoint32W, InvalidateRect, ReleaseDC, SelectObject, SetBkMode, SetTextColor,
-    TextOutW, AC_SRC_ALPHA, AC_SRC_OVER, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION,
-    CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, DEFAULT_CHARSET, DEFAULT_PITCH, DIB_RGB_COLORS,
-    FF_DONTCARE, FW_NORMAL, HBITMAP, HBRUSH, HDC, HFONT, HGDIOBJ, OUT_DEFAULT_PRECIS, PAINTSTRUCT,
-    SRCCOPY, TRANSPARENT,
+    GetTextExtentPoint32W, InvalidateRect, ReleaseDC, SelectObject, SetBkMode, SetStretchBltMode,
+    SetTextColor, StretchBlt, TextOutW, AC_SRC_ALPHA, AC_SRC_OVER, BITMAPINFO, BITMAPINFOHEADER,
+    BI_RGB, BLENDFUNCTION, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, COLORONCOLOR, DEFAULT_CHARSET,
+    DEFAULT_PITCH, DIB_RGB_COLORS, FF_DONTCARE, FW_NORMAL, HBITMAP, HBRUSH, HDC, HFONT, HGDIOBJ,
+    OUT_DEFAULT_PRECIS, PAINTSTRUCT, SRCCOPY, TRANSPARENT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, VK_ESCAPE};
@@ -43,10 +45,11 @@ use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetClassNameW, GetCursorPos, GetForegroundWindow, GetMessageW, GetSystemMetrics,
     GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindow,
     IsWindowVisible, LoadCursorW, PostMessageW, PostQuitMessage, RegisterClassExW,
-    SetForegroundWindow, SetTimer, ShowWindow, TranslateMessage, CS_HREDRAW, CS_VREDRAW,
-    GWL_EXSTYLE, IDC_CROSS, MSG, SM_CXDRAG, SM_CYDRAG, SW_SHOW, WM_APP, WM_DESTROY, WM_ERASEBKGND,
-    WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_PAINT, WM_TIMER, WNDCLASSEXW,
-    WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+    SetForegroundWindow, SetTimer, ShowWindow, SystemParametersInfoW, TranslateMessage, CS_HREDRAW,
+    CS_VREDRAW, GWL_EXSTYLE, IDC_CROSS, MSG, SM_CXDRAG, SM_CYDRAG, SPI_GETCLIENTAREAANIMATION,
+    SW_SHOW, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, WM_APP, WM_DESTROY, WM_ERASEBKGND, WM_KEYDOWN,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_PAINT, WM_TIMER, WNDCLASSEXW, WS_EX_TOOLWINDOW,
+    WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
 };
 
 use crate::capture::coords::DesktopRect;
@@ -77,20 +80,42 @@ const ANTS_TIMER: usize = 1;
 const ANTS_DASH_RGB: (u8, u8, u8) = (0x00, 0xB9, 0xF7);
 const ANTS_GAP_RGB: (u8, u8, u8) = (0x20, 0x20, 0x20);
 
-/// The size bubble (Rotem, 2026-09-17): while a drag lasts, the dragged area's width and
-/// height in pixels sit beside the pointer, 14 px text in a bubble of the app's background
-/// colour, 8 px corners, 8 px of padding at the sides and 4 above and below. These are the
-/// numbers at 100%; each display's overlay scales them by its own scale, as the cursor
-/// scales. The gap from the pointer, and the text's colour and face, are not stated: the
-/// ruler's 8 px and white, in the page's UI font, until they are.
+/// The glide (Rotem, 2026-09-18): when the pointer moves from one window to the next, the
+/// lit area and its frame glide from the one to the other instead of jumping, each edge on
+/// its own, read off the clock on the frame's own ticks. The duration and the easing are
+/// not stated: the design system's one motion token, A1's 144 ms and ease-out, until they
+/// are. Off when Windows' own animations are off.
+const GLIDE_MS: f64 = 144.0;
+
+/// The size label (Rotem, 2026-09-17): while a drag lasts, the dragged area's width and
+/// height in pixels, 14 px text on the app's background colour, 8 px corners, 8 px of
+/// padding at the sides and 4 above and below. Since 2026-09-18 that bubble is the
+/// magnifier's panel and the text sits under the circle, as the picture Rotem sent shows.
+/// These are the numbers at 100%; each display's overlay scales them by its own scale, as
+/// the cursor scales. The text's colour and face are not stated: the ruler's white, in the
+/// page's UI font, until they are.
 const SIZE_TEXT_PX: i32 = 14;
 const SIZE_RADIUS_PX: i32 = 8;
 const SIZE_PAD_X_PX: i32 = 8;
 const SIZE_PAD_Y_PX: i32 = 4;
-const SIZE_GAP_PX: i32 = 8;
 /// The app background, `project-os/Design.md`; the page carries the same value as `--paper`.
 const SIZE_FILL_RGB: (u8, u8, u8) = (0x0D, 0x0E, 0x12);
 const SIZE_TEXT_RGB: (u8, u8, u8) = (0xF2, 0xF2, 0xF2);
+
+/// The magnifier (Rotem, 2026-09-18, with a picture): a 112 px circle showing the frozen
+/// pixels around the pointer large enough to tell apart, the whole time the overlay is
+/// up, with the selection's size written under it. What the picture shows and his words
+/// do not, provisional until he states it: the circle in a panel of the label's fill and
+/// corners, 4 px around it; the panel below the pointer with its right edge 8 px left of
+/// it, and on the pointer's other side where that would leave the display; 8 px to a
+/// source pixel; a 1 px grid between them, the pixel darkened by half; the frame's blue
+/// through the centre pixel; a 2 px ring in the text's white.
+const MAG_DIAMETER_PX: i32 = 112;
+const MAG_CELL_PX: i32 = 8;
+const MAG_INSET_PX: i32 = 4;
+const MAG_GAP_PX: i32 = 8;
+const MAG_RING_PX: i32 = 2;
+const MAG_RING_RGB: (u8, u8, u8) = (0xF2, 0xF2, 0xF2);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
@@ -148,6 +173,18 @@ struct Hover {
     part: Option<isize>,
 }
 
+/// The lit area on its way from one window to the next: where it set out from, where it
+/// is going, when it set out, and where it is now, as last painted. It lives only while a
+/// hover on the same surface has `to` as its rectangle.
+#[derive(Debug, Clone, Copy)]
+struct Glide {
+    surface: isize,
+    from: DesktopRect,
+    to: DesktopRect,
+    started: Instant,
+    shown: DesktopRect,
+}
+
 struct State {
     surfaces: Vec<Surface>,
     drag: Option<Drag>,
@@ -157,6 +194,13 @@ struct State {
     /// the pointer rests on that window and kept for the rest of the selection.
     parts: HashMap<isize, Vec<WindowBounds>>,
     hover: Option<Hover>,
+    /// The lit area's glide from the window it was on to the one it is on, while one lasts.
+    glide: Option<Glide>,
+    /// Whether the lit area glides at all: Windows' own animation setting, read once.
+    animate: bool,
+    /// Where the pointer last was, and on which surface: what the magnifier shows while
+    /// nothing is being dragged.
+    pointer: Option<(isize, (i32, i32))>,
     /// How far the pointer may move from the press before it is a drag: the system's own
     /// value, so a click here is a click everywhere else on this machine.
     drag_threshold: (i32, i32),
@@ -333,6 +377,9 @@ unsafe fn build_state(
         windows,
         parts: HashMap::new(),
         hover: None,
+        glide: None,
+        animate: windows_animates(),
+        pointer: None,
         drag_threshold: unsafe {
             (
                 GetSystemMetrics(SM_CXDRAG).max(0),
@@ -535,10 +582,13 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                     let mut borrowed = cell.borrow_mut();
                     let state = borrowed.as_mut()?;
                     let surface = state.surface_at(at.x, at.y)?;
-                    Some(state.update_hover(surface, (at.x, at.y)))
+                    state.pointer = Some((surface, (at.x, at.y)));
+                    Some((surface, state.update_hover(surface, (at.x, at.y))))
                 });
-                if let Some(changed) = changed {
+                if let Some((surface, changed)) = changed {
                     unsafe { invalidate_hover_change(changed) };
+                    // And the magnifier, which shows the pointer from now on.
+                    unsafe { invalidate_magnifier(HWND(surface as *mut _)) };
                 }
             }
             LRESULT(0)
@@ -568,90 +618,37 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         }
         WM_MOUSEMOVE => {
             let point = point_of(lparam);
-            // With no button down, the move only changes which window is lit.
+            // The magnifier follows every move, so where it was and where it goes are both
+            // repainted; it is laid out on this window's DC with the display's face.
+            let hdc = unsafe { GetDC(Some(hwnd)) };
+            let panel_before = STATE.with(|cell| {
+                let borrowed = cell.borrow();
+                borrowed.as_ref()?.magnifier(hwnd, hdc).map(|p| p.rect)
+            });
+            // With no button down, the move changes which window is lit, and the pointer.
             let hover_change = STATE.with(|cell| {
                 let mut borrowed = cell.borrow_mut();
                 let state = borrowed.as_mut()?;
+                let monitor = state.monitor_of(hwnd)?.rect;
+                let desktop = (monitor.x + point.x, monitor.y + point.y);
+                state.pointer = Some((hwnd.0 as isize, desktop));
                 if state.drag.is_some() {
                     return None;
                 }
-                let monitor = state.monitor_of(hwnd)?.rect;
-                let desktop = (monitor.x + point.x, monitor.y + point.y);
                 Some(state.update_hover(hwnd.0 as isize, desktop))
             });
             if let Some(changed) = hover_change {
                 unsafe { invalidate_hover_change(changed) };
-                return LRESULT(0);
+            } else {
+                unsafe { drag_move(hwnd, point) };
             }
-            // The size bubble moves with the pointer, so where it was and where it goes are
-            // both repainted; it is measured on this window's DC with the display's face.
-            let hdc = unsafe { GetDC(Some(hwnd)) };
-            let invalidate = STATE.with(|cell| {
-                let mut borrowed = cell.borrow_mut();
-                let state = borrowed.as_mut()?;
-                let bubble_before = state.size_bubble(hwnd, hdc).map(|b| b.rect);
-                let monitor = state.monitor_of(hwnd)?.rect;
-                let origin = (monitor.x, monitor.y);
-                let threshold = state.drag_threshold;
-                let mut lit = None;
-                let drag = state.drag.as_mut()?;
-                if drag.hwnd != hwnd.0 as isize {
-                    return None;
-                }
-                // Inside the threshold the press is still a click, and the lit window is
-                // still the selection; nothing to redraw.
-                if !drag.moved {
-                    let dx = (monitor.x + point.x - drag.anchor.0).abs();
-                    let dy = (monitor.y + point.y - drag.anchor.1).abs();
-                    if dx <= threshold.0 && dy <= threshold.1 {
-                        return None;
-                    }
-                    drag.moved = true;
-                    // The drag has taken over: the lit window goes back to dim, once, and
-                    // is not consulted again until the overlay ends.
-                    lit = state.hover.take().map(|h| h.rect);
-                }
-                let drag = state.drag.as_mut()?;
-                let dragged = DesktopRect::from_points(
-                    drag.anchor.0,
-                    drag.anchor.1,
-                    drag.current.0,
-                    drag.current.1,
-                );
-                let before = match lit {
-                    Some(rect) => union_of(rect, dragged),
-                    None => dragged,
-                };
-                // Clamped to the display the drag started on. Mouse capture keeps
-                // delivering moves past the edge, and without this a drag that overshoots
-                // produces a rectangle outside the frozen frame, which the conversion then
-                // refuses: the user would lose the whole capture for dragging too far.
-                // §3.2 says a selection stays inside its starting display, and this is that
-                // rule rather than an error message.
-                let max_x = monitor.x + monitor.width as i32;
-                let max_y = monitor.y + monitor.height as i32;
-                drag.current = (
-                    (origin.0 + point.x).clamp(monitor.x, max_x),
-                    (origin.1 + point.y).clamp(monitor.y, max_y),
-                );
-                let after = DesktopRect::from_points(
-                    drag.anchor.0,
-                    drag.anchor.1,
-                    drag.current.0,
-                    drag.current.1,
-                );
-                let bubble_after = state.size_bubble(hwnd, hdc).map(|b| b.rect);
-                Some((before, after, origin, bubble_before, bubble_after))
+            let panel_after = STATE.with(|cell| {
+                let borrowed = cell.borrow();
+                borrowed.as_ref()?.magnifier(hwnd, hdc).map(|p| p.rect)
             });
             let _ = unsafe { ReleaseDC(Some(hwnd), hdc) };
-            if let Some((before, after, origin, bubble_before, bubble_after)) = invalidate {
-                // Only the union of the old and the new rectangle changed, so only that is
-                // repainted. A full repaint of a 5120 wide display per mouse move is the
-                // easiest way to make this surface feel slow.
-                unsafe { invalidate_union(hwnd, origin, before, after) };
-                for bubble in bubble_before.into_iter().chain(bubble_after) {
-                    let _ = unsafe { InvalidateRect(Some(hwnd), Some(&bubble), false) };
-                }
+            for panel in panel_before.into_iter().chain(panel_after) {
+                let _ = unsafe { InvalidateRect(Some(hwnd), Some(&panel), false) };
             }
             LRESULT(0)
         }
@@ -719,6 +716,17 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             LRESULT(0)
         }
         WM_TIMER if wparam.0 == ANTS_TIMER => {
+            // The glide first, while the lit area is on its way from one window to the
+            // next: where it was and where it is now are repainted whole, since the dim
+            // moves with it. It is read off the clock too, so a late frame skips ahead.
+            let moved = STATE.with(|cell| {
+                let mut borrowed = cell.borrow_mut();
+                let state = borrowed.as_mut()?;
+                state.advance_glide(hwnd.0 as isize)
+            });
+            if let Some((origin, before, after)) = moved {
+                unsafe { invalidate_union(hwnd, origin, before, after) };
+            }
             // One frame of the dashes, and only the frame itself is repainted: four thin
             // strips, not the lit area, so the walk costs nothing to speak of. The walk
             // is read off the clock at paint time, so a late frame does not slow it.
@@ -737,6 +745,78 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         }
         WM_DESTROY => LRESULT(0),
         _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
+    }
+}
+
+/// A move with the button down: past the system's threshold the press becomes a drag,
+/// the lit window goes dark, and the dragged rectangle follows the pointer, clamped to
+/// the display the drag started on.
+unsafe fn drag_move(hwnd: HWND, point: POINT) {
+    let invalidate = STATE.with(|cell| {
+        let mut borrowed = cell.borrow_mut();
+        let state = borrowed.as_mut()?;
+        let monitor = state.monitor_of(hwnd)?.rect;
+        let origin = (monitor.x, monitor.y);
+        let threshold = state.drag_threshold;
+        let mut lit = None;
+        let drag = state.drag.as_mut()?;
+        if drag.hwnd != hwnd.0 as isize {
+            return None;
+        }
+        // Inside the threshold the press is still a click, and the lit window is
+        // still the selection; nothing to redraw.
+        if !drag.moved {
+            let dx = (monitor.x + point.x - drag.anchor.0).abs();
+            let dy = (monitor.y + point.y - drag.anchor.1).abs();
+            if dx <= threshold.0 && dy <= threshold.1 {
+                return None;
+            }
+            drag.moved = true;
+            // The drag has taken over: the lit window goes back to dim, once, and
+            // is not consulted again until the overlay ends.
+            lit = state.take_hover();
+        }
+        let drag = state.drag.as_mut()?;
+        let dragged =
+            DesktopRect::from_points(drag.anchor.0, drag.anchor.1, drag.current.0, drag.current.1);
+        let before = match lit {
+            Some(rect) => union_of(rect, dragged),
+            None => dragged,
+        };
+        // Clamped to the display the drag started on. Mouse capture keeps
+        // delivering moves past the edge, and without this a drag that overshoots
+        // produces a rectangle outside the frozen frame, which the conversion then
+        // refuses: the user would lose the whole capture for dragging too far.
+        // §3.2 says a selection stays inside its starting display, and this is that
+        // rule rather than an error message.
+        let max_x = monitor.x + monitor.width as i32;
+        let max_y = monitor.y + monitor.height as i32;
+        drag.current = (
+            (origin.0 + point.x).clamp(monitor.x, max_x),
+            (origin.1 + point.y).clamp(monitor.y, max_y),
+        );
+        let after =
+            DesktopRect::from_points(drag.anchor.0, drag.anchor.1, drag.current.0, drag.current.1);
+        Some((before, after, origin))
+    });
+    if let Some((before, after, origin)) = invalidate {
+        // Only the union of the old and the new rectangle changed, so only that is
+        // repainted. A full repaint of a 5120 wide display per mouse move is the
+        // easiest way to make this surface feel slow.
+        unsafe { invalidate_union(hwnd, origin, before, after) };
+    }
+}
+
+/// Marks the magnifier's place on a window for repainting, as it stands now.
+unsafe fn invalidate_magnifier(hwnd: HWND) {
+    let hdc = unsafe { GetDC(Some(hwnd)) };
+    let panel = STATE.with(|cell| {
+        let borrowed = cell.borrow();
+        borrowed.as_ref()?.magnifier(hwnd, hdc).map(|p| p.rect)
+    });
+    let _ = unsafe { ReleaseDC(Some(hwnd), hdc) };
+    if let Some(panel) = panel {
+        let _ = unsafe { InvalidateRect(Some(hwnd), Some(&panel), false) };
     }
 }
 
@@ -785,10 +865,10 @@ impl State {
                     drag.current.1,
                 )
             }
-            _ => self
-                .hover
-                .filter(|h| h.surface == hwnd.0 as isize)
-                .map(|h| h.rect)?,
+            _ => {
+                let hover = self.hover.filter(|h| h.surface == hwnd.0 as isize)?;
+                self.lit_rect(hover)
+            }
         };
         if rect.is_empty() {
             return None;
@@ -801,55 +881,86 @@ impl State {
         })
     }
 
-    /// The size bubble beside the pointer, while a drag on this window lasts: the dragged
-    /// area's width and height as text, measured with the display's face on the given DC,
-    /// and the bubble around it in client coordinates. None before the drag has moved, on
-    /// another window, or when the face could not be made.
-    fn size_bubble(&self, hwnd: HWND, hdc: HDC) -> Option<Bubble> {
-        let drag = self.drag.as_ref()?;
-        if !drag.moved || drag.hwnd != hwnd.0 as isize {
-            return None;
+    /// The size written under the magnifier: the dragged area's once a drag on this window
+    /// has moved, a line's included, otherwise the lit window's on this surface.
+    fn selection_size(&self, hwnd: HWND) -> Option<(u32, u32)> {
+        match self.drag.as_ref() {
+            Some(drag) if drag.moved && drag.hwnd == hwnd.0 as isize => {
+                let rect = DesktopRect::from_points(
+                    drag.anchor.0,
+                    drag.anchor.1,
+                    drag.current.0,
+                    drag.current.1,
+                );
+                Some((rect.width, rect.height))
+            }
+            _ => self
+                .hover
+                .filter(|h| h.surface == hwnd.0 as isize)
+                .map(|h| (h.rect.width, h.rect.height)),
         }
+    }
+
+    /// The magnifier on this window: the panel beside the pointer, the circle inside it
+    /// and the selection's size under the circle, measured with the display's face on the
+    /// given DC, in client coordinates. None while the pointer is on another window, or
+    /// before it was seen at all.
+    fn magnifier(&self, hwnd: HWND, hdc: HDC) -> Option<Panel> {
         let surface = self.surface_of(hwnd)?;
-        if surface.font.is_invalid() {
-            return None;
-        }
         let scale = surface.monitor.scale_percent;
         let display = surface.monitor.rect;
-        let rect =
-            DesktopRect::from_points(drag.anchor.0, drag.anchor.1, drag.current.0, drag.current.1);
-        let text: Vec<u16> = format!("{}x{}", rect.width, rect.height)
-            .encode_utf16()
-            .collect();
-        let mut extent = SIZE::default();
-        let measured = unsafe {
-            let previous = SelectObject(hdc, HGDIOBJ(surface.font.0));
-            let ok = GetTextExtentPoint32W(hdc, &text, &mut extent).as_bool();
-            SelectObject(hdc, previous);
-            ok
+        // A drag's pointer is its clamped point, so past the display's edge the circle
+        // shows the edge; with no drag the pointer as last seen on this surface.
+        let desktop = match self.drag.as_ref() {
+            Some(drag) if drag.hwnd == hwnd.0 as isize => drag.current,
+            Some(_) => return None,
+            None => self.pointer.filter(|(s, _)| *s == hwnd.0 as isize)?.1,
         };
-        if !measured || extent.cx <= 0 || extent.cy <= 0 {
-            return None;
-        }
+        let source = (desktop.0 - display.x, desktop.1 - display.y);
+        let diameter = scaled(MAG_DIAMETER_PX, scale);
+        let cell = scaled(MAG_CELL_PX, scale).max(1);
+        let inset = scaled(MAG_INSET_PX, scale);
+        let text = self.selection_size(hwnd).and_then(|(width, height)| {
+            if surface.font.is_invalid() {
+                return None;
+            }
+            let text: Vec<u16> = format!("{width}x{height}").encode_utf16().collect();
+            let mut extent = SIZE::default();
+            let measured = unsafe {
+                let previous = SelectObject(hdc, HGDIOBJ(surface.font.0));
+                let ok = GetTextExtentPoint32W(hdc, &text, &mut extent).as_bool();
+                SelectObject(hdc, previous);
+                ok
+            };
+            if !measured || extent.cx <= 0 || extent.cy <= 0 {
+                return None;
+            }
+            Some((text, extent))
+        });
         let pad = (scaled(SIZE_PAD_X_PX, scale), scaled(SIZE_PAD_Y_PX, scale));
-        let size = (extent.cx + 2 * pad.0, extent.cy + 2 * pad.1);
-        let pointer = (drag.current.0 - display.x, drag.current.1 - display.y);
-        let (left, top) = place_bubble(
-            pointer,
-            size,
+        let width = (diameter + 2 * inset).max(text.as_ref().map_or(0, |(_, e)| e.cx + 2 * pad.0));
+        let height = inset + diameter + text.as_ref().map_or(inset, |(_, e)| pad.1 + e.cy + pad.1);
+        let text = text.map(|(t, e)| (t, ((width - e.cx) / 2, inset + diameter + pad.1)));
+        let (left, top) = place_panel(
+            source,
+            (width, height),
             (display.width as i32, display.height as i32),
-            scaled(SIZE_GAP_PX, scale),
+            scaled(MAG_GAP_PX, scale),
         );
-        Some(Bubble {
+        Some(Panel {
             rect: RECT {
                 left,
                 top,
-                right: left + size.0,
-                bottom: top + size.1,
+                right: left + width,
+                bottom: top + height,
             },
-            text_at: pad,
-            text,
             radius: scaled(SIZE_RADIUS_PX, scale),
+            circle: (width / 2, inset + diameter / 2, diameter / 2),
+            ring: scaled(MAG_RING_PX, scale),
+            cell,
+            cells: cell_count(diameter, cell),
+            source,
+            text,
         })
     }
 
@@ -896,10 +1007,75 @@ impl State {
             return HoverChange::default();
         }
         self.hover = next;
+        // From one window to the next on the same display, the lit area glides: it sets
+        // out from wherever it is now, mid-glide included, and the ticks carry it, so
+        // there is nothing to repaint yet. A glide already heading there keeps going.
+        if let (Some(was), Some(now)) = (previous, next) {
+            if self.animate && was.surface == now.surface {
+                let shown = self.lit_rect(was);
+                let heading_there = self.glide.is_some_and(|g| g.to == now.rect);
+                if shown == now.rect {
+                    self.glide = None;
+                } else if !heading_there {
+                    self.glide = Some(Glide {
+                        surface: now.surface,
+                        from: shown,
+                        to: now.rect,
+                        started: Instant::now(),
+                        shown,
+                    });
+                }
+                return HoverChange::default();
+            }
+        }
+        // Lit for the first time, gone, on another display, or with Windows' animations
+        // off: a jump, the area as it was painted going back to dim and the new one lit.
+        let before = previous.map(|h| {
+            (
+                h.surface,
+                self.origin_of_surface(h.surface),
+                self.lit_rect(h),
+            )
+        });
+        self.glide = None;
         HoverChange {
-            before: previous.map(|h| (h.surface, self.origin_of_surface(h.surface), h.rect)),
+            before,
             after: next.map(|h| (h.surface, self.origin_of_surface(h.surface), h.rect)),
         }
+    }
+
+    /// The rectangle lit for a hover, as painted: the glide's, while the lit area is on
+    /// its way there, otherwise the hover's own.
+    fn lit_rect(&self, hover: Hover) -> DesktopRect {
+        match self.glide {
+            Some(glide) if glide.surface == hover.surface => glide.shown,
+            _ => hover.rect,
+        }
+    }
+
+    /// Ends the hover, glide included, for the drag that takes over: the rectangle that
+    /// was lit, as painted, so the repaint can put it back to dim.
+    fn take_hover(&mut self) -> Option<DesktopRect> {
+        let hover = self.hover.take()?;
+        let lit = self.lit_rect(hover);
+        self.glide = None;
+        Some(lit)
+    }
+
+    /// Moves the glide on this surface along by the clock: the rectangle painted before
+    /// and the one to paint now, with the surface's origin, when it moved. The glide ends
+    /// the tick it arrives, and the hover's own rectangle is lit from then on.
+    fn advance_glide(&mut self, surface: isize) -> Option<((i32, i32), DesktopRect, DesktopRect)> {
+        let mut glide = self.glide.filter(|g| g.surface == surface)?;
+        let fraction = glide.started.elapsed().as_secs_f64() * 1000.0 / GLIDE_MS;
+        let before = glide.shown;
+        glide.shown = glide_rect(glide.from, glide.to, ease_out(fraction));
+        let after = glide.shown;
+        self.glide = if fraction >= 1.0 { None } else { Some(glide) };
+        if before == after {
+            return None;
+        }
+        Some((self.origin_of_surface(surface), before, after))
     }
 
     /// The parts of a top-level window, listed on first use.
@@ -937,6 +1113,42 @@ unsafe fn invalidate_hover_change(change: HoverChange) {
     for (surface, origin, rect) in change.before.into_iter().chain(change.after) {
         unsafe { invalidate_union(HWND(surface as *mut _), origin, rect, rect) };
     }
+}
+
+/// Whether Windows animates: its "Animation effects" setting, off for the people who
+/// turned motion off, and the glide is off with it (`project-os/QA.md` §7). A setting
+/// that cannot be read counts as on.
+pub(crate) fn windows_animates() -> bool {
+    let mut on = BOOL(1);
+    let asked = unsafe {
+        SystemParametersInfoW(
+            SPI_GETCLIENTAREAANIMATION,
+            0,
+            Some(&mut on as *mut BOOL as *mut c_void),
+            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+        )
+    };
+    asked.is_err() || on.as_bool()
+}
+
+/// How far along the glide is for how much of its time has passed: quick to set out and
+/// slow to arrive, an ease-out, cubic.
+fn ease_out(time: f64) -> f64 {
+    let t = time.clamp(0.0, 1.0);
+    1.0 - (1.0 - t).powi(3)
+}
+
+/// The rectangle a fraction of the way from one to the other, each edge on its own,
+/// rounded to the pixel: exactly the one at 0 and exactly the other at 1.
+fn glide_rect(from: DesktopRect, to: DesktopRect, fraction: f64) -> DesktopRect {
+    let f = fraction.clamp(0.0, 1.0);
+    let edge = |a: i32, b: i32| (a as f64 + (b as f64 - a as f64) * f).round() as i32;
+    DesktopRect::from_points(
+        edge(from.x, to.x),
+        edge(from.y, to.y),
+        edge(from.x + from.width as i32, to.x + to.width as i32),
+        edge(from.y + from.height as i32, to.y + to.height as i32),
+    )
 }
 
 fn contains(rect: DesktopRect, x: i32, y: i32) -> bool {
@@ -1211,16 +1423,16 @@ unsafe fn paint(hwnd: HWND) {
                 let _ = unsafe { DeleteObject(HGDIOBJ(to_dash.0)) };
             }
 
-            // 4. the size bubble beside the pointer, while a drag on this window lasts,
-            // wherever the dirty region touches it: a tick's strip through it redraws that
-            // strip of it, and a move redraws it whole.
-            if let Some(bubble) = state.size_bubble(hwnd, hdc) {
-                let touches = bubble.rect.right > dirty.left
-                    && bubble.rect.left < dirty.right
-                    && bubble.rect.bottom > dirty.top
-                    && bubble.rect.top < dirty.bottom;
+            // 4. the magnifier beside the pointer, the size under it, wherever the dirty
+            // region touches it: a tick's strip through it redraws that strip of it, and a
+            // move redraws it whole.
+            if let Some(panel) = state.magnifier(hwnd, hdc) {
+                let touches = panel.rect.right > dirty.left
+                    && panel.rect.left < dirty.right
+                    && panel.rect.bottom > dirty.top
+                    && panel.rect.top < dirty.bottom;
                 if touches {
-                    unsafe { draw_bubble(hdc, surface.font, &bubble) };
+                    unsafe { draw_panel(hdc, surface, &panel) };
                 }
             }
         });
@@ -1229,32 +1441,142 @@ unsafe fn paint(hwnd: HWND) {
     let _ = unsafe { EndPaint(hwnd, &ps) };
 }
 
-/// The size bubble as laid out on one window: its place in client coordinates, its text,
-/// where the text sits inside it, and its corners' radius at the display's scale.
-struct Bubble {
+/// The magnifier's panel as laid out on one window, at the display's scale.
+struct Panel {
+    /// Its place, in client coordinates.
     rect: RECT,
-    text_at: (i32, i32),
-    text: Vec<u16>,
+    /// Its corners.
     radius: i32,
+    /// The circle's centre inside the panel, and its radius.
+    circle: (i32, i32, i32),
+    ring: i32,
+    /// One source pixel's width on the circle, and how many across, an odd count so the
+    /// pointer's own pixel sits in the middle.
+    cell: i32,
+    cells: i32,
+    /// The source pixel at the circle's centre: the pointer, in client coordinates.
+    source: (i32, i32),
+    /// The selection's size under the circle, and where its text sits inside the panel.
+    text: Option<(Vec<u16>, (i32, i32))>,
 }
 
-/// Where the bubble goes: right of and below the pointer by the gap, and to the other side
-/// of it when that would leave the display, so it is never cut off at an edge.
-fn place_bubble(
-    pointer: (i32, i32),
-    size: (i32, i32),
-    display: (i32, i32),
-    gap: i32,
-) -> (i32, i32) {
-    let mut left = pointer.0 + gap;
-    if left + size.0 > display.0 {
-        left = pointer.0 - gap - size.0;
+/// Where the panel goes: below the pointer by the gap, its right edge the gap left of the
+/// pointer, and on the pointer's other side where that would leave the display, so it is
+/// never cut off at an edge.
+fn place_panel(pointer: (i32, i32), size: (i32, i32), display: (i32, i32), gap: i32) -> (i32, i32) {
+    let mut left = pointer.0 - gap - size.0;
+    if left < 0 {
+        left = (pointer.0 + gap).min(display.0 - size.0);
     }
     let mut top = pointer.1 + gap;
     if top + size.1 > display.1 {
         top = pointer.1 - gap - size.1;
     }
     (left.max(0), top.max(0))
+}
+
+/// How many source pixels the circle shows across: enough cells to cover its diameter,
+/// and an odd count so the pointer's own pixel is the middle one.
+fn cell_count(diameter: i32, cell: i32) -> i32 {
+    let n = (diameter + cell - 1) / cell.max(1);
+    if n % 2 == 0 {
+        n + 1
+    } else {
+        n
+    }
+}
+
+/// The pixels around the pointer, each one a cell wide, BGRA: the frozen slice stretched
+/// with no smoothing, the grid's line on the last pixel of every cell across and down,
+/// darkened by half, and the frame's blue through the middle of the centre cell. Past the
+/// display's edge the panel's own fill shows, since a stretch reads nothing beyond the
+/// bitmap.
+unsafe fn magnified(hdc: HDC, surface: &Surface, panel: &Panel) -> Option<Vec<u8>> {
+    let cell = panel.cell;
+    let count = panel.cells;
+    let side = count * cell;
+    let dc = unsafe { CreateCompatibleDC(Some(hdc)) };
+    if dc.is_invalid() {
+        return None;
+    }
+    let mut info = solid_header(side, side);
+    let mut bits: *mut c_void = std::ptr::null_mut();
+    let bitmap =
+        match unsafe { CreateDIBSection(Some(hdc), &info, DIB_RGB_COLORS, &mut bits, None, 0) } {
+            Ok(bitmap) if !bitmap.is_invalid() && !bits.is_null() => bitmap,
+            _ => {
+                let _ = unsafe { DeleteDC(dc) };
+                return None;
+            }
+        };
+    std::hint::black_box(&mut info);
+    let len = (side * side * 4) as usize;
+    {
+        let pixels = unsafe { std::slice::from_raw_parts_mut(bits as *mut u8, len) };
+        let (r, g, b) = SIZE_FILL_RGB;
+        for at in (0..len).step_by(4) {
+            pixels[at] = b;
+            pixels[at + 1] = g;
+            pixels[at + 2] = r;
+            pixels[at + 3] = 255;
+        }
+    }
+    let previous = unsafe { SelectObject(dc, HGDIOBJ(bitmap.0)) };
+    // The square of source pixels around the pointer, cut to the display, and the same
+    // cut on the destination so each source pixel lands on its own cell.
+    let half = count / 2;
+    let (sx, sy) = (panel.source.0 - half, panel.source.1 - half);
+    let display = (
+        surface.monitor.rect.width as i32,
+        surface.monitor.rect.height as i32,
+    );
+    let (left, top) = (sx.max(0), sy.max(0));
+    let (right, bottom) = ((sx + count).min(display.0), (sy + count).min(display.1));
+    if right > left && bottom > top {
+        unsafe {
+            SetStretchBltMode(dc, COLORONCOLOR);
+            let _ = StretchBlt(
+                dc,
+                (left - sx) * cell,
+                (top - sy) * cell,
+                (right - left) * cell,
+                (bottom - top) * cell,
+                Some(surface.dc),
+                left,
+                top,
+                right - left,
+                bottom - top,
+                SRCCOPY,
+            );
+            let _ = GdiFlush();
+        }
+    }
+    let mut bytes = vec![0u8; len];
+    {
+        let pixels = unsafe { std::slice::from_raw_parts(bits as *const u8, len) };
+        bytes.copy_from_slice(pixels);
+    }
+    unsafe { SelectObject(dc, previous) };
+    let _ = unsafe { DeleteObject(HGDIOBJ(bitmap.0)) };
+    let _ = unsafe { DeleteDC(dc) };
+
+    let centre = half * cell + cell / 2;
+    for y in 0..side {
+        for x in 0..side {
+            let at = ((y * side + x) * 4) as usize;
+            if x == centre || y == centre {
+                bytes[at] = ANTS_DASH_RGB.2;
+                bytes[at + 1] = ANTS_DASH_RGB.1;
+                bytes[at + 2] = ANTS_DASH_RGB.0;
+            } else if x % cell == cell - 1 || y % cell == cell - 1 {
+                bytes[at] /= 2;
+                bytes[at + 1] /= 2;
+                bytes[at + 2] /= 2;
+            }
+            bytes[at + 3] = 255;
+        }
+    }
+    Some(bytes)
 }
 
 /// How much of a pixel a rounded rectangle of this size covers: 1 inside, 0 outside, and
@@ -1282,17 +1604,22 @@ fn corner_coverage(w: i32, h: i32, radius: i32, x: i32, y: i32) -> f64 {
     (r + 0.5 - d).clamp(0.0, 1.0)
 }
 
-/// Draws the bubble: the rounded fill built pixel by pixel in a bitmap of its own, the
-/// text drawn into that, and the whole blended onto the window in one call, so the
-/// corners are smooth where a GDI round rectangle's would step. Every pixel it leaves on
-/// the window keeps a full alpha: a GDI text call clears the alpha of the pixels it
-/// touches, and this window's pixels are shown by their alpha (see the dim's note).
-unsafe fn draw_bubble(hdc: HDC, font: HFONT, bubble: &Bubble) {
-    let w = bubble.rect.right - bubble.rect.left;
-    let h = bubble.rect.bottom - bubble.rect.top;
+/// Draws the magnifier's panel: the rounded fill built pixel by pixel, the pixels around
+/// the pointer inside the circle with the ring around them, the corners' and the circle's
+/// edge pixels covered by the fraction of them inside the arc so both are smooth, the
+/// size text under the circle, and the whole blended onto the window in one call. Every
+/// pixel it leaves on the window keeps a full alpha: a GDI text call clears the alpha of
+/// the pixels it touches, and this window's pixels are shown by their alpha (see the
+/// dim's note).
+unsafe fn draw_panel(hdc: HDC, surface: &Surface, panel: &Panel) {
+    let w = panel.rect.right - panel.rect.left;
+    let h = panel.rect.bottom - panel.rect.top;
     if w <= 0 || h <= 0 {
         return;
     }
+    let Some(pixels_around) = (unsafe { magnified(hdc, surface, panel) }) else {
+        return;
+    };
     let dc = unsafe { CreateCompatibleDC(Some(hdc)) };
     if dc.is_invalid() {
         return;
@@ -1310,40 +1637,76 @@ unsafe fn draw_bubble(hdc: HDC, font: HFONT, bubble: &Bubble) {
     std::hint::black_box(&mut info);
     let len = (w * h * 4) as usize;
 
-    // The fill, premultiplied by each pixel's coverage, BGRA as GDI wants it.
+    // The fill, premultiplied by each pixel's coverage, BGRA as GDI wants it; then the
+    // circle over it: the ring between its radius and the picture's, the pixels around
+    // the pointer inside, each edge blended by its coverage.
     {
         let pixels = unsafe { std::slice::from_raw_parts_mut(bits as *mut u8, len) };
         let (r, g, b) = SIZE_FILL_RGB;
+        let (cx, cy, radius) = panel.circle;
+        let side = panel.cells * panel.cell;
+        let centre = (panel.cells / 2) * panel.cell + panel.cell / 2;
+        let ring = (MAG_RING_RGB.2, MAG_RING_RGB.1, MAG_RING_RGB.0);
         for y in 0..h {
             for x in 0..w {
-                let coverage = corner_coverage(w, h, bubble.radius, x, y);
+                let coverage = corner_coverage(w, h, panel.radius, x, y);
                 let at = ((y * w + x) * 4) as usize;
                 let over = |c: u8| (c as f64 * coverage).round() as u8;
                 pixels[at] = over(b);
                 pixels[at + 1] = over(g);
                 pixels[at + 2] = over(r);
                 pixels[at + 3] = (255.0 * coverage).round() as u8;
+
+                let dx = x as f64 + 0.5 - cx as f64;
+                let dy = y as f64 + 0.5 - cy as f64;
+                let distance = (dx * dx + dy * dy).sqrt();
+                let outer = (radius as f64 + 0.5 - distance).clamp(0.0, 1.0);
+                if outer <= 0.0 {
+                    continue;
+                }
+                let inner = ((radius - panel.ring) as f64 + 0.5 - distance).clamp(0.0, 1.0);
+                let (mx, my) = (x - cx + centre, y - cy + centre);
+                let around = if mx >= 0 && my >= 0 && mx < side && my < side {
+                    let from = ((my * side + mx) * 4) as usize;
+                    (
+                        pixels_around[from],
+                        pixels_around[from + 1],
+                        pixels_around[from + 2],
+                    )
+                } else {
+                    (b, g, r)
+                };
+                let blend = |fill: u8, ring: u8, inside: u8| {
+                    (fill as f64 * (1.0 - outer)
+                        + ring as f64 * (outer - inner)
+                        + inside as f64 * inner)
+                        .round() as u8
+                };
+                pixels[at] = blend(b, ring.0, around.0);
+                pixels[at + 1] = blend(g, ring.1, around.1);
+                pixels[at + 2] = blend(r, ring.2, around.2);
+                pixels[at + 3] = 255;
             }
         }
     }
 
     let previous_bitmap = unsafe { SelectObject(dc, HGDIOBJ(bitmap.0)) };
-    let previous_font = unsafe { SelectObject(dc, HGDIOBJ(font.0)) };
-    unsafe {
-        SetBkMode(dc, TRANSPARENT);
-        SetTextColor(dc, colorref(SIZE_TEXT_RGB));
-        let _ = TextOutW(dc, bubble.text_at.0, bubble.text_at.1, &bubble.text);
-        let _ = GdiFlush();
-        SelectObject(dc, previous_font);
-    }
-
-    // The text sits in the flat part of the bubble, where every pixel is wholly covered;
-    // the text call cleared the alpha of the pixels it touched, and this puts it back.
-    {
+    if let Some((text, at)) = &panel.text {
+        let previous_font = unsafe { SelectObject(dc, HGDIOBJ(surface.font.0)) };
+        unsafe {
+            SetBkMode(dc, TRANSPARENT);
+            SetTextColor(dc, colorref(SIZE_TEXT_RGB));
+            let _ = TextOutW(dc, at.0, at.1, text);
+            let _ = GdiFlush();
+            SelectObject(dc, previous_font);
+        }
+        // The text sits in the flat part of the panel, where every pixel is wholly
+        // covered; the text call cleared the alpha of the pixels it touched, and this
+        // puts it back.
         let pixels = unsafe { std::slice::from_raw_parts_mut(bits as *mut u8, len) };
         for y in 0..h {
             for x in 0..w {
-                if corner_coverage(w, h, bubble.radius, x, y) >= 1.0 {
+                if corner_coverage(w, h, panel.radius, x, y) >= 1.0 {
                     pixels[((y * w + x) * 4 + 3) as usize] = 255;
                 }
             }
@@ -1359,8 +1722,8 @@ unsafe fn draw_bubble(hdc: HDC, font: HFONT, bubble: &Bubble) {
     let _ = unsafe {
         AlphaBlend(
             hdc,
-            bubble.rect.left,
-            bubble.rect.top,
+            panel.rect.left,
+            panel.rect.top,
             w,
             h,
             dc,
@@ -1820,28 +2183,41 @@ mod tests {
     }
 
     #[test]
-    fn the_bubble_sits_right_of_and_below_the_pointer() {
+    fn the_panel_sits_below_the_pointer_with_its_right_edge_left_of_it() {
         assert_eq!(
-            place_bubble((100, 100), (60, 27), (1920, 1080), 8),
-            (108, 108)
+            place_panel((500, 100), (120, 143), (1920, 1080), 8),
+            (372, 108)
         );
     }
 
     #[test]
-    fn the_bubble_flips_to_the_other_side_at_a_display_edge() {
-        // Too close to the right edge: left of the pointer. Too close to the bottom: above.
+    fn the_panel_flips_to_the_other_side_at_a_display_edge() {
+        // Too close to the left edge: right of the pointer. Too close to the bottom: above.
         assert_eq!(
-            place_bubble((1900, 100), (60, 27), (1920, 1080), 8),
-            (1832, 108)
+            place_panel((100, 100), (120, 143), (1920, 1080), 8),
+            (108, 108)
         );
         assert_eq!(
-            place_bubble((100, 1070), (60, 27), (1920, 1080), 8),
-            (108, 1035)
+            place_panel((500, 1000), (120, 143), (1920, 1080), 8),
+            (372, 849)
         );
         assert_eq!(
-            place_bubble((1900, 1070), (60, 27), (1920, 1080), 8),
-            (1832, 1035)
+            place_panel((100, 1000), (120, 143), (1920, 1080), 8),
+            (108, 849)
         );
+        // Flipped right on a display too narrow for the gap: kept inside it.
+        assert_eq!(
+            place_panel((100, 100), (120, 143), (200, 1080), 8),
+            (80, 108)
+        );
+    }
+
+    #[test]
+    fn the_circle_shows_an_odd_count_of_pixels_that_covers_it() {
+        assert_eq!(cell_count(112, 8), 15);
+        assert_eq!(cell_count(112, 7), 17);
+        assert_eq!(cell_count(252, 18), 15);
+        assert_eq!(cell_count(112, 16), 7);
     }
 
     #[test]
@@ -1871,5 +2247,34 @@ mod tests {
     fn the_union_holds_both_rectangles() {
         let u = union_of(desktop(10, 10, 10, 10), desktop(50, 5, 5, 30));
         assert_eq!(u, desktop(10, 5, 45, 30));
+    }
+
+    #[test]
+    fn the_glide_sets_out_from_one_rectangle_and_arrives_at_the_other() {
+        let from = desktop(100, 100, 200, 100);
+        let to = desktop(20, 40, 600, 400);
+        assert_eq!(glide_rect(from, to, 0.0), from);
+        assert_eq!(glide_rect(from, to, 1.0), to);
+        // Halfway, every edge is halfway: the left 100 to 20, the top 100 to 40, the right
+        // 300 to 620, the bottom 200 to 440.
+        assert_eq!(glide_rect(from, to, 0.5), desktop(60, 70, 400, 250));
+        // Past either end it stays at that end.
+        assert_eq!(glide_rect(from, to, 1.5), to);
+        assert_eq!(glide_rect(from, to, -0.5), from);
+    }
+
+    #[test]
+    fn the_glide_eases_out() {
+        assert_eq!(ease_out(0.0), 0.0);
+        assert_eq!(ease_out(1.0), 1.0);
+        // Quick to set out, slow to arrive: more than half the way at half the time.
+        assert!(ease_out(0.5) > 0.5);
+        // And never back: every step is at least as far as the one before.
+        let mut last = 0.0;
+        for step in 1..=100 {
+            let now = ease_out(step as f64 / 100.0);
+            assert!(now >= last, "step {step}: {now} after {last}");
+            last = now;
+        }
     }
 }

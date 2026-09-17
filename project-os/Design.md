@@ -193,11 +193,31 @@ Stated by Rotem on 2026-09-17 for the capture overlay.
 | Text | 14 px |
 | Bubble | the app background as its fill, 8 px corners, 8 px of padding at the sides and 4 above and below |
 
-The rest is not stated yet. Provisional in the overlay until it is: 8 px right of and below
-the pointer, as the ruler's label, and on the pointer's other side where that would leave
-the display; the text the ruler's #f2f2f2 in Segoe UI, regular; every number at 100%, scaled
-by the display's own scale as the cursor is. The fill is a constant in the host
+Since 2026-09-18 the bubble is the magnifier's panel, below, and the text sits under its
+circle, as the picture Rotem sent shows; the fill, the corners and the padding around the
+text are the panel's. The rest is not stated yet. Provisional in the overlay until it is:
+the text the ruler's #f2f2f2 in Segoe UI, regular; every number at 100%, scaled by the
+display's own scale as the cursor is. The fill is a constant in the host
 (`host/src/overlay.rs`), a second home for the app background beside the page's `--paper`.
+
+### Magnifier
+
+Stated by Rotem on 2026-09-18 for the capture overlay, with a picture of another tool's.
+
+| Part | Value |
+|---|---|
+| Circle | 112 px across, showing the pixels around the pointer large enough to tell apart |
+
+From the picture, not his words, so provisional in the overlay until he states it: the
+circle sits in a panel of the size bubble's fill and corners, 4 px around it, with the
+selection's size under it, the lit window's while hovering and the dragged area's while a
+drag lasts, in the size bubble's text and padding; the panel is up the whole time the
+overlay is, below the pointer with its right edge 8 px left of it, and on the pointer's
+other side where that would leave the display; 8 px to a source pixel, an odd count of them
+so the pointer's own is the middle one; a 1 px grid between them, the pixel darkened by
+half; the marching frame's #00B9F7 through the middle of the centre pixel; a 2 px ring in
+the text's white; every number at 100%, scaled by the display's own scale as the cursor is.
+The full-screen guide lines through the pointer in the picture are not built.
 
 ### Window
 

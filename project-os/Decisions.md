@@ -112,6 +112,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-17 · A restore waits for an image still being encoded.
 - 2026-09-17 · The one row's scroller band replaces the 8 px under the thumbnails.
 - 2026-09-18 · The capture drag's size bubble is built pixel by pixel and blended on whole, not a GDI round rectangle.
+- 2026-09-18 · The magnifier is the frozen slice stretched pixel for pixel, up from the first pointer, the size under it: the picture's reading, not the words'.
 
 ---
 
@@ -1170,3 +1171,46 @@ too, beside the page's `--paper`, the second home Backlog F68 already names for 
 colour; a change to the token has to reach both until the page hands the host its value.
 Revisit if the text should be the page's Google Sans, which the host would have to load
 from the page's own file, or when the gap from the pointer or the text's colour is stated.
+
+---
+
+## 2026-09-18 · The magnifier is the frozen slice stretched pixel for pixel, up from the first pointer, the size under it: the picture's reading, not the words'
+
+### Context
+
+Rotem asked for a small zoom window like the one in a picture of another tool: a 112 px
+circle in which single pixels can be told apart. His words said the circle; the picture
+said more. It shows the tool while a window is lit under the pointer, not mid-drag, with
+the circle in a dark panel below and left of the pointer and the lit window's size written
+under the circle, where the day before the size had been asked for beside the crosshair
+during a drag. `CLAUDE.md` rule 1 says that where the words and a picture differ, the
+picture is built or the question asked first, never the words alone.
+
+### Options
+
+1. The picture's reading: the panel up the whole time the overlay is, hovering and
+   dragging, below and left of the pointer, with the selection's size moved under the
+   circle; the pixels stretched straight from the display's frozen bitmap with no
+   smoothing, drawn into the panel and blended on as the size bubble was.
+2. The words' reading: the circle during a drag only, the size bubble left where it was
+   beside the pointer, the circle placed clear of it.
+3. A layered window of the magnifier's own, moved with the pointer.
+
+### Decision
+
+Option 1, mine, on the picture. A magnifier earns its place before the press, placing the
+drag's first corner, and the picture shows it there; a size beside the pointer and a circle
+under it would have fought for the same 8 px. The stretch reads the surface's own bitmap,
+so the circle shows exactly the frozen picture the selection is made on, and a third window
+would be one more thing on the latency path.
+
+### Consequences
+
+Every move repaints a panel of about 120 by 143 px at 100%, hovering included, where before
+a hover repainted only a changed lit window; a stretch and two small bitmaps per move. The
+count of pixels across the circle is odd so the pointer's own sits in the middle, and past
+the display's edge the panel's fill shows. Everything read from the picture is provisional
+in `project-os/Design.md`: the side of the pointer, the gap, the hover, the zoom, the grid,
+the ring and the lines through the centre are each one number or one flag, and his word
+moves any of them. Revisit if the hover's constant repaint is ever felt, or if the size
+should not be shown while hovering after all.

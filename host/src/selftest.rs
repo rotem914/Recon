@@ -365,16 +365,18 @@ fn drag_test(frame: &Frame) -> Result<(), String> {
     };
 
     let (looked, seen) = std::sync::mpsc::channel();
+    let mid_drag = (expected.x + 160, expected.y + 100);
+    let around = pixels_around(frame, mid_drag).ok_or("the mid-drag point is off the frame")?;
     let outcome = with_overlay(frame, move || {
         // Down at the anchor, a couple of intermediate moves so the paint path runs, then up.
         move_to(expected.x, expected.y);
         press_left();
         move_to(expected.x + 60, expected.y + 40);
-        move_to(expected.x + 160, expected.y + 100);
-        // The size bubble beside the pointer (Rotem, 2026-09-17): a moment for the paint,
-        // then the screen beside the pointer is written to be looked at, and read.
+        move_to(mid_drag.0, mid_drag.1);
+        // The magnifier with the size under it (Rotem, 2026-09-17 and 18): a moment for
+        // the paint, then the screen beside the pointer is written to be looked at, and read.
         std::thread::sleep(std::time::Duration::from_millis(200));
-        let _ = looked.send(size_bubble_seen((expected.x + 160, expected.y + 100)));
+        let _ = looked.send(magnifier_seen(mid_drag, around, "dragging"));
         move_to(
             expected.x + expected.width as i32,
             expected.y + expected.height as i32,
@@ -391,7 +393,7 @@ fn drag_test(frame: &Frame) -> Result<(), String> {
             match seen.try_recv() {
                 Ok(Ok(())) => {}
                 Ok(Err(err)) => return Err(err),
-                Err(_) => return Err("the size bubble was never looked at".into()),
+                Err(_) => return Err("the magnifier was never looked at mid-drag".into()),
             }
 
             // The overlay's own windows must be gone: a leaked one would sit over the
@@ -455,11 +457,34 @@ fn drag_test(frame: &Frame) -> Result<(), String> {
     }
 }
 
-/// Looks at the size bubble mid-drag: the screen right of and below the pointer is written
-/// beside the executable, and read for the bubble's ground, in the app's background colour
-/// 8 px from the pointer, and for the light pixels of its text, which the dimmed screen
-/// around it has none of. The offsets are the spec's own numbers, at the display's scale.
-fn size_bubble_seen(pointer: (i32, i32)) -> Result<(), String> {
+/// The frozen pixels around a desktop point, the 3 by 3 of them, as the magnifier should
+/// show them: what its centre cells are compared against.
+fn pixels_around(frame: &Frame, pointer: (i32, i32)) -> Option<[(u8, u8, u8); 9]> {
+    let mut out = [(0u8, 0u8, 0u8); 9];
+    for (n, slot) in out.iter_mut().enumerate() {
+        let (i, j) = (n as i32 % 3 - 1, n as i32 / 3 - 1);
+        let x = pointer.0 + i - frame.geometry.origin_x;
+        let y = pointer.1 + j - frame.geometry.origin_y;
+        if x < 0 || y < 0 || x >= frame.geometry.width as i32 || y >= frame.geometry.height as i32 {
+            return None;
+        }
+        let at = ((y as usize) * frame.geometry.width as usize + x as usize) * 4;
+        *slot = (frame.rgba[at], frame.rgba[at + 1], frame.rgba[at + 2]);
+    }
+    Some(out)
+}
+
+/// Looks at the magnifier beside the pointer: the screen below and left of the pointer is
+/// written beside the executable, and read for the panel's ground in the app's background
+/// colour, its ring, the pixels around the pointer shown large at its centre, and the light
+/// pixels of the size text under the circle, which the panel's fill has none of. The
+/// offsets are the spec's own numbers at 100%, the display's scale applied to each, so on
+/// a scaled display a rounding can put a probe a pixel off.
+fn magnifier_seen(
+    pointer: (i32, i32),
+    around: [(u8, u8, u8); 9],
+    name: &str,
+) -> Result<(), String> {
     let display = monitors()
         .into_iter()
         .find(|m| {
@@ -470,43 +495,67 @@ fn size_bubble_seen(pointer: (i32, i32)) -> Result<(), String> {
         })
         .ok_or("the pointer is on no display")?;
     let scaled = |px: i32| (px * display.scale_percent as i32 + 50) / 100;
+    // The panel: 120 wide, 8 px left of the pointer and 8 below it; the copy takes 4 px
+    // more on each side and enough height for the text row.
     let region = DesktopRect::from_points(
-        pointer.0,
+        (pointer.0 - scaled(132)).max(display.rect.x),
         pointer.1,
-        (pointer.0 + scaled(240)).min(display.rect.x + display.rect.width as i32),
-        (pointer.1 + scaled(80)).min(display.rect.y + display.rect.height as i32),
+        (pointer.0 + scaled(4)).min(display.rect.x + display.rect.width as i32),
+        (pointer.1 + scaled(168)).min(display.rect.y + display.rect.height as i32),
     );
     let pixels = copy_rect(region).map_err(|e| e.to_string())?;
     if let Ok(exe) = std::env::current_exe() {
-        let path = exe.with_file_name("s02-drag-size.png");
+        let path = exe.with_file_name(format!("s02-magnifier-{name}.png"));
         match image::RgbaImage::from_raw(region.width, region.height, pixels.clone()) {
             Some(buffer) => match buffer.save(&path) {
-                Ok(()) => println!("  the size bubble is at {}", path.display()),
-                Err(err) => println!("  the size bubble was not written: {err}"),
+                Ok(()) => println!("  the magnifier while {name} is at {}", path.display()),
+                Err(err) => println!("  the magnifier was not written: {err}"),
             },
-            None => println!("  the size bubble was not written: size mismatch"),
+            None => println!("  the magnifier was not written: size mismatch"),
         }
     }
+    // Where the panel's top left lands in the copy.
+    let panel = (pointer.0 - scaled(128) - region.x, scaled(8));
     let at = |x: i32, y: i32| -> Option<(u8, u8, u8)> {
+        let (x, y) = (panel.0 + x, panel.1 + y);
         if x < 0 || y < 0 || x >= region.width as i32 || y >= region.height as i32 {
             return None;
         }
         let i = ((y * region.width as i32 + x) * 4) as usize;
         Some((pixels[i], pixels[i + 1], pixels[i + 2]))
     };
-    // The ground: 8 px right of and below the pointer, then 4 px in and 11 px down, inside
-    // the bubble's side padding, clear of the corner's arc and of the text.
-    let probe = (scaled(8 + 4), scaled(8 + 11));
-    let ground = at(probe.0, probe.1).ok_or("the probe pixel is off the copy")?;
+    // The ground: 2 px in from the panel's left edge on the circle's centre row, inside
+    // the 4 px around the circle.
+    let ground = at(scaled(2), scaled(60)).ok_or("the ground probe is off the copy")?;
     if ground != (0x0D, 0x0E, 0x12) {
         return Err(format!(
-            "the pixel {},{} from the pointer is {ground:?}, not the app background (13, 14, 18): no size bubble beside the pointer",
-            probe.0, probe.1
+            "while {name}, the pixel 2,60 into the panel is {ground:?}, not the app background (13, 14, 18): no magnifier below and left of the pointer"
         ));
     }
+    // The ring: the circle's leftmost 2 px on its centre row.
+    let ring = at(scaled(5), scaled(60)).ok_or("the ring probe is off the copy")?;
+    if ring != (0xF2, 0xF2, 0xF2) {
+        return Err(format!(
+            "while {name}, the pixel 5,60 into the panel is {ring:?}, not the ring's (242, 242, 242)"
+        ));
+    }
+    // The pointer's pixel and its eight neighbours, each an 8 px cell around the circle's
+    // centre at 60,60: read 2 px past each cell's start, off the grid and off the blue
+    // lines through the centre.
+    for (n, expected) in around.iter().enumerate() {
+        let (i, j) = (n as i32 % 3 - 1, n as i32 / 3 - 1);
+        let probe = (scaled(58 + 8 * i), scaled(58 + 8 * j));
+        let shown = at(probe.0, probe.1).ok_or("a cell probe is off the copy")?;
+        if shown != *expected {
+            return Err(format!(
+                "while {name}, the cell for the pixel {i},{j} from the pointer shows {shown:?} where the frozen pixel is {expected:?}"
+            ));
+        }
+    }
+    // The text row under the circle: its light pixels.
     let mut light = 0;
-    for y in scaled(8)..scaled(48).min(region.height as i32) {
-        for x in scaled(8)..scaled(208).min(region.width as i32) {
+    for y in scaled(120)..scaled(150) {
+        for x in 0..scaled(120) {
             if let Some((r, g, b)) = at(x, y) {
                 if r > 0x80 && g > 0x80 && b > 0x80 {
                     light += 1;
@@ -516,11 +565,11 @@ fn size_bubble_seen(pointer: (i32, i32)) -> Result<(), String> {
     }
     if light < 20 {
         return Err(format!(
-            "only {light} light pixels beside the pointer: the size bubble has no text"
+            "while {name}, only {light} light pixels under the circle: the panel has no size text"
         ));
     }
     println!(
-        "  the size bubble sits beside the pointer on the app background, {light} light pixels of text in it"
+        "  while {name}, the magnifier sits below and left of the pointer on the app background, ringed, its centre cells the frozen pixels, {light} light pixels of size text under it"
     );
     Ok(())
 }
@@ -552,6 +601,118 @@ fn quiet() {
     ) {
         println!("  (the keyboard or mouse stayed in use for two minutes; continuing anyway)");
     }
+}
+
+/// The strip of the screen the glide is read in (Rotem, 2026-09-18): from the window's
+/// left edge to 20 px into its part, over the part's middle rows, with the frozen pixels
+/// under it, so a pixel of the picture's own in the band's colour is not read as the band.
+/// None when the part sits too close to the window's edge for one.
+fn glide_strip(
+    frame: &Frame,
+    window: DesktopRect,
+    part: DesktopRect,
+) -> Option<(DesktopRect, Vec<u8>)> {
+    if part.x <= window.x + 4 || part.height <= 20 {
+        return None;
+    }
+    let strip = DesktopRect {
+        x: window.x,
+        y: part.y + 10,
+        width: (part.x - window.x + 20) as u32,
+        height: part.height - 20,
+    };
+    let frozen = frame.crop(desktop_to_image(frame.geometry, strip).ok()?)?;
+    Some((strip, frozen))
+}
+
+/// Looks at the lit area on its way from the stand-in's part to the whole window: the
+/// frame's left band, found by its ink in the strip, sits between the part's edge and
+/// the window's while the glide lasts, and on the window's edge once it is over. With
+/// Windows' animation effects off the lit area jumps, as the product does, and only the
+/// arrival is looked at. A look that came too late to catch the glide is said to be
+/// inconclusive rather than blamed on the overlay.
+fn glide_seen(
+    window: DesktopRect,
+    part: DesktopRect,
+    strip: Option<(DesktopRect, Vec<u8>)>,
+    moved_at: Instant,
+) -> Result<(), String> {
+    let Some((strip, frozen)) = strip else {
+        println!(
+            "  the glide was not looked at: the part sits too close to the window's edge for a strip"
+        );
+        return Ok(());
+    };
+    let width = strip.width as usize;
+    let span = (part.x - window.x) as usize;
+    let animates = crate::overlay::windows_animates();
+    let mut on_the_way = None;
+    if animates {
+        let looked_at = moved_at.elapsed().as_millis();
+        let pixels = copy_rect(strip).map_err(|e| e.to_string())?;
+        let edge = band_left(&pixels, &frozen, width)
+            .ok_or("no frame band in the strip while the lit area was on its way")?;
+        if edge == 0 {
+            if looked_at > 90 {
+                println!(
+                    "  inconclusive: the strip was looked at {looked_at} ms after the move, too late to catch the glide"
+                );
+            } else {
+                return Err(format!(
+                    "the lit area jumped: {looked_at} ms after the move its frame already sat on the window's edge"
+                ));
+            }
+        } else if edge >= span {
+            return Err(format!(
+                "the lit area had not set out: {looked_at} ms after the move its frame still sat on the part's edge"
+            ));
+        } else {
+            on_the_way = Some((looked_at, edge, span - edge));
+        }
+    }
+    // The arrival: past the glide's length, the frame sits on the window's own edge.
+    std::thread::sleep(std::time::Duration::from_millis(300).saturating_sub(moved_at.elapsed()));
+    let pixels = copy_rect(strip).map_err(|e| e.to_string())?;
+    let edge =
+        band_left(&pixels, &frozen, width).ok_or("no frame band in the strip after the glide")?;
+    let now = moved_at.elapsed().as_millis();
+    if edge != 0 {
+        return Err(format!(
+            "the lit area never arrived: {now} ms after the move its frame sits {edge} px in from the window's edge"
+        ));
+    }
+    match on_the_way {
+        Some((ms, from_window, from_part)) => println!(
+            "  the lit area glided from the part to the window: {ms} ms after the move its frame was {from_window} px in from the window's edge and {from_part} px out from the part's, and on the window's edge at {now} ms"
+        ),
+        None if animates => println!("  the lit area is on the window's edge at {now} ms"),
+        None => println!(
+            "  Windows' animation effects are off, so the lit area jumps as the product does: its frame on the window's edge at {now} ms"
+        ),
+    }
+    Ok(())
+}
+
+/// The leftmost column of the frame's band in a strip: a pixel of the dash's ink that the
+/// frozen picture does not have there, on any row. None when no row shows one.
+fn band_left(pixels: &[u8], frozen: &[u8], width: usize) -> Option<usize> {
+    let rows = pixels.len() / (width * 4);
+    let mut left: Option<usize> = None;
+    for y in 0..rows {
+        for x in 0..width {
+            let at = (y * width + x) * 4;
+            let (r, g, b) = (pixels[at], pixels[at + 1], pixels[at + 2]);
+            let ink = r < 0x50 && g > 0x80 && b > 0xB0;
+            let frozen_here = frozen
+                .get(at..at + 3)
+                .is_some_and(|f| f[0] == r && f[1] == g && f[2] == b);
+            if ink && !frozen_here {
+                left = Some(left.map_or(x, |l| l.min(x)));
+                break;
+            }
+        }
+    }
+    left
 }
 
 /// The title of the stand-in window, a second process of this same executable.
@@ -627,11 +788,23 @@ fn window_pick_test(frame: &Frame) -> Result<(), String> {
         visible.y + visible.height as i32 - 30,
     );
 
+    let (looked, seen) = std::sync::mpsc::channel();
+    let around = match pixels_around(frame, part_centre) {
+        Some(around) => around,
+        None => {
+            let _ = child.kill();
+            return Err("the part's centre is off the frame".into());
+        }
+    };
+    let (glided, glide) = std::sync::mpsc::channel();
+    let strip = glide_strip(frame, expected, part);
     let picked = with_overlay(frame, move || {
         move_to(part_centre.0, part_centre.1);
         // The lit part, as a person sees it before the click: the screen with the
-        // overlay up, written beside the executable to be looked at.
+        // overlay up, written beside the executable to be looked at. And the magnifier
+        // while hovering, the part's size under it, looked at the same way.
         std::thread::sleep(std::time::Duration::from_millis(250));
+        let _ = looked.send(magnifier_seen(part_centre, around, "hovering"));
         match copy_rect(display) {
             Ok(pixels) => {
                 if let Ok(exe) = std::env::current_exe() {
@@ -647,7 +820,11 @@ fn window_pick_test(frame: &Frame) -> Result<(), String> {
             }
             Err(err) => println!("  the lit window was not written: {err}"),
         }
+        // The glide (Rotem, 2026-09-18): from the part to the whole window, the lit area
+        // is looked at on its way and once it has arrived.
+        let moved_at = Instant::now();
         move_to(corner.0, corner.1);
+        let _ = glided.send(glide_seen(expected, part, strip, moved_at));
         press_left();
         release_left();
     });
@@ -674,6 +851,23 @@ fn window_pick_test(frame: &Frame) -> Result<(), String> {
         }
     };
     if let Err(err) = pick_result {
+        let _ = child.kill();
+        return Err(err);
+    }
+    let hover_result = match seen.try_recv() {
+        Ok(result) => result,
+        Err(_) => Err("the magnifier was never looked at while hovering".to_string()),
+    };
+    if let Err(err) = hover_result {
+        let _ = child.kill();
+        return Err(err);
+    }
+
+    let glide_result = match glide.try_recv() {
+        Ok(result) => result,
+        Err(_) => Err("the glide was never looked at".to_string()),
+    };
+    if let Err(err) = glide_result {
         let _ = child.kill();
         return Err(err);
     }

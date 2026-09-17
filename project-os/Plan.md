@@ -161,9 +161,11 @@ the editor with that region.
   parts, its child windows, the smallest part under the pointer is the selection instead:
   a browser's page without its tabs and address bar, a folder window's file list, the way
   Snagit picks them. A drag past the system's drag threshold draws a free region instead.
-  Added 2026-09-14 at Rotem's ask, the parts the same evening. While the drag lasts, the
-  area's width and height in pixels sit in a bubble beside the crosshair; the look is in
-  `project-os/Design.md`. Added 2026-09-17 at Rotem's ask.
+  Added 2026-09-14 at Rotem's ask, the parts the same evening. A magnifier sits beside the
+  crosshair the whole time the overlay is up: a 112 px circle showing the pixels around the
+  pointer large enough to tell apart, with the selection's width and height in pixels
+  written under it, the lit window's or the dragged area's; the look is in
+  `project-os/Design.md`. Added 2026-09-17 and 2026-09-18 at Rotem's ask.
 - A region can be selected on any connected display. A single region spanning two displays
   is out of v1: selection stays within its starting display.
 - `Esc` cancels and restores the preceding context. A cancelled capture creates nothing and
