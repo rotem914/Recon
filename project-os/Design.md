@@ -40,7 +40,7 @@ Stated by Rotem on 2026-09-15 for the controls sidebar; the sizes restated on 20
 
 | Part | Value |
 |---|---|
-| Container | 48 by 48, square, no fill of its own (Rotem, 2026-09-16, from 32 by 32) |
+| Container | 48 by 48, 13 px corners, no fill of its own (Rotem, 2026-09-16, from 32 by 32; the corners 2026-09-17, from square) |
 | Icon | 32 by 32, centred, a 2 px stroke in the icon line colour (Rotem, 2026-09-16, from 20 by 20 with a 1.5 px stroke in the button's text colour) |
 | Between buttons | 8 px |
 | Hover | the container fills with the icon button hover colour, fading in by A1 |

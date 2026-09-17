@@ -1939,7 +1939,8 @@ export async function runChecks(editor, invoke) {
     const buttons = [...controls.querySelectorAll('button')];
     const boxes = buttons.map((b) => b.getBoundingClientRect());
     const iconWidth = (b) => Math.max(...[...b.querySelectorAll('svg')].map((s) => Math.round(s.getBoundingClientRect().width)));
-    check('eleven icon buttons, 48 by 48 with a 32 by 32 icon drawn with a 2 px #C3C6CA line, 8 px apart, named, with no fill of their own', buttons.length === 11
+    check('eleven icon buttons, 48 by 48 with a 32 by 32 icon drawn with a 2 px #C3C6CA line, 8 px apart, on 13 px corners, named, with no fill of their own', buttons.length === 11
+      && buttons.every((b) => getComputedStyle(b).borderRadius === '13px')
       && boxes.every((b) => Math.round(b.width) === 48 && Math.round(b.height) === 48)
       && boxes.every((b, i) => i === 0 || Math.round(b.top - boxes[i - 1].bottom) === 8)
       && buttons.every((b) => iconWidth(b) === 32 && [...b.querySelectorAll('svg')].every((v) => parseFloat(getComputedStyle(v).strokeWidth) * 32 / 20 === 2 && getComputedStyle(v).stroke === 'rgb(195, 198, 202)') && (b.getAttribute('aria-label') || '').length > 0)
