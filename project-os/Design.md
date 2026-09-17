@@ -21,7 +21,7 @@ state reachable with no animation at all (`project-os/QA.md` §7).
 
 | Token | Value | Where it is used |
 |---|---|---|
-| App background | `#111217` | The page ground behind the picture and the panels (Rotem, 2026-09-14). |
+| App background | `#0D0E12` | The page ground behind the picture and the panels (Rotem, 2026-09-17, from #111217, which was his on 2026-09-14). |
 | Icon button hover | `#21222C` | The fill of an icon button's square under the pointer (Rotem, 2026-09-15). |
 | Icon line | `#C3C6CA` | The line of an icon button's icon in the controls sidebar (Rotem, 2026-09-16). |
 | Scroller | `#21222C` | The thumb of the timeline's scroller, sideways in one row and vertical once its rows wrap (Rotem, 2026-09-15). |
