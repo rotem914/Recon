@@ -2613,15 +2613,17 @@ export async function runChecks(editor, invoke) {
     await editor.refreshStrip();
     let layout = editor.stripLayout();
     const cellsOf = () => strip.querySelectorAll('.thumb').length;
-    check('thirty documents, one row of 128 by 80 cells, the newest first and current', editor.stripCells().length === 30 && layout.rows === 1 && layout.w === 128 && layout.h === 80
+    check('thirty documents, one row of 120 by 75 cells, the band of the scroller of 12 px under them, the newest first and current', editor.stripCells().length === 30 && layout.rows === 1 && layout.w === 120 && layout.h === 75
       && strip.children[0].classList.contains('current') && Number(strip.children[0].dataset.id) === shots[29].document_id,
       `${editor.stripCells().length} cells, ${layout.rows} row(s) of ${layout.w}x${layout.h}`);
     const rendered = cellsOf();
-    check('only the screen and a screen either side exist as elements, not the thirty', rendered > 0 && rendered < 30 && rendered >= Math.floor(strip.clientWidth / 136),
+    check('only the screen and a screen either side exist as elements, not the thirty', rendered > 0 && rendered < 30 && rendered >= Math.floor(strip.clientWidth / 128),
       `${rendered} of 30 in a strip ${strip.clientWidth} wide`);
-    check('the strip scrolls the whole row all the same', strip.scrollWidth === 16 + 30 * 136 - 8, `scroll width ${strip.scrollWidth}`);
+    check('the strip scrolls the whole row all the same', strip.scrollWidth === 16 + 30 * 128 - 8, `scroll width ${strip.scrollWidth}`);
     check('the row scrolls sideways by Rotem\'s own scroller, 12 px under the cells: a 4 px thumb with 4 px clear above and below, not the system\'s', strip.offsetHeight - strip.clientTop - strip.clientHeight === 12,
       `${strip.offsetHeight - strip.clientTop - strip.clientHeight} px between the strip's content and its bottom edge`);
+    check('and the cells end above the scroller: the bottom edge of the current cell, border and all, inside the content of the strip (Rotem, 2026-09-17; 4 px of every cell sat under it before)', strip.children[0].offsetTop + strip.children[0].offsetHeight <= strip.clientHeight,
+      `the cell ends at ${strip.children[0].offsetTop + strip.children[0].offsetHeight}, the content at ${strip.clientHeight}`);
     strip.scrollLeft = strip.scrollWidth;
     await sleep(100);
     check('scrolled to the end: the oldest cell exists, the newest is dropped', !!strip.querySelector(`[data-id="${shots[0].document_id}"]`) && !strip.querySelector(`[data-id="${shots[29].document_id}"]`) && cellsOf() < 30,
@@ -2677,7 +2679,8 @@ export async function runChecks(editor, invoke) {
       `${editor.stripHeightOf()} tall, remembered ${kept}, cursor ${getComputedStyle(handle).cursor}`);
     handle.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     try { kept = localStorage.getItem('recon.strip-height'); } catch (_) { /* none */ }
-    check('a double-click on the edge returns the strip to its default, 112 px thumbnails', editor.stripHeightOf() === 128 && kept === '128' && editor.stripLayout().h === 112 && stage.clientHeight === window.innerHeight - 32 - 48 - 128, `${editor.stripHeightOf()} tall, remembered ${kept}, thumbnails ${editor.stripLayout().h} tall`);
+    check('a double-click on the edge returns the strip to its default, 133 tall: the line, 8 px, 112 px thumbnails ending at 120, the band of the scroller under them', editor.stripHeightOf() === 133 && kept === '133' && editor.stripLayout().h === 112 && stage.clientHeight === window.innerHeight - 32 - 48 - 133 && strip.clientHeight === 120 && strip.children[0].offsetTop + strip.children[0].offsetHeight === 120,
+      `${editor.stripHeightOf()} tall, remembered ${kept}, thumbnails ${editor.stripLayout().h} tall, the cell ends at ${strip.children[0].offsetTop + strip.children[0].offsetHeight}, the content at ${strip.clientHeight}`);
 
     // Rotem, 2026-09-15: a press anywhere on the one-row strip and a move sideways scrolls it,
     // and the click that ends the scroll shows no document; a press that does not move still does.

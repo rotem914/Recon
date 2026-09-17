@@ -1365,7 +1365,9 @@
   // up, the cells grow to 320 wide; past that a row of 320 enters whenever there is room
   // for one, and the strip scrolls vertically. The height is remembered by the page.
   const STRIP_MIN = 96;        // the floor
-  const STRIP_DEFAULT = 128;   // the default: 112 px thumbnails, 8 px clear above and below (Rotem, 2026-09-16)
+  const STRIP_DEFAULT = 133;   // the default: the 1 px line, 8 px clear, 112 px thumbnails, the scroller's 12 px band (Rotem, 2026-09-16 for the 112 and the 8; 2026-09-17 for the band, from 128, which sat 4 px of every cell under it)
+  const STRIP_LINE = 1;        // the line along the strip's top edge, inside its height
+  const STRIP_SCROLLER = 12;   // the one row's sideways scroller, a 4 px thumb with 4 px clear above and below: its band replaces the 8 px under the cells, so no cell's bottom edge sits under it
   const STRIP_PAD = 8;
   const STRIP_GAP = 8;
   const CELL_MAX_W = 320;
@@ -1439,7 +1441,7 @@
   const layoutStrip = () => {
     const inner = stripHeight - 2 * STRIP_PAD;
     const rows = inner <= CELL_MAX_H ? 1 : Math.floor((inner + STRIP_GAP) / (CELL_MAX_H + STRIP_GAP));
-    const h = Math.min(inner, CELL_MAX_H); // a row never exceeds 320 by 200; the slack below it waits for the next row
+    const h = Math.min(stripHeight - STRIP_LINE - STRIP_PAD - STRIP_SCROLLER, CELL_MAX_H); // the one row ends above its scroller's band; a row never exceeds 320 by 200, and the slack below it waits for the next row
     const w = Math.round(h * CELL_RATIO);
     const cols = rows === 1 ? Math.max(1, cells.length)
       : Math.max(1, Math.floor((strip.clientWidth - 2 * STRIP_PAD + STRIP_GAP) / (w + STRIP_GAP)));

@@ -110,6 +110,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-17 · The crop is one rect beside the notes, cut by the host on a copy at every output, and the notes keep their image coordinates.
 - 2026-09-17 · An empty bubble gives its number back.
 - 2026-09-17 · A restore waits for an image still being encoded.
+- 2026-09-17 · The one row's scroller band replaces the 8 px under the thumbnails.
 
 ---
 
@@ -1097,3 +1098,35 @@ wait once and then says NOT RESTORED, with the folder back in the trash under a 
 so its thirty days start again. The image thread writes beside the folder's files wherever
 the folder is, never into a folder made for it. Revisit if a capture's encode ever takes
 longer than the wait on a slow machine: the check in section 39 is the one that will say so.
+
+## 2026-09-17 · The one row's scroller band replaces the 8 px under the thumbnails
+
+### Context
+
+Rotem's timeline was 128 tall: 112 px thumbnails, 8 px above and below. His sideways
+scroller is a 12 px band under the row: 4 px clear, a 4 px thumb, 4 px clear of the
+window's bottom. The band takes its 12 px out of the strip's height, and the cells were laid
+out from the strip's full height, so every thumbnail's bottom 4 px sat under the band; the
+selected thumbnail's blue border showed it. The three numbers cannot all hold in 128.
+
+### Options
+
+1. The timeline grows and the thumbnails keep their 112: the band below the cells.
+2. The timeline stays 128 and the thumbnails shrink to 100.
+3. Both stay and the band shrinks to 8 px, the thumb 2 px clear instead of 4.
+
+### Decision
+
+Option 1, Rotem's pick on 2026-09-17. The band replaces the 8 px below the cells rather
+than adding to them: its own 4 px clear above the thumb is the gap under the thumbnail,
+which is his scroller spec word for word, and the timeline is 133 tall: the 1 px top line,
+8 px, 112 px, and the band. The reply offered 132, having left the line out; 133 keeps the
+112 and the 8 whole, and the line is the one pixel nobody measures.
+
+### Consequences
+
+In one row a cell's height is the strip's less 21 px at every height, the 96 floor included
+(120 by 75 cells there, from 128 by 80). The rows the strip wraps into keep their 8 px
+below, since their scroller stands at the side. A height remembered on a machine from
+before stays until the strip's edge is double-clicked. Revisit if Rotem wants the 8 px
+below back as well, which makes the default 141.
