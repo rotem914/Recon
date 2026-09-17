@@ -9,8 +9,10 @@ checks code (`selftest.rs`, `measure.rs`, `bench.rs`, `fixtures.rs`, `report.rs`
 Calibration: `project-os/Code_review.md`; the worst class is a note's text or a source pixel
 lost quietly, and the always-check list was walked row by row.
 
-Nothing was changed: every finding is pre-existing and waits for Rotem's verdict, fix, drop
-or backlog. Counts: 1 blocking, 2 important, 4 nits.
+Every finding is pre-existing. Rotem's verdict, the same day: FIX ALL. T1 to T7 are fixed in the
+commit that follows this document's update, each with the check its block names; the checks of
+T2 and T7 needed one more checks-only command, `editor_store_remove_source`, and T3 a store
+write that never makes a folder, `store::write_beside`. Counts: 1 blocking, 2 important, 4 nits.
 
 From the earlier passes, still open as written there and not repeated: R8 (an overlay panic
 leaks its windows), R9 (a poisoned region mailbox), R10 (the SVG raster cap allows a gigabyte)
@@ -27,7 +29,7 @@ and the dirty flag clears before the wait. The one row that did not hold is T3.
 ## Blocking
 
 ```
-T1 · A failed save is forgotten when the picture is left and returned to      🔴 open
+T1 · A failed save is forgotten when the picture is left and returned to      🔴 fixed
 Where:   editor/index.html, stashCurrent (the object put into `documents`, no save state
          in it) and loadImage ("model.save = { state: 'saved', error: '', dirty: false }")
 Problem: The stash keeps a document's notes when another picture takes the screen, but not
@@ -50,13 +52,13 @@ Verify:  a new check in section 23: break the store, type a note, load another c
          unbreak the store, show the first document again; the HUD reads NOT SAVED or the
          note lands on disk by the timer within a second, never "saved" with the record
          missing it. Then `cargo build` and `--editor-check`, every check green.
-Status:  [ ] open
+Status:  [x] done
 ```
 
 ## Important
 
 ```
-T2 · A capture deleted and undone while its image is still encoding loses it  🟠 open
+T2 · A capture deleted and undone while its image is still encoding loses it  🟠 fixed
 Where:   host/src/editor.rs, preserve (the thread: "documents.iter_mut().find" then the
          trash branch) and trash_rejoin ("came back without its image")
 Problem: Review 3's T2 sends the encoded PNG of a deleted capture into its trash folder. A
@@ -78,11 +80,11 @@ Verify:  a new check in section 39: editor_capture_probe at 4000 by 2500, delete
          once, undo at once, wait a second: either the picture is back, or NOT RESTORED was
          said and a second undo brings it back; editor_store_list shows no folder without
          source.png. Then the project checks and `--editor-check`.
-Status:  [ ] open
+Status:  [x] done
 ```
 
 ```
-T3 · The strip's thumbnail writer can recreate a deleted document's folder    🟠 open
+T3 · The strip's thumbnail writer can recreate a deleted document's folder    🟠 fixed
 Where:   host/src/editor.rs, thumbnail ("if dir.is_dir() { ... write_atomic(&dir.join
          ("thumb.png") ..."); host/src/store.rs, write_atomic ("create_dir_all(parent)")
 Problem: The thumbnail a strip cell asks for is made on a thread of its own and written into
@@ -102,13 +104,13 @@ Fix:     Take the DOCUMENTS lock around the `is_dir` test and the write, and wri
          also protects any later writer of a document's folder.
 Verify:  a store unit test: a thumb.png write into a folder that is not there returns an
          error and leaves no folder; then the project checks and `--editor-check`.
-Status:  [ ] open
+Status:  [x] done
 ```
 
 ## Nits
 
 ```
-T4 · After the last picture is deleted the empty editor still shows its shapes  🟡 open
+T4 · After the last picture is deleted the empty editor still shows its shapes  🟡 fixed
 Where:   editor/index.html, showEmpty (resets callouts, not shapes, crop or margin)
 Problem: Ctrl+Delete on the only document clears the notes but leaves model.shapes,
          model.crop and model.margin as they were; layoutScene then draws the arrows,
@@ -118,11 +120,11 @@ Fix:     In showEmpty reset shapes, nextShape, selectedShape, crop, cropping, ma
          marginFloor the way loadImage does.
 Verify:  section 29's "last document deleted" check: draw a rectangle first, and assert
          `#arrows` holds no `[data-shape]` and no `.ruler` or `.blur` element remains.
-Status:  [ ] open
+Status:  [x] done
 ```
 
 ```
-T5 · An empty bubble discarded after the second click burns its number        🟡 open
+T5 · An empty bubble discarded after the second click burns its number        🟡 fixed
 Where:   editor/index.html, commitEditing (the empty-text branch) against cancelPlacing
 Problem: Between the two clicks Escape gives the number back (cancelPlacing). After the
          second click, Escape with nothing typed discards the bubble through commitEditing,
@@ -133,11 +135,11 @@ Fix:     In commitEditing, when the discarded callout is the newest one (its num
          gap and say so; Rotem's call.
 Verify:  section 41: two clicks, Escape with nothing typed, then two clicks and a word: the
          note is number 1.
-Status:  [ ] open
+Status:  [x] done
 ```
 
 ```
-T6 · Two more decodes under the documents lock                                  🟡 open
+T6 · Two more decodes under the documents lock                                  🟡 fixed
 Where:   host/src/editor.rs, thumbnail ("document.frame(\"thumbnail\")?" inside the lock
          block) and editor_annotate ("d.frame(name)" inside the lock block)
 Problem: Review 3's T7 moved show_document's decode outside DOCUMENTS; these two still
@@ -146,11 +148,11 @@ Problem: Review 3's T7 moved show_document's decode outside DOCUMENTS; these two
          decode, a tenth of a second on a large picture. Not wrong, a stall.
 Fix:     preserved_handle under the lock, preserved_frame after it, as show_document does.
 Verify:  the project checks; no check measures the stall.
-Status:  [ ] open
+Status:  [x] done
 ```
 
 ```
-T7 · A delete whose neighbour cannot be shown says NOT DELETED for a gone document  🟡 open
+T7 · A delete whose neighbour cannot be shown says NOT DELETED for a gone document  🟡 fixed
 Where:   host/src/editor.rs, editor_delete_document ("show_document(next)?"); editor/
          index.html, deleteDocument (the catch that says NOT DELETED)
 Problem: The folder is in the trash and the document off the list before the neighbour is
@@ -162,7 +164,7 @@ Fix:     After the move, a failed neighbour show falls back to the empty state a
          editor and the deletion is recorded.
 Verify:  a check with the neighbour's source.png removed from the checks' store before
          Ctrl+Delete: the editor goes empty, the trash holds the deleted one.
-Status:  [ ] open
+Status:  [x] done
 ```
 
 ## Reach

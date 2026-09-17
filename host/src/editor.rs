@@ -304,19 +304,30 @@ fn preserve(image: Arc<Image>, id: u64, source: Source) {
         };
         let count = documents.len();
         let Some(document) = documents.iter_mut().find(|d| d.id == id) else {
-            match crate::store::trash_root().map(|trash| trash.join(id.to_string())) {
-                Ok(dir) if dir.is_dir() => {
-                    match crate::store::write_atomic(&dir.join("source.png"), &png) {
-                        Ok(()) => crate::log(&format!(
-                            "document {id} was deleted while its image encoded; the image joined it in the trash"
-                        )),
-                        Err(err) => crate::log(&format!(
-                            "document {id} was deleted while its image encoded, and the image was NOT kept: {err}"
-                        )),
-                    }
-                }
-                _ => crate::log(&format!(
-                    "document {id} is gone from the list with no folder in the trash; its image is dropped"
+            // Wherever its folder is now: among the documents while an undo has it back and
+            // waits for this image (review 4, T2), or in the trash. Written beside what is
+            // there, never into a folder made for it (review 4, T3).
+            let folder = crate::store::folder(id)
+                .ok()
+                .filter(|dir| dir.is_dir())
+                .or_else(|| {
+                    crate::store::trash_root()
+                        .ok()
+                        .map(|trash| trash.join(id.to_string()))
+                        .filter(|dir| dir.is_dir())
+                });
+            match folder {
+                Some(dir) => match crate::store::write_beside(&dir.join("source.png"), &png) {
+                    Ok(()) => crate::log(&format!(
+                        "document {id} was deleted while its image encoded; the image joined its folder at {}",
+                        dir.display()
+                    )),
+                    Err(err) => crate::log(&format!(
+                        "document {id} was deleted while its image encoded, and the image was NOT kept: {err}"
+                    )),
+                },
+                None => crate::log(&format!(
+                    "document {id} is gone from the list with no folder anywhere; its image is dropped"
                 )),
             }
             return;
@@ -353,14 +364,9 @@ impl Managed {
         }
     }
 
-    /// The preserved pixels as a frame, from the PNG or the decoded copy, whichever is
-    /// held right now. This is the document's own image; the file on disk is not read.
-    fn frame(&self, name: &'static str) -> Result<Frame, String> {
-        preserved_frame(self.id, &self.preserved, self.width, self.height, name)
-    }
-
-    /// What `frame` needs, cloned, so a caller can decode outside the list's lock
-    /// (review T7): the handle is cheap, the decode is not.
+    /// What `preserved_frame` needs, cloned, so a caller can decode outside the list's
+    /// lock (review T7, and review 4's T6 for the last two callers): the handle is cheap,
+    /// the decode is not. This is the document's own image; the file on disk is not read.
     fn preserved_handle(&self) -> (u64, Preserved, u32, u32) {
         (self.id, self.preserved.clone(), self.width, self.height)
     }
@@ -647,12 +653,32 @@ pub fn editor_trash_rejoin(id: u64) -> Result<(), String> {
     trash_rejoin(id)
 }
 
+/// How long a restore waits for an image still being encoded (review 4, T2): a capture
+/// deleted and brought back inside its own encode has its record but not yet its PNG, and
+/// the thread writes it into the folder wherever it is.
+const REJOIN_WAIT: std::time::Duration = std::time::Duration::from_millis(1500);
+
 fn trash_rejoin(id: u64) -> Result<(), String> {
     let dir = crate::store::restore(id)?;
-    let record = crate::store::read_record(&dir)?;
+    // A folder that cannot rejoin goes back into the trash before the error is returned,
+    // so the trash entry survives and a Restore later still finds it (review 4, T2).
+    let back = |err: String| -> String {
+        match crate::store::trash(id) {
+            Ok(_) => err,
+            Err(undo) => format!("{err}; and it could not go back to the trash: {undo}"),
+        }
+    };
+    let record = match crate::store::read_record(&dir) {
+        Ok(record) => record,
+        Err(err) => return Err(back(err)),
+    };
     let source = dir.join("source.png");
+    let started = Instant::now();
+    while !source.is_file() && started.elapsed() < REJOIN_WAIT {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
     if !source.is_file() {
-        return Err(format!("document {id} came back without its image"));
+        return Err(back(format!("document {id} came back without its image")));
     }
     {
         let mut documents = DOCUMENTS.lock().map_err(|_| "the documents are poisoned")?;
@@ -889,14 +915,16 @@ fn thumbnail(id: u64) -> Result<Vec<u8>, String> {
             return Ok(png);
         }
     }
-    let frame = {
+    // The handle under the lock, the decode outside it (review 4, T6).
+    let (hid, preserved, width, height) = {
         let documents = DOCUMENTS.lock().map_err(|_| "the documents are poisoned")?;
         let document = documents
             .iter()
             .find(|d| d.id == id)
             .ok_or_else(|| format!("document {id} is not in the list"))?;
-        document.frame("thumbnail")?
+        document.preserved_handle()
     };
+    let frame = preserved_frame(hid, &preserved, width, height, "thumbnail")?;
     let (w, h) = (frame.width(), frame.height());
     let (tw, th) = thumb_size(w, h);
     let small = recon_pixels::resample(&frame.rgba, w, h, tw, th)
@@ -905,9 +933,11 @@ fn thumbnail(id: u64) -> Result<Vec<u8>, String> {
     image::codecs::png::PngEncoder::new(&mut png)
         .write_image(&small, tw, th, image::ExtendedColorType::Rgba8)
         .map_err(|err| format!("document {id}: the thumbnail did not encode: {err}"))?;
+    // Beside the document's files, never into a folder made for it: a delete that moved the
+    // folder meanwhile must not find it recreated with a thumbnail alone (review 4, T3).
     if let Ok(dir) = crate::store::folder(id) {
         if dir.is_dir() {
-            if let Err(err) = crate::store::write_atomic(&dir.join("thumb.png"), &png) {
+            if let Err(err) = crate::store::write_beside(&dir.join("thumb.png"), &png) {
                 crate::log(&format!("document {id}: thumbnail not kept: {err}"));
             }
         }
@@ -1011,22 +1041,36 @@ pub fn editor_delete_document(id: u64) -> Result<Option<ImageInfo>, String> {
             .copied()
     });
     match next {
-        Some(next) => {
-            show_document(next)?;
-            Ok(Some(editor_image_info()?))
-        }
+        Some(next) => match show_document(next) {
+            Ok(()) => Ok(Some(editor_image_info()?)),
+            // The delete is done either way; a neighbour that cannot be shown leaves the
+            // editor empty rather than reporting a document that is gone as not deleted
+            // (review 4, T7).
+            Err(err) => {
+                crate::log(&format!(
+                    "document {id} deleted; its neighbour {next} could not be shown: {err}"
+                ));
+                show_nothing();
+                Ok(None)
+            }
+        },
         None => {
-            if let Ok(mut slot) = state().image.lock() {
-                *slot = None;
-            }
-            state().set_document(None);
-            CURRENT_ID.store(0, Ordering::SeqCst);
-            if let Ok(app) = app() {
-                if let Some(window) = app.get_webview_window("editor") {
-                    let _ = window.set_title("Recon");
-                }
-            }
+            show_nothing();
             Ok(None)
+        }
+    }
+}
+
+/// The empty state: no image, no document, the plain title.
+fn show_nothing() {
+    if let Ok(mut slot) = state().image.lock() {
+        *slot = None;
+    }
+    state().set_document(None);
+    CURRENT_ID.store(0, Ordering::SeqCst);
+    if let Ok(app) = app() {
+        if let Some(window) = app.get_webview_window("editor") {
+            let _ = window.set_title("Recon");
         }
     }
 }
@@ -1130,12 +1174,13 @@ pub fn editor_annotate() -> Result<ImageInfo, String> {
     let (own, existing) = {
         let documents = DOCUMENTS.lock().map_err(|_| "the documents are poisoned")?;
         let own = documents.iter().any(|d| d.id == id);
+        // The handle only: the decode runs after the lock is released (review 4, T6).
         let existing = (!own)
             .then(|| {
                 documents
                     .iter()
                     .find(|d| d.is_for(&path, frame))
-                    .map(|d| (d.id, d.frame(name)))
+                    .map(|d| d.preserved_handle())
             })
             .flatten();
         (own, existing)
@@ -1145,9 +1190,10 @@ pub fn editor_annotate() -> Result<ImageInfo, String> {
         return editor_image_info();
     }
     match existing {
-        Some((existing_id, preserved)) => {
+        Some((existing_id, preserved, width, height)) => {
+            let resumed = preserved_frame(existing_id, &preserved, width, height, name)?;
             CURRENT_ID.store(existing_id, Ordering::SeqCst);
-            state().set_frame(preserved?);
+            state().set_frame(resumed);
             if let Ok(mut documents) = DOCUMENTS.lock() {
                 if let Some(document) = documents.iter_mut().find(|d| d.id == existing_id) {
                     document.annotated = std::time::SystemTime::now();
@@ -1532,6 +1578,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         checks::editor_store_reload,
         checks::editor_store_verify,
         checks::editor_store_break,
+        checks::editor_store_remove_source,
         checks::editor_window_visible,
         checks::editor_in_front,
         checks::editor_hold_clipboard,
@@ -1834,7 +1881,7 @@ pub fn editor_thumbnail(request: tauri::ipc::Request<'_>) -> Result<(), String> 
             image::ExtendedColorType::Rgba8,
         )
         .map_err(|err| format!("document {id}: the thumbnail did not encode: {err}"))?;
-    crate::store::write_atomic(&dir.join("thumb.png"), &png)
+    crate::store::write_beside(&dir.join("thumb.png"), &png)
 }
 
 /// The size a thumbnail of a `w` by `h` picture or composition takes: fitted into the box,
@@ -3558,6 +3605,14 @@ mod checks {
             && preserved.as_raw() == &fresh.rgba)
     }
 
+    /// Takes one document's image off the checks' store, so a show of it fails the way a
+    /// document whose PNG went unreadable would (review 4, T7).
+    #[tauri::command]
+    pub fn editor_store_remove_source(id: u64) -> Result<(), String> {
+        std::fs::remove_file(store_dir().join(id.to_string()).join("source.png"))
+            .map_err(|err| err.to_string())
+    }
+
     /// Points the store at a file instead of a folder, so every write fails, and back.
     #[tauri::command]
     pub fn editor_store_break(on: bool) -> Result<(), String> {
@@ -4108,7 +4163,8 @@ mod tests {
             !document.is_for(&path, 0),
             "another frame of the file is another document"
         );
-        let frame = document.frame("test").unwrap();
+        let (hid, preserved, width, height) = document.preserved_handle();
+        let frame = preserved_frame(hid, &preserved, width, height, "test").unwrap();
         assert_eq!((frame.width(), frame.height()), (4, 3));
         assert_eq!(frame.rgba[0], 7, "the first image is the one preserved");
     }

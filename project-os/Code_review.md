@@ -197,10 +197,18 @@ one is worth trusting. Group the rows under the dimensions above.
 - 🔴 **The dirty flag clears before the wait, never after.** A save that waits on an
   earlier one clears the flag first, so a keystroke during the wait re-dirties the document
   and the next save carries it. (Source: `notes/2026-09-16-code-review-3.md`, T1.)
-- 🟠 **A document's folder is written only for a listed document, under the list's lock.**
-  A thread that writes into `documents/<id>/` checks the list under the lock the delete
-  moves the folder under; an unlisted document's bytes go to its trash folder or nowhere.
-  (Source: `notes/2026-09-16-code-review-3.md`, T2.)
+- 🟠 **A document's folder is never made for an unlisted document.** A thread that writes
+  into `documents/<id>/` outside the list's lock uses `store::write_beside`, which refuses
+  when the folder is not there; only the image write for a listed document, under the lock,
+  may make the folder. A folder recreated with one file in it blocks the document's restore
+  for good. (Source: `notes/2026-09-16-code-review-3.md`, T2; `notes/2026-09-17-code-review-4.md`, T2 and T3.)
+- 🟠 **A decode runs outside the documents lock.** The handle is cloned under the lock and
+  `preserved_frame` runs after it; a decode under the lock stalls every timeline refresh
+  and every save. Bitten three times. (Source: `notes/2026-09-16-code-review-3.md`, T7;
+  `notes/2026-09-17-code-review-4.md`, T6; `project-os/BugAtlas.md` row 5.)
+- 🔴 **The save state travels with the notes.** A stash of a document's notes carries its
+  `save` object, and a return restores it and retries a save still owed; a reset to "saved"
+  over stashed notes is the worst class. (Source: `notes/2026-09-17-code-review-4.md`, T1.)
 
 ### State & concurrency
 

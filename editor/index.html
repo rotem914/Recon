@@ -561,6 +561,10 @@
       marginFloor: { ...model.marginFloor },
       textSize: model.textSize,
       history: model.history,
+      // The save state travels with the notes, the object itself, so a save refused after
+      // the switch still marks it: coming back never reads "saved" over notes the disk does
+      // not hold (review 4, T1).
+      save: model.save,
     });
   };
 
@@ -2025,6 +2029,15 @@
     model.selected = null;
     model.editing = null;
     model.placing = null;
+    // The shapes, the crop and the margin go with the picture too, or the empty stage would
+    // still draw the arrows and boxes of the picture just deleted (review 4, T4).
+    model.shapes = [];
+    model.nextShape = 1;
+    model.selectedShape = null;
+    model.crop = null;
+    model.cropping = null;
+    model.margin = { left: 0, top: 0, right: 0, bottom: 0 };
+    model.marginFloor = { left: 0, top: 0, right: 0, bottom: 0 };
     // No document, no steps: Ctrl+Z here reaches the deletion that emptied the editor.
     model.history = { steps: [], index: -1, seq: [] };
     canvas.style.display = 'none';
@@ -2163,9 +2176,12 @@
       : callout.text;
     model.editing = null;
     if (el) el.blur();
-    // An empty bubble is discarded when editing ends, so it never reaches the output.
+    // An empty bubble is discarded when editing ends, so it never reaches the output. It
+    // was never a note, so its number comes back when it is the newest, as it does between
+    // the two clicks (review 4, T5); a text note has no number to give back.
     if (callout.text.trim() === '') {
       removeCallout(callout);
+      if (callout.kind !== 'text' && callout.number === model.nextNumber - 1) model.nextNumber -= 1;
     }
     settle();
     record();
@@ -2821,7 +2837,11 @@
         };
       }
     }
-    model.save = { state: 'saved', error: '', dirty: false };
+    // A document from the host has the disk's notes, so its state is saved; one from the
+    // stash comes back with the state it left in, and a save it still owes is tried again
+    // now (review 4, T1).
+    model.save = known && known.save ? known.save : { state: 'saved', error: '', dirty: false };
+    if (model.save.dirty) markDirty();
     model.margin = known ? { ...known.margin } : { left: 0, top: 0, right: 0, bottom: 0 };
     model.marginFloor = known ? { ...known.marginFloor } : { left: 0, top: 0, right: 0, bottom: 0 };
     model.callouts = known ? known.callouts : [];

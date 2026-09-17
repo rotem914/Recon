@@ -1546,6 +1546,28 @@ export async function runChecks(editor, invoke) {
     entry = await line(model.image.document_id);
     check('the next save lands, and the notice goes', again === 'saved' && !!entry && entry.notes.includes('written while the disk was refusing') && !hud.textContent.includes('NOT SAVED'));
 
+    // A save refused, then another picture, then back (review 4, T1): the refusal comes
+    // back with the notes, never reset to "saved" by the return, and the save it still owes
+    // lands by the timer once the store is back.
+    {
+      const heldId = model.image.document_id;
+      await invoke('editor_store_break', { on: true });
+      const held = editor.createCallout({ x: 90, y: 90 });
+      editor.layoutScene();
+      editor.startEditing(held);
+      el(held).querySelector('.t').textContent = 'refused, then carried across the switch';
+      editor.commitEditing();
+      const refused = await editor.saveNow();
+      await editor.loadImage(await invoke('editor_capture_probe', { width: 300, height: 200 }));
+      await invoke('editor_store_break', { on: false });
+      await editor.loadImage(await invoke('editor_show_document', { id: heldId }));
+      const back = { state: model.save.state, dirty: model.save.dirty, notice: hud.textContent.includes('NOT SAVED') };
+      const landed = await until(async () => { const l = await line(heldId); return l && l.notes.includes('refused, then carried') ? l : null; }, 3000);
+      check('a save refused before a switch of picture comes back with the picture as NOT SAVED, never as "saved", and lands by the timer once the store is back',
+        refused === 'failed' && back.state === 'failed' && back.dirty === true && back.notice && !!landed && model.save.state === 'saved',
+        `refused ${refused}; back as ${back.state}, dirty ${back.dirty}, NOT SAVED ${back.notice}; on disk ${!!landed}, now ${model.save.state}`);
+    }
+
     // A keystroke while a save is on its way (review T1): a second save waits on the
     // first, and a character typed during that wait has to reach the disk by the timer's
     // own save, with nothing else touching the document.
@@ -2021,12 +2043,19 @@ export async function runChecks(editor, invoke) {
     check('Ctrl+Delete on the one on screen: the neighbour shows, and it is in the trash', model.image.document_id === shots[0].document_id && trash.length === 2 && thumbs() === 1,
       `on screen ${model.image.document_id}, ${trash.length} in the trash`);
 
-    // The last one: the editor is empty, the timeline gone.
+    // The last one: the editor is empty, the timeline gone, and nothing of the picture's
+    // shapes stays on the empty stage (review 4, T4).
+    const lastRect = editor.createShape('rect', { x: 20, y: 20 });
+    lastRect.b = { x: 120, y: 90 };
+    editor.layoutScene();
+    editor.record();
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', code: 'Delete', ctrlKey: true, bubbles: true, cancelable: true }));
     for (let i = 0; i < 60 && model.image.width !== 0; i += 1) await sleep(50);
     await sleep(100);
     check('the last document deleted leaves the editor empty, no thumbnail left, only the Trash chip, the controls away', model.image.width === 0 && thumbs() === 0 && !!strip.querySelector('#trash-chip') && document.getElementById('controls').hidden && hud.textContent.includes('capture'),
       hud.textContent.split('\n')[0]);
+    check('and its shapes, crop and margin go with it: nothing is drawn on the empty stage', model.shapes.length === 0 && model.crop === null && editor.marginString() === '0,0,0,0' && !document.querySelector('#arrows [data-shape]') && !document.querySelector('#scene .ruler, #scene .blur'),
+      `${model.shapes.length} shapes, crop ${JSON.stringify(model.crop)}, margin ${editor.marginString()}, drawn ${document.querySelectorAll('#arrows [data-shape]').length}`);
     const sizeGone = document.getElementById('image-size');
     check('and the picture\'s size is away with the picture', getComputedStyle(sizeGone).display === 'none' && sizeGone.textContent === '',
       `"${sizeGone.textContent}", ${getComputedStyle(sizeGone).display}`);
@@ -2072,6 +2101,19 @@ export async function runChecks(editor, invoke) {
     check('a delete whose move to the trash fails keeps the document listed and on screen, and says NOT DELETED',
       !!refused && listedStill && model.image.document_id === keptId && hud.textContent.includes('NOT DELETED'), refused || 'deleted');
     editor.notice('', 0);
+
+    // A neighbour that cannot be shown (review 4, T7): the delete is still done, the editor
+    // goes empty, and nothing says NOT DELETED.
+    {
+      const shownId = model.image.document_id;
+      const neighbour = (await invoke('editor_documents')).find((d) => d.id !== shownId);
+      await invoke('editor_store_remove_source', { id: neighbour.id });
+      const outcome = await editor.deleteDocument(shownId).then(() => 'deleted', (err) => String(err));
+      const trashHolds = (await invoke('editor_trash_list')).some(([id]) => id === shownId);
+      check('a delete whose neighbour cannot be shown is still a delete: the editor empty, the document in the trash, its undo recorded, no NOT DELETED',
+        outcome === 'deleted' && model.image.width === 0 && trashHolds && !hud.textContent.includes('NOT DELETED') && editor.deletionsOf().some((d) => d.id === shownId),
+        `${outcome}, width ${model.image.width}, in the trash ${trashHolds}, ${hud.textContent.split('\n').pop()}`);
+    }
     model.callouts = [];
     editor.layoutScene();
   }
@@ -2875,6 +2917,20 @@ export async function runChecks(editor, invoke) {
     undoKey();
     check('a restore that cannot happen says so and leaves the undo path', await until(() => hud.textContent.includes('NOT RESTORED')) && !editor.deletionsOf().some((d) => d.id === b.document_id), hud.textContent.split('\n').pop());
     editor.notice('', 0);
+
+    // 7. A delete and an undo inside the capture's own encode (review 4, T2): the undo
+    //    waits for the image, and the picture comes back whole, its record and its image in
+    //    one folder among the documents, nothing left in the trash.
+    const racing = await invoke('editor_capture_probe', { width: 4000, height: 2500 });
+    await editor.loadImage(racing);
+    await editor.deleteDocument(racing.document_id);
+    undoKey();
+    const raced = await until(() => model.image.document_id === racing.document_id && model.image.width === 4000);
+    await sleep(300);
+    const racedLine = (await invoke('editor_store_list')).find((l) => l.id === racing.document_id);
+    check('a capture deleted and brought back inside its own encode comes back whole: on screen, its record and its image in one folder, nothing in the trash, no notice',
+      raced && !!racedLine && racedLine.json && racedLine.source_png && !(await inTrash(racing.document_id)) && !hud.textContent.includes('NOT RESTORED'),
+      `back ${raced}, folder ${racedLine ? `json ${racedLine.json}, png ${racedLine.source_png}` : 'none'}, ${hud.textContent.split('\n').pop()}`);
     model.callouts = [];
     editor.layoutScene();
   }
@@ -3156,6 +3212,18 @@ export async function runChecks(editor, invoke) {
     check('Ctrl+Z takes the note back', model.callouts.length === 0 && model.nextNumber === 1);
     press({ key: 'Z', code: 'KeyZ', ctrlKey: true, shiftKey: true });
     check('Ctrl+Shift+Z brings it back where it was locked', model.callouts.length === 1 && model.callouts[0].box.x === start.x + 160 && model.callouts[0].text === 'placed in two clicks');
+
+    // Nothing typed after the second click (review 4, T5): the bubble goes and its number
+    // comes back, as it does between the clicks, and no step is added.
+    editor.setTool('callout');
+    click(120, 260);
+    pointer('pointermove', 200, 320);
+    click(200, 320);
+    const typingEmpty = model.callouts.length === 2 && model.editing === model.callouts[1] && model.nextNumber === 3;
+    press({ key: 'Escape', code: 'Escape' });
+    check('Escape after the second click with nothing typed discards the bubble, gives its number back and adds no step',
+      typingEmpty && model.callouts.length === 1 && model.editing === null && model.nextNumber === 2 && model.history.index === 1,
+      `typing ${typingEmpty}; ${model.callouts.length} notes, next number ${model.nextNumber}, history ${model.history.index}`);
 
     // Between the clicks: Escape, Ctrl+Z and a change of tool each drop the unplaced bubble
     // and give its number back.

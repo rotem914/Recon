@@ -108,6 +108,8 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-16 · The ruler is a box in the scene with its size in image pixels beside the corner the drag ended at, and its × is counter-scaled.
 - 2026-09-16 · The thumbnail with the notes is composed by the host from a layer the page draws at thumbnail scale, at every save.
 - 2026-09-17 · The crop is one rect beside the notes, cut by the host on a copy at every output, and the notes keep their image coordinates.
+- 2026-09-17 · An empty bubble gives its number back.
+- 2026-09-17 · A restore waits for an image still being encoded.
 
 ---
 
@@ -1032,3 +1034,66 @@ than zero, so every place that reads the picture's edges reads `pictureRect()` a
 the image's size. A saved crop that does not fit its picture is dropped at load. A crop in
 a saved document is ignored by a page before this one. Revisit if Rotem wants a crop
 dragged outward to bring pixels back, a crop at any size, or a look of his own.
+
+## 2026-09-17 · An empty bubble gives its number back
+
+### Context
+
+Numbers never change and gaps stay (2026-09-10): a deleted note leaves its number unused
+so every output agrees with every other. The callout in two clicks gives the number back
+when the bubble is dropped between the clicks. After the second click, Escape with nothing
+typed discarded the bubble through the commit, which kept the number, so the next note was
+2 with no 1 on the picture (review 4, T5).
+
+### Options
+
+1. Keep the gap: an empty bubble counts as a note that was deleted.
+2. Give the number back when the discarded bubble is the newest, as between the clicks.
+3. Give it back always, renumbering the notes above it.
+
+### Decision
+
+Option 2, at Rotem's FIX ALL on review 4. An empty bubble was never a note: nothing was
+typed, nothing was copied, nothing was saved with it, so there is no output for a gap to
+agree with. Option 3 would renumber real notes, which the 2026-09-10 decision forbids.
+
+### Consequences
+
+`commitEditing` gives the number back only when the bubble's number is the newest one; a
+bubble emptied later, after other notes were made, keeps its gap, since a note may have
+been copied with it. A text note has no number and gives nothing back. The discard adds no
+undo step either way.
+
+## 2026-09-17 · A restore waits for an image still being encoded
+
+### Context
+
+A capture's record is written at once and its PNG on a thread a moment later. Review 3's
+T2 sent the PNG of a capture deleted in that moment into its trash folder. Review 4's T2:
+Ctrl+Z inside the same moment moved the folder back before the PNG existed, found no image,
+refused, and left the folder among the documents unlisted; the thread then found the id
+nowhere and dropped the PNG, the capture's only copy.
+
+### Options
+
+1. Refuse the restore at once and let the thread follow the folder, so a second Restore
+   from the trash view works a moment later.
+2. Let the restore wait up to a second and a half for the image, the thread writing it
+   wherever the folder is now, and put the folder back into the trash when it cannot rejoin.
+3. Make the delete itself wait for the encode before moving the folder.
+
+### Decision
+
+Option 2, by the assistant under Rotem's FIX ALL. Ctrl+Delete then Ctrl+Z is one gesture,
+and the picture coming back is what the gesture means; option 1 makes it a NOT RESTORED and
+a trip to the trash view. Option 3 makes every delete of a fresh capture wait, and the
+delete is the common case.
+
+### Consequences
+
+`trash_rejoin` polls for `source.png` up to `REJOIN_WAIT`, 1.5 s, on the thread the command
+runs on, only when the image is missing; a trashed folder with no image at all costs that
+wait once and then says NOT RESTORED, with the folder back in the trash under a fresh stamp,
+so its thirty days start again. The image thread writes beside the folder's files wherever
+the folder is, never into a folder made for it. Revisit if a capture's encode ever takes
+longer than the wait on a slow machine: the check in section 39 is the one that will say so.

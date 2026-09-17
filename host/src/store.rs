@@ -177,22 +177,8 @@ pub fn trash(id: u64) -> Result<Option<PathBuf>, String> {
     if to.exists() {
         let _ = std::fs::remove_dir_all(&to);
     }
-    // A file in the folder can be open for a moment, a thumbnail being read or written on
-    // its thread, and Windows refuses to move a folder with an open file in it. A second of
-    // short retries covers that; a folder truly held is still refused, and said so.
-    let started = SystemTime::now();
-    let mut moved = std::fs::rename(&from, &to);
-    while let Err(err) = &moved {
-        let waited = started.elapsed().unwrap_or_default();
-        if err.kind() != std::io::ErrorKind::PermissionDenied
-            || waited > std::time::Duration::from_secs(1)
-        {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-        moved = std::fs::rename(&from, &to);
-    }
-    moved.map_err(|err| format!("{} could not be moved to the trash: {err}", from.display()))?;
+    rename_retry(&from, &to)
+        .map_err(|err| format!("{} could not be moved to the trash: {err}", from.display()))?;
     note_folder(&from);
     let stamp = format!("{}", millis(SystemTime::now()));
     write_atomic(&to.join("trashed"), stamp.as_bytes())?;
@@ -213,11 +199,32 @@ pub fn restore(id: u64) -> Result<PathBuf, String> {
         std::fs::create_dir_all(parent)
             .map_err(|err| format!("{} could not be created: {err}", parent.display()))?;
     }
-    std::fs::rename(&from, &to)
+    rename_retry(&from, &to)
         .map_err(|err| format!("{} could not be moved back: {err}", from.display()))?;
     let _ = std::fs::remove_file(to.join("trashed"));
     note_folder(&to);
     Ok(to)
+}
+
+/// Moves a folder with a second of short retries on a permission error. A file in the
+/// folder can be open for a moment, a thumbnail being read or an image being written on
+/// its thread, and Windows refuses to move a folder with an open file in it. A folder
+/// truly held is still refused, and said so. The trash and the restore both move this way
+/// (review 4, T2).
+fn rename_retry(from: &Path, to: &Path) -> std::io::Result<()> {
+    let started = SystemTime::now();
+    let mut moved = std::fs::rename(from, to);
+    while let Err(err) = &moved {
+        let waited = started.elapsed().unwrap_or_default();
+        if err.kind() != std::io::ErrorKind::PermissionDenied
+            || waited > std::time::Duration::from_secs(1)
+        {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        moved = std::fs::rename(from, to);
+    }
+    moved
 }
 
 /// What the trash holds: each folder's number and how many days it has been there.
@@ -310,13 +317,32 @@ pub struct Record {
 static TEMPORARIES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// Writes the bytes to a temporary file beside the target, flushes it, and renames it into
-/// place.
+/// place, the target's folder made when it is missing.
 pub fn write_atomic(target: &Path, bytes: &[u8]) -> Result<(), String> {
+    write_into(target, bytes, true)
+}
+
+/// The same write, into a folder that is already there and never into one made for it: a
+/// document's folder that a delete moved away meanwhile must not come back as a folder
+/// holding one file, which blocks its restore for good (review 4, T3). For a thumbnail, or
+/// an image encoded after its document was deleted.
+pub fn write_beside(target: &Path, bytes: &[u8]) -> Result<(), String> {
+    write_into(target, bytes, false)
+}
+
+fn write_into(target: &Path, bytes: &[u8], create: bool) -> Result<(), String> {
     let parent = target
         .parent()
         .ok_or_else(|| format!("{} has no folder", target.display()))?;
-    std::fs::create_dir_all(parent)
-        .map_err(|err| format!("{} could not be created: {err}", parent.display()))?;
+    if create {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("{} could not be created: {err}", parent.display()))?;
+    } else if !parent.is_dir() {
+        return Err(format!(
+            "{} is not there, so nothing is written beside it",
+            parent.display()
+        ));
+    }
     let name = target
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -429,6 +455,16 @@ mod tests {
             .flatten()
             .all(|e| !e.path().to_string_lossy().ends_with(".tmp")));
         assert_eq!(scan().len(), 1);
+        // Beside the files of a folder that is there, the write lands; into a folder that
+        // is not, it is refused and no folder appears (review 4, T3).
+        write_beside(&folder(42).unwrap().join("thumb.png"), b"thumb").unwrap();
+        assert_eq!(
+            std::fs::read(folder(42).unwrap().join("thumb.png")).unwrap(),
+            b"thumb"
+        );
+        let gone = folder(43).unwrap();
+        assert!(write_beside(&gone.join("thumb.png"), b"thumb").is_err());
+        assert!(!gone.exists(), "no folder is made for a write beside");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
