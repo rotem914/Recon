@@ -290,7 +290,8 @@ and started the typing before):
    attached to it.
 3. Click again where the bubble should stay. It locks there, with the text cursor inside.
 4. Type. The visible text is immediately part of the composed image.
-5. `Esc` leaves text editing and keeps the text. Between the two clicks, `Esc`, Ctrl+Z or a
+5. `Enter` or `Esc` leaves text editing and keeps the text (Enter since 2026-09-17; it broke
+   the line before, which `Ctrl+Enter` does now). Between the two clicks, `Esc`, Ctrl+Z or a
    change of tool drops the unplaced bubble, and its number goes back.
 
 Where the pointer sits in the bubble while it follows is provisional, the assistant's
@@ -327,7 +328,8 @@ several bubbles before improving the heuristic.
 
 ### Numbering and text
 
-- Callouts are numbered by creation order, starting at 1 for each image.
+- Callouts are numbered by creation order, starting at 1 for each image. Since 2026-09-17
+  the number is not shown in the bubble, at Rotem's word; it is kept in the document.
 - **Numbers are stable, gaps included.** A deleted number is not reused, undo restores the
   original number, and moving a bubble never renumbers it. The numbers in the editor, in
   the clipboard, in an exported file and in the Rogers text are the same numbers.
@@ -400,8 +402,9 @@ is a contract broken on day one.
 | `Ctrl+C` while editing text | Normal text copy. It does not copy an image by surprise | 1, built at S1.7: the key is not touched while a note is being typed |
 | `Ctrl+C` outside text editing | Copy the full composed image, even with an annotation selected | 1, built at S1.7 |
 | `Ctrl+Shift+C` anywhere in the editor | Copy the full composed image, current text edits included | 0, built at S0.6 as the one key the clipboard operation needed to be tried by hand |
-| `Ctrl+Enter` anywhere in the editor | Copy the full composed image, then return to the previous application after success | 1, built at S1.7: the note being typed is committed first, and the editor stays if the document changed while the copy ran; the save before the hide is S1.8's |
-| `Enter` while editing a note | Insert a newline | 1, built at S0.4 |
+| `Ctrl+Enter` outside text editing | Copy the full composed image, then return to the previous application after success | 1, built at S1.7: the editor stays if the document changed while the copy ran; the save before the hide is S1.8's. Until 2026-09-17 it worked while a note was typed too, committing the note first |
+| `Ctrl+Enter` while editing a note | Insert a newline | 1, built 2026-09-17 at Rotem's word; Shift+Enter does the same |
+| `Enter` while editing a note | Leave text editing, keep the text, as a click outside the bubble does | 1, built 2026-09-17 at Rotem's word; it inserted a newline from S0.4 until then |
 | `Ctrl +` (or `Ctrl =`) in the editor | One text size up, on the note being edited or the selected one, and it becomes the default for the next note | 0 |
 | `Ctrl -` in the editor | One text size down, the same way | 0 |
 | `Esc` during capture | Cancel the capture | 1 |

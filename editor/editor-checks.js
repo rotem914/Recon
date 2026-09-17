@@ -363,11 +363,21 @@ export async function runChecks(editor, invoke) {
     const textEl = el(note).querySelector('.t');
     // Real editing commands, so the engine builds whatever structure it would for a person.
     document.execCommand('insertText', false, 'one');
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true }));
     document.execCommand('insertText', false, 'two');
     editor.commitEditing();
-    check('Enter, typed for real, yields a two-line note', note.text === 'one\ntwo',
+    check('Ctrl+Enter, typed for real, yields a two-line note', note.text === 'one\ntwo',
       JSON.stringify(note.text));
+    // Enter alone keeps the text and ends the typing, as a click outside does (Rotem, 2026-09-17).
+    const kept = editor.createCallout({ x: 300, y: 300 });
+    editor.layoutScene();
+    editor.startEditing(kept);
+    document.execCommand('insertText', false, 'kept by Enter');
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    check('Enter alone keeps the text and ends the editing', model.editing === null && kept.text === 'kept by Enter' && model.callouts.includes(kept),
+      `editing ${model.editing ? 'still on' : 'ended'}, text ${JSON.stringify(kept.text)}`);
+    editor.removeCallout(kept);
+    editor.layoutScene();
 
     // And the engine's own block structure, which is what a paste or an older document
     // could hold: innerText has to read it as lines too.
@@ -387,8 +397,11 @@ export async function runChecks(editor, invoke) {
     editor.layoutScene();
     const twoLines = el(note).querySelector('.t').offsetHeight;
     const oneLine = el(single).querySelector('.t').offsetHeight;
-    check('the committed note is laid out on two lines', twoLines >= oneLine * 1.8,
-      `${twoLines}px against ${oneLine}px for one line`);
+    // One line sits in the text box's 36 px floor (Rotem, 2026-09-17), so two lines are
+    // measured against two of the line's own height, and taller than the floor.
+    const lineHeight = parseFloat(getComputedStyle(el(single).querySelector('.t')).lineHeight);
+    check('the committed note is laid out on two lines', twoLines > oneLine && twoLines >= lineHeight * 1.9,
+      `${twoLines}px against ${oneLine}px for one line, the line ${lineHeight}px`);
 
     // Clicking straight from one note into another, with no Escape between: the first
     // note's typed text has to survive. It did not (review of 2026-09-13, R1).
@@ -1242,7 +1255,9 @@ export async function runChecks(editor, invoke) {
       const before = marginText();
       editor.startEditing(c);
       const textEl = document.querySelector(`[data-id="${c.id}"] .t`);
-      textEl.textContent = 'A long note that wraps over several lines: the save button does nothing on a slow connection, and the user gets no sign that anything happened, and then the second click saves twice. בעברית: הכפתור לא מגיב.';
+      // Short enough to fit the 400 px scene once dragged back up, in the 194 px the text
+      // has inside Rotem's 2026-09-17 bubble; long enough to run past the bottom from y 174.
+      textEl.textContent = 'A long note that wraps over several lines: the save button does nothing on a slow connection, and the user gets no sign that anything happened.';
       textEl.dispatchEvent(new InputEvent('input', { bubbles: true }));
       await sleep(30);
       check('typing past the bottom takes room below, and nowhere else', before === '0,0,0,0' && model.margin.bottom > 0 && model.margin.top === 0 && model.margin.left === 0 && model.margin.right === 0 && inside(c),
@@ -3313,18 +3328,19 @@ export async function runChecks(editor, invoke) {
     const plain = await pixelsOf(shot.document_id);
     check('the fresh capture\'s thumbnail is the picture at its size', plain.w === 320 && plain.h === 200, `${plain.w}x${plain.h}`);
 
-    // A note that fits inside the picture, so no margin grows: its bubble at 48,124, 260 wide.
-    const note = editor.createCallout({ x: 20, y: 100 });
+    // A note that fits inside the picture, so no margin grows: its bubble at 48,64, 260 wide
+    // and 102 tall (Rotem's 2026-09-17 bubble: 32 px of padding round a 36 px text box).
+    const note = editor.createCallout({ x: 20, y: 40 });
     editor.layoutScene();
     editor.startEditing(note);
     document.querySelector(`[data-id="${note.id}"] .t`).textContent = 'on the thumbnail too';
     editor.commitEditing();
-    // Two points of the bubble: its number badge, the badge's blue, and its right-hand
-    // padding, the bubble's dark ground, clear of the text and the badge.
-    const inside = { x: note.box.x + 30, y: note.box.y + 20 };
-    const ground = { x: note.box.x + note.box.width - 6, y: note.box.y + 40 };
-    const badge = (px) => Math.abs(px[0] - 0x7a) <= 12 && Math.abs(px[1] - 0xa7) <= 12 && Math.abs(px[2] - 0xff) <= 12;
-    const bubble = (px) => Math.abs(px[0] - 0x1b) <= 6 && Math.abs(px[1] - 0x1f) <= 6 && Math.abs(px[2] - 0x24) <= 6; // the bubble's ground, #1b1f24
+    // Two points of the bubble's padding, its #2D41D7 ground, clear of the text: left of
+    // it and right of it.
+    const inside = { x: note.box.x + 12, y: note.box.y + 20 };
+    const ground = { x: note.box.x + note.box.width - 12, y: note.box.y + 40 };
+    const badge = (px) => Math.abs(px[0] - 0x2d) <= 12 && Math.abs(px[1] - 0x41) <= 12 && Math.abs(px[2] - 0xd7) <= 12;
+    const bubble = badge;
     check('the note sits inside the picture, so the thumbnail keeps its size', editor.marginString() === '0,0,0,0' && note.box.x + note.box.width <= 320, `margin ${editor.marginString()}, box ${note.box.x},${note.box.y} ${note.box.width} wide`);
     const cell = () => editor.strip.querySelector(`.thumb[data-id="${shot.document_id}"]`);
     const srcBefore = cell() && cell().querySelector('img') ? cell().querySelector('img').src : '';
@@ -3332,7 +3348,7 @@ export async function runChecks(editor, invoke) {
     const refreshed = await editor.thumbnailDone();
     check('the save is followed by a thumbnail refresh that the host accepted', refreshed === true, String(refreshed));
     const noted = await pixelsOf(shot.document_id);
-    check('the thumbnail now shows the bubble where the note is: its number badge and its dark ground', noted.w === 320 && noted.h === 200 && badge(noted.at(inside.x, inside.y)) && !badge(plain.at(inside.x, inside.y)) && bubble(noted.at(ground.x, ground.y)) && !bubble(plain.at(ground.x, ground.y)),
+    check('the thumbnail now shows the bubble where the note is: its blue ground left and right of the text', noted.w === 320 && noted.h === 200 && badge(noted.at(inside.x, inside.y)) && !badge(plain.at(inside.x, inside.y)) && bubble(noted.at(ground.x, ground.y)) && !bubble(plain.at(ground.x, ground.y)),
       `badge at ${inside.x},${inside.y}: ${plain.at(inside.x, inside.y)} before, ${noted.at(inside.x, inside.y)} after; ground at ${ground.x},${ground.y}: ${plain.at(ground.x, ground.y)} before, ${noted.at(ground.x, ground.y)} after`);
     check('a pixel away from the note is the picture\'s own, unchanged', same(noted.at(5, 5), plain.at(5, 5)), `${plain.at(5, 5)} before, ${noted.at(5, 5)} after`);
     if (cell()) {
@@ -3352,7 +3368,9 @@ export async function runChecks(editor, invoke) {
 
     // A note that grows the margin: the thumbnail is the whole composition fitted into the
     // box, margin and all, so it is smaller than the box in one direction.
-    const wide = editor.createCallout({ x: 310, y: 100 });
+    // Anchored low at the left, where no candidate place of a 260 by 102 bubble is inside
+    // the 320 by 200 picture, so the first clear one, below right, takes a margin.
+    const wide = editor.createCallout({ x: 60, y: 150 });
     editor.layoutScene();
     wide.text = 'a note that grows the margin';
     await editor.settle();

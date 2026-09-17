@@ -6,7 +6,7 @@
      No toolbar, no document strip, no persistence, no export. Those are later steps, and
      this file has to stay small enough to be the thing the composition contract is proved
      on rather than the thing it is buried in. */
-  :root { color-scheme: dark; --ink: #f0f0f0; --paper: #0D0E12; }
+  :root { color-scheme: dark; --ink: #f0f0f0; --paper: #09090C; }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; background: var(--paper); color: var(--ink);
                font: 13px/1.45 ui-sans-serif, "Segoe UI", system-ui, sans-serif;
@@ -165,27 +165,29 @@
 
   /* The text size is set per note, from the model, in image pixels. Everything else
      about the bubble is a proportion of it, so a bigger note is a bigger note rather than
-     a large font crammed into a small box. At the default of 20 these ems are exactly the
-     6, 8, 10 and 8 pixels the first version hard-coded. */
+     a large font crammed into a small box. */
+  /* The bubble (Rotem, 2026-09-17): #2D41D7, 32 px of padding, 15 px corners, the shadow of
+     his Figma (0, 8, blur 16, spread 6, black at 25%), no number shown, the text box 36 px
+     tall and unmarked. The padding, the corners and the text box's height are ems that are
+     exactly his pixels at the default size of 20, so a bigger note stays a bigger note. */
   .callout { position: absolute; display: flex; gap: .3em; align-items: flex-start;
-             padding: .4em .5em; border-radius: .4em; background: #1b1f24; color: #f2f2f2;
-             border: 1px solid #3a4149; box-shadow: 0 2px 10px rgba(0,0,0,.45);
+             padding: 1.6em; border-radius: .75em; background: #2D41D7; color: #f2f2f2;
+             border: 1px solid transparent; box-shadow: 0 8px 16px 6px rgba(0,0,0,.25);
              line-height: 1.35; }
   .callout.selected { border-color: #7aa7ff; }
   .callout.text { background: transparent; border-color: transparent; box-shadow: none; padding: 0;
                   color: #ff5252; font-weight: 700;
                   text-shadow: 0 0 2px #fff, 0 0 2px #fff, 0 0 4px #fff; }
   .callout.text .n { display: none; }
+  .callout.text .t { min-height: 0; } /* the bubble's 36 px floor is the callout's, not the text note's */
   .callout.text.selected { border-color: #7aa7ff; }
-  .callout .n { flex: 0 0 auto; font-size: .7em; min-width: 1.6em; height: 1.6em;
-                border-radius: .8em; background: #7aa7ff; color: #0d1014; font-weight: 700;
-                display: grid; place-items: center; }
-  /* Outline and background only: a caret or a selection ring must never change layout,
-     because the export has to agree with what is on screen (part 5's third remedy). */
-  .callout .t { flex: 1 1 auto; min-width: 1ch; outline: none; white-space: pre-wrap;
+  /* The number is kept in the document and not shown in the bubble (Rotem, 2026-09-17). */
+  .callout .n { display: none; }
+  /* No editing decoration on the text box (Rotem, 2026-09-17): the caret alone shows the
+     typing, so nothing can change layout, and the export agrees with the screen (part 5's
+     third remedy). Its height is 36 px at the default size, and it grows with the lines. */
+  .callout .t { flex: 1 1 auto; min-width: 1ch; min-height: 1.8em; outline: none; white-space: pre-wrap;
                 word-break: break-word; }
-  .callout .t:focus { background: rgba(122,167,255,.14); outline: 1px solid #7aa7ff;
-                      outline-offset: 2px; }
   .anchor { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px;
             border-radius: 50%; background: #7aa7ff; border: 2px solid #0d1014;
             cursor: grab; }
@@ -729,10 +731,10 @@
   };
 
   // A bubble's height: laid out when it is on screen, estimated from its size before
-  // that (one line: the padding, the line, the border).
+  // that (one line: the padding, the text box at its least, the border).
   const heightOf = (callout) => {
     const el = scene.querySelector(`[data-id="${callout.id}"]`);
-    return el ? el.offsetHeight : Math.round((callout.textSize || model.textSize) * 2.15) + 2;
+    return el ? el.offsetHeight : Math.round((callout.textSize || model.textSize) * 5) + 2;
   };
 
   const rectOf = (callout) => ({ x: callout.box.x, y: callout.box.y, w: callout.box.width, h: heightOf(callout) });
@@ -774,7 +776,7 @@
     // times the size is the 260 px the first version used, at the default of 20.
     const width = Math.round(textSize * 13);
     const at = { x: Math.round(anchor.x), y: Math.round(anchor.y) };
-    const height = Math.round(textSize * 2.15) + 2;
+    const height = Math.round(textSize * 5) + 2;
     const place = placeCallout(at, width, height, textSize, model.callouts);
     const callout = {
       id: `c${model.nextNumber}`,
@@ -1192,9 +1194,22 @@
       };
       const centre = { x: box.x + box.w / 2, y: box.y + box.h / 2 };
       const end = edgePoint(box, callout.anchor, centre);
+      // A 4 px line from the bubble's edge to the anchor, ending in an open head there (Rotem,
+      // 2026-09-17): two strokes, never a filled polygon, on the arrow shape's 16 by 7 head.
+      const dx = callout.anchor.x - end.x;
+      const dy = callout.anchor.y - end.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len;
+      const uy = dy / len;
+      const head = 16;
+      const wing = 7;
+      const base = { x: callout.anchor.x - ux * head, y: callout.anchor.y - uy * head };
+      const left = { x: base.x - uy * wing, y: base.y + ux * wing };
+      const right = { x: base.x + uy * wing, y: base.y - ux * wing };
+      const stroke = 'stroke="#7aa7ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"';
       markup +=
-        `<line x1="${callout.anchor.x}" y1="${callout.anchor.y}" x2="${end.x}" y2="${end.y}"` +
-        ` stroke="#7aa7ff" stroke-width="2" stroke-linecap="round" />`;
+        `<line x1="${callout.anchor.x}" y1="${callout.anchor.y}" x2="${end.x}" y2="${end.y}" ${stroke} />` +
+        `<polyline points="${left.x.toFixed(1)},${left.y.toFixed(1)} ${callout.anchor.x},${callout.anchor.y} ${right.x.toFixed(1)},${right.y.toFixed(1)}" ${stroke} />`;
     }
     for (const shape of model.shapes) markup += shapeMarkup(shape);
     arrows.innerHTML = markup;
@@ -2558,10 +2573,13 @@
       event.preventDefault();
       return;
     }
-    if (event.key === 'Enter' && model.editing && !event.ctrlKey && !event.altKey) {
-      // A newline CHARACTER rather than the engine's block, so the bubble stays one text
-      // node and what is typed is exactly what is stored (§3.6: Enter inserts a newline).
-      document.execCommand('insertText', false, '\n');
+    if (event.key === 'Enter' && model.editing && !event.altKey && !(event.ctrlKey && event.shiftKey)) {
+      // Enter keeps the text and leaves the typing, as a click outside the bubble does;
+      // Ctrl+Enter breaks the line (Rotem, 2026-09-17; Enter broke it before). Shift+Enter
+      // breaks it as it did. The break is a newline CHARACTER rather than the engine's
+      // block, so the bubble stays one text node and what is typed is exactly what is stored.
+      if (event.ctrlKey || event.shiftKey) document.execCommand('insertText', false, '\n');
+      else commitEditing();
       event.preventDefault();
       return;
     }
