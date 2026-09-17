@@ -922,7 +922,7 @@ export async function runChecks(editor, invoke) {
     // fit, and the pan stays a number through a zoom key and the space coming back.
     await editor.setZoom(editor.computeFit());
     const beforeEmpty = model.zoom;
-    stage.style.bottom = `${window.innerHeight - 33}px`;
+    stage.style.bottom = `${window.innerHeight - 49}px`;
     window.dispatchEvent(new Event('resize'));
     await sleep(250);
     const empty = { h: stage.clientHeight, zoom: model.zoom, kept: model.fitZoom };
@@ -1876,7 +1876,7 @@ export async function runChecks(editor, invoke) {
       docs.map((d) => `${d.width}x${d.height}${d.current ? '*' : ''}`).join(' '));
     check('the strip is shown with one thumbnail per document, the newest at the left and current', document.body.classList.contains('strip') && strip.children.length === 3 && strip.children[0].classList.contains('current') && !strip.children[2].classList.contains('current')
       && Number(strip.children[0].dataset.id) === shots[2].document_id && Number(strip.children[2].dataset.id) === shots[0].document_id);
-    check('the stage ends above the picture\'s size and the strip, below the top bar', stage.clientHeight === window.innerHeight - 32 - 48 - 96, `stage ${stage.clientHeight} of ${window.innerHeight}`);
+    check('the stage ends above the picture\'s size and the strip, below the top bar', stage.clientHeight === window.innerHeight - 48 - 48 - 96, `stage ${stage.clientHeight} of ${window.innerHeight}`);
     // The picture's size in a container across the window above the timeline, 16 px clear above and
     // below it, on the app's own background (Rotem, 2026-09-16).
     const sizeEl = document.getElementById('image-size');
@@ -1930,7 +1930,7 @@ export async function runChecks(editor, invoke) {
     check('and the picture\'s size with it', getComputedStyle(sizeEl).display === 'none', getComputedStyle(sizeEl).display);
     await editor.setFullscreen(false);
     check('and it comes back', document.body.classList.contains('strip') && strip.children.length === 3);
-    check('the picture\'s size too, with the stage ending above it', getComputedStyle(sizeEl).display === 'block' && stage.clientHeight === window.innerHeight - 32 - 48 - 96,
+    check('the picture\'s size too, with the stage ending above it', getComputedStyle(sizeEl).display === 'block' && stage.clientHeight === window.innerHeight - 48 - 48 - 96,
       `${getComputedStyle(sizeEl).display}, stage ${stage.clientHeight} of ${window.innerHeight}`);
     model.callouts = [];
     editor.layoutScene();
@@ -1949,7 +1949,7 @@ export async function runChecks(editor, invoke) {
     const cbox = controls.getBoundingClientRect();
     const stageLeft = Math.round(stage.getBoundingClientRect().left);
     check('the controls are a sidebar down the left edge, below the top bar, and the stage starts at its right edge', !controls.hidden && copyButton && saveButton && document.getElementById('mode')
-      && cbox.left === 0 && Math.round(cbox.top) === 32 && Math.round(cbox.width) === 64 && stageLeft === 64,
+      && cbox.left === 0 && Math.round(cbox.top) === 48 && Math.round(cbox.width) === 64 && stageLeft === 64,
       `sidebar ${Math.round(cbox.left)}-${Math.round(cbox.right)} from ${Math.round(cbox.top)}, the stage from ${stageLeft}`);
     const buttons = [...controls.querySelectorAll('button')];
     const boxes = buttons.map((b) => b.getBoundingClientRect());
@@ -2565,15 +2565,15 @@ export async function runChecks(editor, invoke) {
     check('the window has no frame of Windows\' own', (await win.isDecorated()) === false);
     const barBox = bar.getBoundingClientRect();
     const stageTop = () => Math.round(stage.getBoundingClientRect().top);
-    check('the bar runs across the top, 32 px tall, and the stage starts below it', barBox.top === 0 && barBox.height === 32 && Math.round(barBox.width) === window.innerWidth && stageTop() === 32,
+    check('the bar runs across the top, 48 px tall, and the stage starts below it', barBox.top === 0 && barBox.height === 48 && Math.round(barBox.width) === window.innerWidth && stageTop() === 48,
       `bar ${barBox.height} tall, ${Math.round(barBox.width)} of ${window.innerWidth} wide, the stage from ${stageTop()}`);
     check('the bar is the drag region, the title included', bar.hasAttribute('data-tauri-drag-region') && document.getElementById('title').hasAttribute('data-tauri-drag-region'));
     check('the title names the file, as the window title does', document.getElementById('title').textContent === 'reference-scene.png - Recon' && (await invoke('editor_window_title')) === 'reference-scene.png - Recon',
       document.getElementById('title').textContent);
     const boxes = buttons.map((b) => b.getBoundingClientRect());
-    // 48 wide, the bar's whole height above its bottom line (Rotem, 2026-09-17).
-    check('minimize, maximize and close sit in that order at the right edge, 48 wide and the bar tall', buttons.map((b) => b.id).join() === 'win-min,win-max,win-close'
-      && boxes.every((b) => Math.round(b.width) === 48 && Math.round(b.height) === bar.clientHeight && b.top === 0) && Math.round(boxes[2].right) === window.innerWidth && boxes[0].right <= boxes[1].left && boxes[1].right <= boxes[2].left,
+    // 48 by 48, which is the bar's whole height (Rotem, 2026-09-17).
+    check('minimize, maximize and close sit in that order at the right edge, 48 by 48', buttons.map((b) => b.id).join() === 'win-min,win-max,win-close'
+      && boxes.every((b) => Math.round(b.width) === 48 && Math.round(b.height) === 48 && Math.round(b.height) === bar.clientHeight && b.top === 0) && Math.round(boxes[2].right) === window.innerWidth && boxes[0].right <= boxes[1].left && boxes[1].right <= boxes[2].left,
       boxes.map((b) => `${Math.round(b.left)}-${Math.round(b.right)}, ${Math.round(b.height)} tall`).join(' '));
     check('every window button has a name', buttons.every((b) => b.title.length > 0), buttons.map((b) => b.title).join(', '));
 
@@ -2583,7 +2583,7 @@ export async function runChecks(editor, invoke) {
     await sleep(200);
     check('the maximize button maximizes the window, and becomes Restore', !before.maximized && (await win.isMaximized()) && window.innerWidth >= before.w && window.innerHeight >= before.h && document.getElementById('win-max').title === 'Restore',
       `${before.w}x${before.h} to ${window.innerWidth}x${window.innerHeight}, ${document.getElementById('win-max').title}`);
-    check('a maximized window still has the bar at the top and the stage below it', stageTop() === 32 && Math.round(document.getElementById('winbtns').getBoundingClientRect().right) === window.innerWidth);
+    check('a maximized window still has the bar at the top and the stage below it', stageTop() === 48 && Math.round(document.getElementById('winbtns').getBoundingClientRect().right) === window.innerWidth);
     document.getElementById('win-max').click();
     for (let i = 0; i < 40 && (await win.isMaximized()); i += 1) await sleep(50);
     await sleep(200);
@@ -2608,7 +2608,7 @@ export async function runChecks(editor, invoke) {
     check('fullscreen puts the bar and the sidebar away and the stage takes the whole window', getComputedStyle(bar).display === 'none' && getComputedStyle(sidebar).display === 'none'
       && stageTop() === 0 && stageLeft() === 0 && stage.clientHeight === window.innerHeight && stage.clientWidth === window.innerWidth, `the stage from ${stageLeft()},${stageTop()}`);
     await editor.setFullscreen(false);
-    check('and they come back', getComputedStyle(bar).display !== 'none' && getComputedStyle(sidebar).display !== 'none' && stageTop() === 32 && stageLeft() === 64, `the stage from ${stageLeft()},${stageTop()}`);
+    check('and they come back', getComputedStyle(bar).display !== 'none' && getComputedStyle(sidebar).display !== 'none' && stageTop() === 48 && stageLeft() === 64, `the stage from ${stageLeft()},${stageTop()}`);
   }
 
   // ---------------------------------------------------------------- 37. S2.8: the timeline at scale
@@ -2652,7 +2652,7 @@ export async function runChecks(editor, invoke) {
     // hand's, never snapped, and a row enters when there is room for one.
     const h1 = editor.setStripHeight(300);
     layout = editor.stripLayout();
-    check('dragged past one row of 320: the strip is exactly as dragged, 300 tall, one row of 320 by 200 cells', h1 === 300 && layout.rows === 1 && layout.w === 320 && layout.h === 200 && stage.clientHeight === window.innerHeight - 32 - 48 - 300,
+    check('dragged past one row of 320: the strip is exactly as dragged, 300 tall, one row of 320 by 200 cells', h1 === 300 && layout.rows === 1 && layout.w === 320 && layout.h === 200 && stage.clientHeight === window.innerHeight - 48 - 48 - 300,
       `${h1} tall, ${layout.rows} row(s) of ${layout.w}x${layout.h}, stage ${stage.clientHeight}`);
     const h1b = editor.setStripHeight(435);
     check('one pixel short of a second row: still one row', h1b === 435 && editor.stripLayout().rows === 1, `${h1b} tall, ${editor.stripLayout().rows} row(s)`);
@@ -2661,12 +2661,12 @@ export async function runChecks(editor, invoke) {
     const cols = Math.floor((strip.clientWidth - 24 + 12) / 332);
     const second = editor.cellRect(cols);
     check('at 436 the second row enters: two rows of 320, 12 px apart, as many columns as fit, scrolled vertically', h2 === 436 && layout.rows === 2 && layout.cols === cols && strip.classList.contains('grid') && second.x === 12 && second.y === 224
-      && strip.scrollHeight === 24 + Math.ceil(30 / cols) * 212 - 12 && stage.clientHeight === window.innerHeight - 32 - 48 - 436,
+      && strip.scrollHeight === 24 + Math.ceil(30 / cols) * 212 - 12 && stage.clientHeight === window.innerHeight - 48 - 48 - 436,
       `${h2} tall, ${layout.rows} rows of ${layout.cols}, cell ${cols} at ${second.x},${second.y}, scroll height ${strip.scrollHeight}`);
     check('the rows scroll by Rotem\'s own scroller, 4 px wide at the strip\'s right edge, not the system\'s', strip.offsetWidth - strip.clientWidth === 4,
       `${strip.offsetWidth - strip.clientWidth} px between the strip's edge and its content`);
     const h2b = editor.setStripHeight(500);
-    check('and between rows the height is the hand\'s, the rows unchanged', h2b === 500 && editor.stripLayout().rows === 2 && stage.clientHeight === window.innerHeight - 32 - 48 - 500, `${h2b} tall, ${editor.stripLayout().rows} rows`);
+    check('and between rows the height is the hand\'s, the rows unchanged', h2b === 500 && editor.stripLayout().rows === 2 && stage.clientHeight === window.innerHeight - 48 - 48 - 500, `${h2b} tall, ${editor.stripLayout().rows} rows`);
     // Rotem, 2026-09-15: a strip dragged taller covers the sidebar, and its handle stays on top.
     const stripTop = Math.round(strip.getBoundingClientRect().top);
     const underSidebar = [...document.querySelectorAll('#controls button')].filter((b) => b.getBoundingClientRect().top >= stripTop);
@@ -2679,7 +2679,7 @@ export async function runChecks(editor, invoke) {
     // The picture's size never rises into the top bar: it stops 16 px under it, and the strip covers it there (2026-09-16).
     const cappedSize = document.getElementById('image-size').getBoundingClientRect();
     const cappedHit = document.elementFromPoint(100, cappedSize.top + 8);
-    check('at the ceiling the picture\'s size stops 16 px under the top bar, and the strip covers it', Math.round(cappedSize.top) === 48 && strip.contains(cappedHit),
+    check('at the ceiling the picture\'s size stops 16 px under the top bar, and the strip covers it', Math.round(cappedSize.top) === 64 && strip.contains(cappedHit),
       `the size from ${Math.round(cappedSize.top)}, the strip from ${Math.round(strip.getBoundingClientRect().top)}, hit ${cappedHit && (cappedHit.id || cappedHit.className || cappedHit.tagName)}`);
 
     // The handle itself, with pointer events: up by 200 from the default, then a double-click.
@@ -2694,7 +2694,7 @@ export async function runChecks(editor, invoke) {
       `${editor.stripHeightOf()} tall, remembered ${kept}, cursor ${getComputedStyle(handle).cursor}`);
     handle.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     try { kept = localStorage.getItem('recon.strip-height'); } catch (_) { /* none */ }
-    check('a double-click on the edge returns the strip to its default, 137 tall: the line, 12 px, 112 px thumbnails ending at 124, the band of the scroller under them', editor.stripHeightOf() === 137 && kept === '137' && editor.stripLayout().h === 112 && stage.clientHeight === window.innerHeight - 32 - 48 - 137 && strip.clientHeight === 124 && strip.children[0].offsetTop + strip.children[0].offsetHeight === 124,
+    check('a double-click on the edge returns the strip to its default, 137 tall: the line, 12 px, 112 px thumbnails ending at 124, the band of the scroller under them', editor.stripHeightOf() === 137 && kept === '137' && editor.stripLayout().h === 112 && stage.clientHeight === window.innerHeight - 48 - 48 - 137 && strip.clientHeight === 124 && strip.children[0].offsetTop + strip.children[0].offsetHeight === 124,
       `${editor.stripHeightOf()} tall, remembered ${kept}, thumbnails ${editor.stripLayout().h} tall, the cell ends at ${strip.children[0].offsetTop + strip.children[0].offsetHeight}, the content at ${strip.clientHeight}`);
 
     // Rotem, 2026-09-15: a press anywhere on the one-row strip and a move sideways scrolls it,

@@ -106,6 +106,16 @@ reading is the wrong one: build what the picture shows, or ask before building, 
 after. Written on 2026-09-15, the second time a direction word was built literally: a
 timeline scroller, then the sidebar's buttons centred across a width they already filled.
 
+**A word that can name two things on screen is asked about, never assigned.** "The line",
+"the bar", "the button" each name several elements here, and the wrong one is built
+silently. The trap has a second face: an answer that names one element while the ask
+named another is not a cancellation of the ask. "The top bar stays the same" answered
+about a BUTTON's height means the bar keeps its look, not that the button loses the size
+just asked for; when an answer would undo the request it answers, ask which one wins
+before touching either. Written on 2026-09-17, the second time an element word was
+assigned rather than asked about: a done mark's border thinned as its tick, then a
+button's 48 px height reverted because the reply spoke of the bar.
+
 ### 2. Smallest safe change wins
 
 Prefer the smallest isolated change that solves the task. No side refactors, no
