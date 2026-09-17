@@ -115,10 +115,10 @@
   body.strip #strip-handle { display: block; }
   body.fullscreen #strip-handle { display: none; }
   .thumb, .chip-cell { position: absolute; box-sizing: border-box; }
-  .thumb { border-radius: 4px; overflow: hidden;
+  .thumb { border-radius: 13px; overflow: hidden; /* 13 px corners (Rotem, 2026-09-17, from 4) */
            border: 2px solid transparent; background: #1b1f24; cursor: pointer;
            display: grid; place-items: center; color: #6b7480; font-size: 11px; }
-  .thumb img { max-width: 100%; max-height: 100%; display: block; }
+  .thumb img { max-width: 100%; max-height: 100%; display: block; border-radius: 13px; /* the picture's own corners, 13 px (Rotem, 2026-09-17) */ }
   .thumb.current { border-color: #7aa7ff; }
   .thumb .x { position: absolute; right: 2px; top: 2px; width: 18px; height: 18px; border-radius: 9px;
               border: none; background: rgba(10,12,14,.75); color: #f2f2f2; font: 13px/18px system-ui, sans-serif;
@@ -1365,11 +1365,11 @@
   // up, the cells grow to 320 wide; past that a row of 320 enters whenever there is room
   // for one, and the strip scrolls vertically. The height is remembered by the page.
   const STRIP_MIN = 96;        // the floor
-  const STRIP_DEFAULT = 133;   // the default: the 1 px line, 8 px clear, 112 px thumbnails, the scroller's 12 px band (Rotem, 2026-09-16 for the 112 and the 8; 2026-09-17 for the band, from 128, which sat 4 px of every cell under it)
+  const STRIP_DEFAULT = 137;   // the default: the 1 px line, 12 px clear, 112 px thumbnails, the scroller's 12 px band (Rotem, 2026-09-16 for the 112; 2026-09-17 for the band, from 128, which sat 4 px of every cell under it, and for the 12, from 8)
   const STRIP_LINE = 1;        // the line along the strip's top edge, inside its height
   const STRIP_SCROLLER = 12;   // the one row's sideways scroller, a 4 px thumb with 4 px clear above and below: its band replaces the 8 px under the cells, so no cell's bottom edge sits under it
-  const STRIP_PAD = 8;
-  const STRIP_GAP = 8;
+  const STRIP_PAD = 12;        // above, left and right of the cells (Rotem, 2026-09-17, from 8)
+  const STRIP_GAP = 12;        // between the cells (Rotem, 2026-09-17, from 8)
   const CELL_MAX_W = 320;
   const CELL_MAX_H = 200;
   const CELL_RATIO = CELL_MAX_W / CELL_MAX_H;

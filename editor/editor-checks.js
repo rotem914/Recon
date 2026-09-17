@@ -2613,13 +2613,13 @@ export async function runChecks(editor, invoke) {
     await editor.refreshStrip();
     let layout = editor.stripLayout();
     const cellsOf = () => strip.querySelectorAll('.thumb').length;
-    check('thirty documents, one row of 120 by 75 cells, the band of the scroller of 12 px under them, the newest first and current', editor.stripCells().length === 30 && layout.rows === 1 && layout.w === 120 && layout.h === 75
+    check('thirty documents, one row of 114 by 71 cells, 12 px apart, the band of the scroller of 12 px under them, the newest first and current', editor.stripCells().length === 30 && layout.rows === 1 && layout.w === 114 && layout.h === 71
       && strip.children[0].classList.contains('current') && Number(strip.children[0].dataset.id) === shots[29].document_id,
       `${editor.stripCells().length} cells, ${layout.rows} row(s) of ${layout.w}x${layout.h}`);
     const rendered = cellsOf();
-    check('only the screen and a screen either side exist as elements, not the thirty', rendered > 0 && rendered < 30 && rendered >= Math.floor(strip.clientWidth / 128),
+    check('only the screen and a screen either side exist as elements, not the thirty', rendered > 0 && rendered < 30 && rendered >= Math.floor(strip.clientWidth / 126),
       `${rendered} of 30 in a strip ${strip.clientWidth} wide`);
-    check('the strip scrolls the whole row all the same', strip.scrollWidth === 16 + 30 * 128 - 8, `scroll width ${strip.scrollWidth}`);
+    check('the strip scrolls the whole row all the same', strip.scrollWidth === 24 + 30 * 126 - 12, `scroll width ${strip.scrollWidth}`);
     check('the row scrolls sideways by Rotem\'s own scroller, 12 px under the cells: a 4 px thumb with 4 px clear above and below, not the system\'s', strip.offsetHeight - strip.clientTop - strip.clientHeight === 12,
       `${strip.offsetHeight - strip.clientTop - strip.clientHeight} px between the strip's content and its bottom edge`);
     check('and the cells end above the scroller: the bottom edge of the current cell, border and all, inside the content of the strip (Rotem, 2026-09-17; 4 px of every cell sat under it before)', strip.children[0].offsetTop + strip.children[0].offsetHeight <= strip.clientHeight,
@@ -2639,14 +2639,14 @@ export async function runChecks(editor, invoke) {
     layout = editor.stripLayout();
     check('dragged past one row of 320: the strip is exactly as dragged, 300 tall, one row of 320 by 200 cells', h1 === 300 && layout.rows === 1 && layout.w === 320 && layout.h === 200 && stage.clientHeight === window.innerHeight - 32 - 48 - 300,
       `${h1} tall, ${layout.rows} row(s) of ${layout.w}x${layout.h}, stage ${stage.clientHeight}`);
-    const h1b = editor.setStripHeight(423);
-    check('one pixel short of a second row: still one row', h1b === 423 && editor.stripLayout().rows === 1, `${h1b} tall, ${editor.stripLayout().rows} row(s)`);
-    const h2 = editor.setStripHeight(424);
+    const h1b = editor.setStripHeight(435);
+    check('one pixel short of a second row: still one row', h1b === 435 && editor.stripLayout().rows === 1, `${h1b} tall, ${editor.stripLayout().rows} row(s)`);
+    const h2 = editor.setStripHeight(436);
     layout = editor.stripLayout();
-    const cols = Math.floor((strip.clientWidth - 16 + 8) / 328);
+    const cols = Math.floor((strip.clientWidth - 24 + 12) / 332);
     const second = editor.cellRect(cols);
-    check('at 424 the second row enters: two rows of 320, as many columns as fit, scrolled vertically', h2 === 424 && layout.rows === 2 && layout.cols === cols && strip.classList.contains('grid') && second.x === 8 && second.y === 216
-      && strip.scrollHeight === 16 + Math.ceil(30 / cols) * 208 - 8 && stage.clientHeight === window.innerHeight - 32 - 48 - 424,
+    check('at 436 the second row enters: two rows of 320, 12 px apart, as many columns as fit, scrolled vertically', h2 === 436 && layout.rows === 2 && layout.cols === cols && strip.classList.contains('grid') && second.x === 12 && second.y === 224
+      && strip.scrollHeight === 24 + Math.ceil(30 / cols) * 212 - 12 && stage.clientHeight === window.innerHeight - 32 - 48 - 436,
       `${h2} tall, ${layout.rows} rows of ${layout.cols}, cell ${cols} at ${second.x},${second.y}, scroll height ${strip.scrollHeight}`);
     check('the rows scroll by Rotem\'s own scroller, 4 px wide at the strip\'s right edge, not the system\'s', strip.offsetWidth - strip.clientWidth === 4,
       `${strip.offsetWidth - strip.clientWidth} px between the strip's edge and its content`);
@@ -2679,7 +2679,7 @@ export async function runChecks(editor, invoke) {
       `${editor.stripHeightOf()} tall, remembered ${kept}, cursor ${getComputedStyle(handle).cursor}`);
     handle.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     try { kept = localStorage.getItem('recon.strip-height'); } catch (_) { /* none */ }
-    check('a double-click on the edge returns the strip to its default, 133 tall: the line, 8 px, 112 px thumbnails ending at 120, the band of the scroller under them', editor.stripHeightOf() === 133 && kept === '133' && editor.stripLayout().h === 112 && stage.clientHeight === window.innerHeight - 32 - 48 - 133 && strip.clientHeight === 120 && strip.children[0].offsetTop + strip.children[0].offsetHeight === 120,
+    check('a double-click on the edge returns the strip to its default, 137 tall: the line, 12 px, 112 px thumbnails ending at 124, the band of the scroller under them', editor.stripHeightOf() === 137 && kept === '137' && editor.stripLayout().h === 112 && stage.clientHeight === window.innerHeight - 32 - 48 - 137 && strip.clientHeight === 124 && strip.children[0].offsetTop + strip.children[0].offsetHeight === 124,
       `${editor.stripHeightOf()} tall, remembered ${kept}, thumbnails ${editor.stripLayout().h} tall, the cell ends at ${strip.children[0].offsetTop + strip.children[0].offsetHeight}, the content at ${strip.clientHeight}`);
 
     // Rotem, 2026-09-15: a press anywhere on the one-row strip and a move sideways scrolls it,
@@ -2719,7 +2719,7 @@ export async function runChecks(editor, invoke) {
     const afterDown = strip.scrollLeft;
     const upTaken = wheelOn(-50);
     const afterUp = strip.scrollLeft;
-    editor.setStripHeight(424);
+    editor.setStripHeight(436); // two rows enter here since the 12 px gap (2026-09-17)
     const rowsWrapped = editor.stripLayout().rows;
     const rowsTaken = wheelOn(120);
     editor.setStripHeight(96);

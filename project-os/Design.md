@@ -178,4 +178,6 @@ Stated by Rotem on 2026-09-16.
 
 | Part | Value |
 |---|---|
-| Thumbnail height by default | 112 px, 8 px clear above it below the timeline's 1 px top line, and the scroller's 12 px band under it (4 px clear, the 4 px thumb, 4 px clear), so the timeline is 133 px tall until it is dragged (Rotem, 2026-09-17, option 1 of three: from 128 with 8 px below, which sat 4 px of every thumbnail under the scroller) |
+| Thumbnail height by default | 112 px, 12 px clear above it below the timeline's 1 px top line, and the scroller's 12 px band under it (4 px clear, the 4 px thumb, 4 px clear), so the timeline is 137 px tall until it is dragged (Rotem, 2026-09-17: the band, option 1 of three, from 128 with 8 px below, which sat 4 px of every thumbnail under the scroller; the 12 above, from 8, later that day) |
+| Air around the thumbnails | 12 px left of the first, 12 px right of the last, 12 px between them (Rotem, 2026-09-17, from 8) |
+| Thumbnail corners | 13 px radius, on the picture and on its cell (Rotem, 2026-09-17, from 4) |
