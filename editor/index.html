@@ -46,13 +46,13 @@
                               U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
   /* The picture's size in pixels (Rotem, 2026-09-16): a container across the whole window above
      the timeline, 16 px clear above and below it, on the app's own background, while a picture is
-     shown, its text centred in the window in Google Sans at 14 px, medium. The stage and the sidebar
+     shown, its text centred in the window in Google Sans at 16 px, medium (Rotem, 2026-09-17, from 14). The stage and the sidebar
      end above it, and fullscreen puts it away. It never rises into the top bar: past that, a taller
      timeline covers it, as it covers the sidebar. Still provisional: the colour and the 16 px line. */
   body.sized:not(.fullscreen) { --size-band: 48px; } /* 16 above, the 16 px line, 16 below */
   #image-size { position: absolute; left: 0; right: 0; bottom: 0; height: 16px; margin: 16px 0; padding: 0 12px;
                 display: none; z-index: 4; background: var(--paper); color: #cfd4da; white-space: nowrap; text-align: center;
-                font: 500 14px/16px "Google Sans", ui-sans-serif, "Segoe UI", system-ui, sans-serif; }
+                font: 500 16px/16px "Google Sans", ui-sans-serif, "Segoe UI", system-ui, sans-serif; }
   body.sized #image-size { display: block; }
   /* Its margin box ends 48 px above where it starts, so it stops at the top bar's 32 px. */
   body.strip #image-size { bottom: min(var(--strip-h, 96px), calc(100vh - 80px)); }

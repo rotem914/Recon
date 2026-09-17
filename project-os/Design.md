@@ -95,7 +95,7 @@ Stated by Rotem on 2026-09-16.
 | Margin | 16 px above and 16 px below |
 | Background | the app background |
 | Content | the picture's size in pixels, written as 1200x1500 |
-| Text | Google Sans, 14 px, medium (500), centred in the window |
+| Text | Google Sans, 16 px, medium (500), centred in the window (Rotem, 2026-09-17, from 14 px) |
 
 The text's colour and line are not stated yet. Provisional in the page until they are: the
 top bar title's #cfd4da, on a 16 px line.
