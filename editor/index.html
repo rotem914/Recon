@@ -14,21 +14,21 @@
 
   /* The top bar (Rotem's call, 2026-09-14): Recon draws its own in place of Windows'
      frame. The title on the left, the controls in the middle, and minimize, maximize and
-     close on the right at 48 by 48 (Rotem, 2026-09-17), which sets the bar's own height. The bar itself is the
+     close on the right at 48 wide by 40 tall (Rotem, 2026-09-18), which sets the bar's own height. The bar itself is the
      drag region; fullscreen puts it away. Provisional look, Rotem's to restyle. */
-  #bar { position: absolute; left: 0; right: 0; top: 0; height: 48px; display: flex;
+  #bar { position: absolute; left: 0; right: 0; top: 0; height: 40px; display: flex;
          align-items: center; user-select: none; }
   #title { flex: 1 1 auto; min-width: 0; padding: 0 12px; font-size: 12px; color: #cfd4da;
            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #winbtns { display: flex; flex: 0 0 auto; height: 100%; }
-  #winbtns button { width: 48px; height: 48px; border: none; padding: 0; background: transparent;
+  #winbtns button { width: 48px; height: 40px; border: none; padding: 0; background: transparent;
                     color: #cfd4da; display: grid; place-items: center; cursor: default; }
   #winbtns button:hover { background: rgba(255,255,255,.09); color: #f2f2f2; }
   #winbtns #win-close:hover { background: #c42b1c; color: #fff; }
   #winbtns svg { width: 10px; height: 10px; stroke: currentColor; fill: none; stroke-width: 1; }
   body.fullscreen #bar { display: none; }
 
-  #stage { position: absolute; inset: 48px 0 var(--size-band, 0px) 64px; overflow: hidden; cursor: crosshair; }
+  #stage { position: absolute; inset: 40px 0 var(--size-band, 0px) 64px; overflow: hidden; cursor: crosshair; }
   body.fullscreen #stage { top: 0; left: 0; }
   /* The timeline (S2.1): every document along the bottom, newest first, the current one
      marked. The stage ends above it while it is shown; fullscreen puts it away.
@@ -54,8 +54,8 @@
                 display: none; z-index: 4; background: var(--paper); color: #cfd4da; white-space: nowrap; text-align: center;
                 font: 500 16px/16px "Google Sans", ui-sans-serif, "Segoe UI", system-ui, sans-serif; }
   body.sized #image-size { display: block; }
-  /* Its margin box ends 48 px above where it starts, so it stops at the top bar's 48 px. */
-  body.strip #image-size { bottom: min(var(--strip-h, 96px), calc(100vh - 96px)); }
+  /* Its margin box ends 48 px above where it starts, so it stops at the top bar's 40 px. */
+  body.strip #image-size { bottom: min(var(--strip-h, 96px), calc(100vh - 88px)); }
   body.fullscreen #image-size { display: none; }
   /* The timeline's tabs (Rotem, 2026-09-16): at the left of the picture's size band a plus, an
      icon button as the sidebar's (32 by 32, a 20 by 20 icon with round ends, the hover fill by
@@ -66,7 +66,7 @@
   #tabbar { position: absolute; left: 8px; bottom: 8px; height: 32px; display: none; z-index: 4;
             max-width: calc(50% - 80px); overflow: hidden; align-items: center; gap: 8px; }
   body.sized #tabbar { display: flex; }
-  body.strip #tabbar { bottom: calc(min(var(--strip-h, 96px), calc(100vh - 96px)) + 8px); }
+  body.strip #tabbar { bottom: calc(min(var(--strip-h, 96px), calc(100vh - 88px)) + 8px); }
   body.fullscreen #tabbar { display: none; }
   #tab-add { flex: none; width: 32px; height: 32px; padding: 0; border: none; border-radius: 0;
              background: transparent; color: #f2f2f2; cursor: pointer; display: grid; place-items: center;
@@ -223,12 +223,12 @@
      name opens as a tooltip on its right under the pointer (Rotem, 2026-09-15). Above the
      stage, so a tooltip is not painted under the picture. */
   /* A height, not a bottom: the sidebar sits inside the top bar, so a bottom would be measured
-     from the bar's own 48 px. Safe centring falls back to the top when the buttons do not fit. */
-  #controls { position: absolute; left: 0; top: 48px; height: calc(100vh - 48px - var(--size-band, 0px)); width: 64px; padding: 8px;
+     from the bar's own 40 px. Safe centring falls back to the top when the buttons do not fit. */
+  #controls { position: absolute; left: 0; top: 40px; height: calc(100vh - 40px - var(--size-band, 0px)); width: 64px; padding: 8px;
               display: flex; flex-direction: column; align-items: center; justify-content: safe center;
               gap: 8px; z-index: 3; }
   #buttons { flex: none; display: flex; flex-direction: column; align-items: center; gap: 8px; }
-  body.strip #controls { height: calc(100vh - 48px - var(--strip-h, 96px) - var(--size-band, 0px)); }
+  body.strip #controls { height: calc(100vh - 40px - var(--strip-h, 96px) - var(--size-band, 0px)); }
   body.fullscreen #controls { display: none; }
   #controls button { position: relative; flex: none; width: 48px; height: 48px; padding: 0; border: none; border-radius: 13px; /* Rotem, 2026-09-17 */
                      background: transparent; color: #f2f2f2; cursor: pointer;
