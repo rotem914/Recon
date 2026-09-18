@@ -516,6 +516,11 @@ contract, "the last thing done is what Ctrl+Z undoes", and a feature built witho
 undo is unfinished, not shipped small. Stated by Rotem on 2026-09-16, when the tabs
 landed without theirs.
 
+**Settings stays outside undo.** A change made in the Settings modal, a shortcut picked or
+cleared, is not an act in that list: Ctrl+Z in the editor never takes it back, as in most
+applications. It is changed back where it was changed. Rotem's call on 2026-09-18, when
+Settings landed.
+
 At pickup, say what the new action's undo is, and prove it in the checks with the
 rest. The mechanism is one list of numbered acts in `editor/index.html` (`recordAct`),
 so joining costs an undo and a redo function, nothing more.

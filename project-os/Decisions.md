@@ -115,6 +115,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-18 · The magnifier is the frozen slice stretched pixel for pixel, up from the first pointer, the size under it: the picture's reading, not the words'.
 - 2026-09-18 · The lit window glides to the next one edge by edge on the frame's own clock, inside one display, and jumps when Windows does not animate.
 - 2026-09-18 · Settings changes a global shortcut by trying the new one first; the shortcut that opens Recon is none until picked; the two are let go while one is being pressed.
+- 2026-09-18 · A change made in Settings stays outside Ctrl+Z, Rotem's call.
 
 ---
 
@@ -1303,3 +1304,23 @@ therefore proven by hand on the release, not by the checks. The lock on the two 
 is never held across a registration, since the plugin finishes one on the main thread,
 where a fired shortcut asks for the same lock. Open: whether a settings change joins
 Ctrl+Z (`CLAUDE.md` rule 23); it does not yet, asked of Rotem on 2026-09-18.
+
+## 2026-09-18 · A change made in Settings stays outside Ctrl+Z
+
+### Context
+`CLAUDE.md` rule 23 puts every action that changes something a person sees or keeps into
+undo and redo. Settings landed the same day with two shortcuts a person picks and keeps, so
+the rule as written reached it, and the entry above left the question open.
+
+### Options
+1. Ctrl+Z in the editor also takes back a shortcut change.
+2. Settings stays outside undo, as in most applications.
+
+### Decision
+Option 2, Rotem's, on 2026-09-18.
+
+### Consequences
+Rule 23 carries the exception in its own text. The undo list stays a list of acts on
+pictures, notes, tabs and the timeline; a Ctrl+Z pressed after closing Settings undoes the
+last of those, never a shortcut. A later setting follows this entry unless Rotem says
+otherwise for it. This closes the open question in the entry above.
