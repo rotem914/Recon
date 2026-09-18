@@ -414,7 +414,7 @@ is a contract broken on day one.
 | `Enter` while editing a note | Leave text editing, keep the text, as a click outside the bubble does | 1, built 2026-09-17 at Rotem's word; it inserted a newline from S0.4 until then |
 | `Ctrl +` (or `Ctrl =`) in the editor | One text size up, on the note being edited or the selected one, and it becomes the default for the next note | 0 |
 | `Ctrl -` in the editor | One text size down, the same way | 0 |
-| `Esc` during capture | Cancel the capture | 1 |
+| `Esc` during capture | Cancel the capture | 1, built at S0.2: while a window is lit and in the middle of a drag alike, nothing captured; the self test's section D presses it mid-drag. Read back on 2026-09-18, when Rotem asked for it |
 | `Esc` during text editing | Leave text editing, keep the text | 1, built |
 | `Esc` with an annotation selected | Clear the selection | 1, built |
 | `Esc` in fullscreen | Leave fullscreen | 1, built at S1.3 |
