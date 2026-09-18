@@ -111,11 +111,13 @@ Stated by Rotem on 2026-09-16 for the timeline's tabs.
 | Tab text | 14 px |
 | Tab corners | 10 px radius |
 | Tab name | a click on the selected tab's name edits it in place; Enter keeps it |
-| Tab delete | the × on a tab after Main: the first press turns it into a ✓, the second deletes |
+| Tab delete | a right press on a tab after Main opens a dropdown with Delete, which deletes it; no × on the tab (Rotem, 2026-09-18, from a × pressed twice) |
+| Tab spacing | two new tabs as far apart as Main and the first new tab (Rotem, 2026-09-18) |
 
 The rest of the tabs' look is not stated yet. Provisional in the page until it is: 32 px tall,
 the top bar title's #cfd4da, 8 px between, the icon button hover colour as the selected tab's
-fill and as the hover; the × and ✓ 16 px icons, shown on hover and on the selected tab; the
+fill and as the hover; the dropdown in the same fill on the tabs' 10 px corners, 14 px text,
+Delete red under the pointer, opening above the bar at the pointer; the
 bar stops at the middle of the window less 80 px, short of the size text.
 
 ### Done mark
