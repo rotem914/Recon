@@ -44,13 +44,12 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, VK
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, EnumChildWindows,
     EnumWindows, GetClassNameW, GetCursorPos, GetForegroundWindow, GetMessageW, GetSystemMetrics,
-    GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindow,
-    IsWindowVisible, LoadCursorW, PostMessageW, PostQuitMessage, RegisterClassExW,
-    SetForegroundWindow, SetTimer, ShowWindow, SystemParametersInfoW, TranslateMessage, CS_HREDRAW,
-    CS_VREDRAW, GWL_EXSTYLE, IDC_CROSS, MSG, SM_CXDRAG, SM_CYDRAG, SPI_GETCLIENTAREAANIMATION,
-    SW_SHOW, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, WM_APP, WM_DESTROY, WM_ERASEBKGND, WM_KEYDOWN,
-    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_PAINT, WM_TIMER, WNDCLASSEXW, WS_EX_TOOLWINDOW,
-    WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+    GetWindowLongPtrW, GetWindowRect, IsIconic, IsWindow, IsWindowVisible, LoadCursorW,
+    PostMessageW, PostQuitMessage, RegisterClassExW, SetForegroundWindow, SetTimer, ShowWindow,
+    SystemParametersInfoW, TranslateMessage, CS_HREDRAW, CS_VREDRAW, GWL_EXSTYLE, IDC_CROSS, MSG,
+    SM_CXDRAG, SM_CYDRAG, SPI_GETCLIENTAREAANIMATION, SW_SHOW, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
+    WM_APP, WM_DESTROY, WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE,
+    WM_PAINT, WM_TIMER, WNDCLASSEXW, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
 };
 
 use crate::capture::coords::DesktopRect;
@@ -1368,7 +1367,7 @@ fn class_of(hwnd: HWND) -> String {
 
 /// Every window a click could land on, front to back: visible, not minimised, not cloaked
 /// (kept by Windows but not drawn: another virtual desktop, a suspended app), not
-/// click-through, and never Recon's own. The bounds are the visible frame, without the
+/// click-through, and never the overlay's own. The bounds are the visible frame, without the
 /// invisible resize border a Windows 10 or 11 window carries around its edge, so a pick
 /// is the window the user sees and not a strip of its neighbour.
 fn top_level_windows() -> Vec<WindowBounds> {
@@ -1389,9 +1388,9 @@ unsafe extern "system" fn collect_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
         if !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() {
             return keep;
         }
-        let mut pid = 0u32;
-        GetWindowThreadProcessId(hwnd, Some(&mut pid));
-        if pid == std::process::id() {
+        // Recon's own editor is a window like any other and can be picked (Rotem,
+        // 2026-09-19); only the overlay itself never can.
+        if class_of(hwnd) == "ReconOverlay" {
             return keep;
         }
         let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;

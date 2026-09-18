@@ -4,6 +4,69 @@ NOT read by default - consult only when digging into an old entry.
 Moved here verbatim by project-os/rotate.ps1. Movement only: nothing is rewritten, compressed, or deleted.
 
 ## Archived decisions
+## 2026-09-15 · Under a pan drag lies a small copy of the whole picture, taken whenever the whole picture is painted
+
+### Context
+
+With the drag sliding what is already painted, Rotem found the edges it uncovers empty for
+a moment, filling in as each region came back from the host. A region holds only what was
+on screen, and on his wide display each one is large, so the empty strip was plain to see.
+
+### Options
+
+1. Ask for a sharp margin around the view, so a slide uncovers pixels already held.
+2. Keep a small copy of the whole picture under the sharp one, shown while a drag lasts, so
+   an uncovered edge shows the picture softly at once and sharpens when its region lands.
+3. Paint only the strips a drag uncovers, as small regions of their own, into a larger
+   canvas.
+
+### Decision
+
+Option 2, mine, on Rotem's report. Option 1 multiplies every region on a wide display and
+slows each one, and a fast drag still outruns it. Option 3 is a tile system in all but
+name. The copy is taken from the canvas itself whenever the whole picture is painted,
+which every picture's first view is, and kept at two megapixels at most, so it costs the
+host nothing and the page a few megabytes.
+
+### Consequences
+
+A drag never shows an empty edge; for a moment the edge is softer, then sharp. The copy
+shows only while a pan drag lasts and hides when an ordinary paint lands, so the view at
+rest and every screen comparison are untouched. Cost: a picture shown already zoomed in,
+such as another frame of a file stepped at a high zoom, has no fresh copy until its whole
+picture is next painted, and its drag shows the old empty edge until then. Revisit if that
+case is met in use, or if the softness itself is noticed.
+
+## 2026-09-15 · The design system lives in `project-os/Design.md`, read before a visible change
+
+### Context
+
+Rotem asked for the hover fade of the new sidebar to be saved in a design system file,
+`Design.md`, as the token A1. `CLAUDE.md` rule 13 sends a free-standing document with no
+home to `notes/`; `project-os/` holds the docs a session reads at pickup.
+
+### Options
+
+1. `notes/Design.md`, by rule 13's letter: a free-standing document.
+2. `project-os/Design.md`, beside the calibration files, with a line in the pickup reading
+   list that loads it for any visible change.
+3. Tokens as comments in `editor/index.html` only.
+
+### Decision
+
+Option 2, mine, Rotem's to veto. A token nobody reads is a value the next session guesses
+from a neighbour, which is what the file exists to stop; `notes/` is read once and never
+again. Option 3 has no place for a value the page does not use yet.
+
+### Consequences
+
+Every value Rotem states lands in `project-os/Design.md` in the change that first uses it,
+and a visible change looks values up there first. Cost: one more file on the pickup list,
+loaded only for visible work. Revisit if the file grows past what a session can read at
+pickup, when it would split into tokens and components.
+
+---
+
 ## 2026-09-14 · The store: one folder per document in local application data, the image once, the record whole, the number its creation time
 
 ### Context

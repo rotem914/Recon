@@ -12,7 +12,7 @@ is looked up here, not guessed from a neighbour.
 
 | Token | Name | Duration | Easing | Where it is used |
 |---|---|---|---|---|
-| A1 | Fade in | 144 ms | ease-out | The hover fill of an icon button (`editor/index.html`, `#controls button`); the tick of a done mark as it is pressed (Rotem, 2026-09-16). |
+| A1 | Fade in | 144 ms | ease-out | The hover fill of an icon button (`editor/index.html`, `#controls button`); the tick of a done mark as it is pressed (Rotem, 2026-09-16); the icon's line turning the icon line hover colour (Rotem, 2026-09-19). |
 
 A motion respects the reduced-motion preference: gated at its own surface, the final
 state reachable with no animation at all (`project-os/QA.md` §7).
@@ -21,9 +21,10 @@ state reachable with no animation at all (`project-os/QA.md` §7).
 
 | Token | Value | Where it is used |
 |---|---|---|
-| App background | `#0D0E12` | The page ground behind the picture and the panels (Rotem, 2026-09-17, from #111217, which was his on 2026-09-14). |
+| App background | `#0C0C0E` | The page ground behind the picture and the panels (Rotem, 2026-09-17, from #0D0E12 earlier that day; #111217 was his on 2026-09-14). |
 | Icon button hover | `#21222C` | The fill of an icon button's square under the pointer (Rotem, 2026-09-15). |
 | Icon line | `#C3C6CA` | The line of an icon button's icon in the controls sidebar (Rotem, 2026-09-16). |
+| Icon line hover | `#E7E8E9` | The line of an icon button's icon under the pointer, fading in by A1 (Rotem, 2026-09-19, from white). |
 | Scroller | `#21222C` | The thumb of the timeline's scroller, sideways in one row and vertical once its rows wrap (Rotem, 2026-09-15). |
 
 ## Fonts
@@ -43,7 +44,7 @@ Stated by Rotem on 2026-09-15 for the controls sidebar; the sizes restated on 20
 | Container | 48 by 48, 13 px corners, no fill of its own (Rotem, 2026-09-16, from 32 by 32; the corners 2026-09-17, from square) |
 | Icon | 32 by 32, centred, a 2 px stroke in the icon line colour (Rotem, 2026-09-16, from 20 by 20 with a 1.5 px stroke in the button's text colour) |
 | Between buttons | 8 px |
-| Hover | the container fills with the icon button hover colour, fading in by A1 |
+| Hover | the container fills with the icon button hover colour, and the icon's line turns the icon line hover colour, both fading in by A1 (the line, Rotem, 2026-09-19) |
 | Name | every icon button carries its name and its key as a title, so it has a name without its text |
 
 Used by: the controls sidebar down the left edge of the editor, the eight tools. Highlight, Copy
