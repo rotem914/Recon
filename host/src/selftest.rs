@@ -557,7 +557,7 @@ fn magnifier_seen(
             None => println!("  the magnifier was not written: size mismatch"),
         }
     }
-    // The pointer's lines (Rotem, 2026-09-18): the frame's blue at 72% over the frozen
+    // The pointer's lines (Rotem, 2026-09-18): the frame's blue at 48% over the frozen
     // pixel, dimmed or lit, on the pointer's row and on its column. Against the frozen
     // pixel alone, which is what a screen with no line shows; 3 a channel for the two
     // blends' rounding.
@@ -575,13 +575,13 @@ fn magnifier_seen(
         let dimmed = lit.map(|c| (c as u32 * (255 - 140) / 255) as u8);
         let lined = |base: [u8; 3]| {
             let blue = [0x00u32, 0xB9, 0xF7];
-            [0, 1, 2].map(|c| ((blue[c] * 184 + base[c] as u32 * (255 - 184)) / 255) as u8)
+            [0, 1, 2].map(|c| ((blue[c] * 122 + base[c] as u32 * (255 - 122)) / 255) as u8)
         };
         if near(lined(lit), lit) || near(lined(dimmed), dimmed) {
             println!("  while {name}, the line {which} cannot be told from the pixel under it: inconclusive");
         } else if !near(shown, lined(lit)) && !near(shown, lined(dimmed)) {
             return Err(format!(
-                "while {name}, the pixel on the pointer's line {which} is {shown:?}, not the blue at 72% over {lit:?} lit {:?} or dimmed {:?}",
+                "while {name}, the pixel on the pointer's line {which} is {shown:?}, not the blue at 48% over {lit:?} lit {:?} or dimmed {:?}",
                 lined(lit),
                 lined(dimmed)
             ));

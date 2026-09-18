@@ -121,9 +121,13 @@ const MAG_RING_RGB: (u8, u8, u8) = (0xF2, 0xF2, 0xF2);
 
 /// The pointer's lines (Rotem, 2026-09-18): one across and one down through the pointer,
 /// 1 px each, the whole width and height of the display it is on whatever is selected, in
-/// the blue of the lines inside the magnifier's circle, at 72%.
+/// the blue of the lines inside the magnifier's circle, at 48% (his, the same day, after
+/// 72%). They stop 12 px short of the pointer on every side, under the system's cross:
+/// it is drawn as the inverse of what is under it, which over the blue made it red where
+/// Rotem wants it white. The 12 px is the cross's arm at 100%, by eye, provisional.
 const CROSS_RGB: (u8, u8, u8) = ANTS_DASH_RGB;
-const CROSS_ALPHA: u8 = 184;
+const CROSS_ALPHA: u8 = 122;
+const CROSS_GAP_PX: i32 = 12;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
@@ -937,20 +941,21 @@ impl State {
     }
 
     /// The pointer's lines, and the window they are on, in its client coordinates: the row
-    /// through the pointer, then the column above and below that row, so the crossing is
-    /// blended once. A drag that has moved has them at its clamped point, as the magnifier
+    /// left and right of the pointer, then the column above and below it, each stopping
+    /// the gap short of it. A drag that has moved has them at its clamped point, as the magnifier
     /// has; otherwise they are at the pointer as last seen.
-    fn cross(&self) -> Option<(isize, [RECT; 3])> {
+    fn cross(&self) -> Option<(isize, [RECT; 4])> {
         let (surface, desktop) = match self.drag.as_ref() {
             Some(drag) if drag.moved => (drag.hwnd, drag.current),
             _ => self.pointer?,
         };
-        let display = self
+        let monitor = &self
             .surfaces
             .iter()
             .find(|s| s.hwnd.0 as isize == surface)?
-            .monitor
-            .rect;
+            .monitor;
+        let display = monitor.rect;
+        let gap = scaled(CROSS_GAP_PX, monitor.scale_percent);
         let (x, y) = (desktop.0 - display.x, desktop.1 - display.y);
         let (width, height) = (display.width as i32, display.height as i32);
         let strip = |left, top, right, bottom| RECT {
@@ -962,9 +967,10 @@ impl State {
         Some((
             surface,
             [
-                strip(0, y, width, y + 1),
-                strip(x, 0, x + 1, y),
-                strip(x, y + 1, x + 1, height),
+                strip(0, y, x - gap, y + 1),
+                strip(x + gap + 1, y, width, y + 1),
+                strip(x, 0, x + 1, y - gap),
+                strip(x, y + gap + 1, x + 1, height),
             ],
         ))
     }
