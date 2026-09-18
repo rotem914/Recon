@@ -2009,7 +2009,7 @@ export async function runChecks(editor, invoke) {
 
   // ---------------------------------------------------------------- 28. S2.3 and S2.4: the controls, and the storage line
   say('');
-  say('S2.3 and S2.4: Copy and Save As are buttons beside the mode as well as keys, and the HUD says what the store holds');
+  say('S2.3 and S2.4: the sidebar holds the tools alone, Copy and Save As are keys, and the HUD says what the store holds');
   {
     const hud = document.getElementById('hud');
     const controls = document.getElementById('controls');
@@ -2019,13 +2019,13 @@ export async function runChecks(editor, invoke) {
     const stage = document.getElementById('stage');
     const cbox = controls.getBoundingClientRect();
     const stageLeft = Math.round(stage.getBoundingClientRect().left);
-    check('the controls are a sidebar down the left edge, below the top bar, and the stage starts at its right edge', !controls.hidden && copyButton && saveButton
+    check('the controls are a sidebar down the left edge, below the top bar, and the stage starts at its right edge, with no Copy or Save As button in it (Rotem, 2026-09-18)', !controls.hidden && !copyButton && !saveButton
       && cbox.left === 0 && Math.round(cbox.top) === 64 && Math.round(cbox.width) === 64 && stageLeft === 64,
       `sidebar ${Math.round(cbox.left)}-${Math.round(cbox.right)} from ${Math.round(cbox.top)}, the stage from ${stageLeft}`);
     const buttons = [...controls.querySelectorAll('button')];
     const boxes = buttons.map((b) => b.getBoundingClientRect());
     const iconWidth = (b) => Math.max(...[...b.querySelectorAll('svg')].map((s) => Math.round(s.getBoundingClientRect().width)));
-    check('ten icon buttons, 48 by 48 with a 32 by 32 icon drawn with a 2 px #C3C6CA line, 8 px apart, on 13 px corners, named, with no fill of their own', buttons.length === 10
+    check('seven icon buttons, 48 by 48 with a 32 by 32 icon drawn with a 2 px #C3C6CA line, 8 px apart, on 13 px corners, named, with no fill of their own', buttons.length === 7
       && buttons.every((b) => getComputedStyle(b).borderRadius === '13px')
       && boxes.every((b) => Math.round(b.width) === 48 && Math.round(b.height) === 48)
       && boxes.every((b, i) => i === 0 || Math.round(b.top - boxes[i - 1].bottom) === 8)
@@ -2036,11 +2036,11 @@ export async function runChecks(editor, invoke) {
     check('a hover fills the square with #21222C, fading in by A1: 144 ms, ease-out', !!hoverRule && hoverRule.style.backgroundColor === 'rgb(33, 34, 44)'
       && buttons.every((b) => getComputedStyle(b).transitionProperty === 'background-color' && getComputedStyle(b).transitionDuration === '0.144s' && getComputedStyle(b).transitionTimingFunction === 'ease-out'),
       `${hoverRule && hoverRule.style.backgroundColor}, ${getComputedStyle(buttons[0]).transition}`);
-    // One container around the ten, centred across the sidebar; a tooltip on each button's right (Rotem, 2026-09-15).
+    // One container around the seven, centred across the sidebar; a tooltip on each button's right (Rotem, 2026-09-15).
     const group = document.getElementById('buttons');
     const gbox = group.getBoundingClientRect();
     const stageBottom = Math.round(stage.getBoundingClientRect().bottom);
-    check('one container holds all ten buttons, centred in the sidebar\'s height and across it, the sidebar running from the top bar to the timeline', !!group && group.parentElement === controls && buttons.every((b) => group.contains(b))
+    check('one container holds all seven buttons, centred in the sidebar\'s height and across it, the sidebar running from the top bar to the timeline', !!group && group.parentElement === controls && buttons.every((b) => group.contains(b))
       && Math.abs((gbox.left + gbox.right) / 2 - (cbox.left + cbox.right) / 2) < 0.5 && Math.round(gbox.width) === 48
       && Math.round(cbox.bottom) === stageBottom && Math.abs((gbox.top + gbox.bottom) / 2 - (cbox.top + cbox.bottom) / 2) < 0.5,
       `container ${Math.round(gbox.left)}-${Math.round(gbox.right)} by ${Math.round(gbox.top)}-${Math.round(gbox.bottom)}, centred at ${(gbox.left + gbox.right) / 2},${(gbox.top + gbox.bottom) / 2}; the sidebar ${Math.round(cbox.top)}-${Math.round(cbox.bottom)}, centred at ${(cbox.left + cbox.right) / 2},${(cbox.top + cbox.bottom) / 2}; the stage ends at ${stageBottom}`);
@@ -2056,10 +2056,10 @@ export async function runChecks(editor, invoke) {
     c.text = 'copied by the button';
     editor.layoutScene();
     editor.record();
-    copyButton.click();
+    editor.copyComposed().catch(() => {});
     for (let i = 0; i < 200 && !hud.textContent.includes(`copied ${model.image.width}x${model.image.height}`); i += 1) await sleep(50);
     const back = await invoke('editor_clipboard_readback');
-    check('the Copy button puts the composed image on the clipboard', back.png && back.width === model.image.width && back.height === model.image.height && document.activeElement !== copyButton,
+    check('a copy puts the composed image on the clipboard', back.png && back.width === model.image.width && back.height === model.image.height,
       `${back.width}x${back.height}`);
 
     const storage = await invoke('editor_storage');
@@ -2067,10 +2067,10 @@ export async function runChecks(editor, invoke) {
     check('the HUD says how many documents the store holds and how much disk', storage.documents === docs.length && storage.bytes > 0 && hud.textContent.includes(`${storage.documents} documents, ${(storage.bytes / (1024 * 1024)).toFixed(1)} MB on disk`),
       `${storage.documents} documents, ${storage.bytes} bytes`);
 
-    saveButton.click();
+    editor.saveAs().catch(() => {});
     await sleep(1500);
     let outcome = await invoke('editor_save_as_outcome');
-    check('the Save As button opens Save As', outcome.state === 'open' && document.activeElement !== saveButton, outcome.state);
+    check('Save As opens', outcome.state === 'open', outcome.state);
     const sent = await invoke('editor_press_escape');
     for (let i = 0; i < 40 && sent && outcome.state === 'open'; i += 1) {
       await sleep(100);
@@ -2443,9 +2443,9 @@ export async function runChecks(editor, invoke) {
     editor.setTool(null);
   }
 
-  // ---------------------------------------------------------------- 33. S3.2: rectangle and highlight
+  // ---------------------------------------------------------------- 33. S3.2: the rectangle; the highlight is gone (Rotem, 2026-09-18)
   say('');
-  say('S3.2: R and H pick the rectangle and the highlight; a drag either way makes the rectangle it crossed; both select, move, undo and export like the arrow');
+  say('S3.2: R picks the rectangle; a drag either way makes the rectangle it crossed; it selects, moves, undoes and exports like the arrow; the highlight is gone, its button, its key and any drawn before');
   {
     const stage = editor.stage;
     await invoke('editor_store_reset');
@@ -2471,16 +2471,17 @@ export async function runChecks(editor, invoke) {
     check('a drag up and to the left still makes the rectangle it crossed', !!rect && rect.kind === 'rect' && r.x === 60 && r.y === 40 && r.w === 160 && r.h === 160, JSON.stringify(r));
     check('it is an outline in the scene', !!shapeEl(rect) && shapeEl(rect).querySelector('rect').getAttribute('fill') === 'none');
 
-    press({ key: 'h', code: 'KeyH' });
-    check('H picks the highlight', model.tool === 'highlight');
-    pointer('pointerdown', stage, 250, 100);
-    pointer('pointermove', stage, 380, 140);
-    pointer('pointerup', stage, 380, 140);
-    const high = model.shapes[1];
-    check('a drag makes a highlight over what it crossed, a translucent fill', !!high && high.kind === 'highlight' && editor.rectOfShape(high).w === 130 && shapeEl(high).querySelector('rect').getAttribute('fill').startsWith('rgba(255,235,59'), JSON.stringify(high));
-
+    const toolBefore = model.tool;
+    const took = press({ key: 'h', code: 'KeyH' });
+    check('the highlight is gone: no button for it in the sidebar, and H picks nothing', !document.querySelector('#tools [data-tool="highlight"]') && model.tool === toolBefore && !took, `${model.tool}`);
+    // One drawn before the tool went: it shows nowhere, on screen or in a copy.
+    const old = { id: 's-old', kind: 'highlight', a: { x: 250, y: 100 }, b: { x: 380, y: 140 } };
+    model.shapes.push(old);
+    editor.layoutScene();
     const layer = await editor.exportLayer();
-    check('the export carries both rectangles', (layer.markup.match(/<rect /g) || []).length === 2);
+    check('a highlight drawn before shows nowhere: not in the scene, not in the export', !shapeEl(old) && (layer.markup.match(/<rect /g) || []).length === 1, `${(layer.markup.match(/<rect /g) || []).length} rect in the export`);
+    model.shapes = model.shapes.filter((s) => s !== old);
+    editor.layoutScene();
 
     pointer('pointerdown', shapeEl(rect), 100, 100);
     pointer('pointermove', stage, 110, 120);

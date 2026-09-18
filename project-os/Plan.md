@@ -2301,6 +2301,9 @@ Annotate and Copy were settled.
       highlight a translucent yellow fill; both are selected by a click, moved whole,
       undone, saved and exported as the arrow is. Checked in section 33 of the editor
       checks.
+      **The highlight removed 2026-09-18, Rotem's word:** its button, its H key and any
+      highlight drawn before are gone; the rectangle stays. Copy and Save As left the
+      sidebar the same day and stay on their keys.
 - [x] S3.3 Text: a note without the number, the bubble or the arrow, typed where it is
       clicked; T. Model: Opus 5.
       **Built 2026-09-14, on Fable at Rotem's word.** A text note is a callout in every
