@@ -3648,7 +3648,7 @@ export async function runChecks(editor, invoke) {
       const cell = Math.max(1, Math.round(8 * editor.ratioOf()));
       let count = Math.ceil(magCanvas.width / cell);
       if (count % 2 === 0) count += 1;
-      const shift = Math.floor((magCanvas.width - count * cell) / 2);
+      const shift = Math.floor(magCanvas.width / 2) - (((count - 1) / 2) * cell - 1);
       const at = (d) => shift + ((count - 1) / 2 + d) * cell + Math.floor(cell / 2);
       return [...magCanvas.getContext('2d').getImageData(at(dx), at(dy), 1, 1).data].slice(0, 3).join(',');
     };
@@ -3666,7 +3666,7 @@ export async function runChecks(editor, invoke) {
     const seen = [magCell(0, 0), magCell(-1, 0), magCell(1, 1)];
     const wanted = [await sourcePixel(200, 150), await sourcePixel(199, 150), await sourcePixel(201, 151)];
     check('the circle shows the picture\'s own pixels, one to a cell: the pointer\'s in the middle, its neighbours beside it', seen.join(' ') === wanted.join(' '), `circle ${seen.join(' ')}; picture ${wanted.join(' ')}`);
-    const blueAt = (() => { const cell = Math.max(1, Math.round(8 * editor.ratioOf())); let count = Math.ceil(magCanvas.width / cell); if (count % 2 === 0) count += 1; const shift = Math.floor((magCanvas.width - count * cell) / 2); const edge = shift + ((count - 1) / 2) * cell - 1; return [...magCanvas.getContext('2d').getImageData(edge, edge + 3 * cell, 1, 1).data].slice(0, 3).join(','); })();
+    const blueAt = (() => { const cell = Math.max(1, Math.round(8 * editor.ratioOf())); let count = Math.ceil(magCanvas.width / cell); if (count % 2 === 0) count += 1; const shift = Math.floor(magCanvas.width / 2) - (((count - 1) / 2) * cell - 1); const edge = shift + ((count - 1) / 2) * cell - 1; return [...magCanvas.getContext('2d').getImageData(edge, edge + 3 * cell, 1, 1).data].slice(0, 3).join(','); })();
     check('the blue line runs down the left edge of the pointer\'s pixel', blueAt === '0,185,247', blueAt);
 
     // The drag: the size above the circle while it lasts, the x hidden meanwhile.

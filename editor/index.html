@@ -1233,7 +1233,8 @@
     magPatch.getContext('2d').putImageData(image, 0, 0);
     if (magCanvas.width !== diameter) { magCanvas.width = diameter; magCanvas.height = diameter; }
     const ring = Math.max(1, Math.round(MAG_RING * dpr()));
-    const shift = Math.floor((diameter - side) / 2);
+    // The blue lines' crossing sits on the circle's centre, as the capture's does.
+    const shift = Math.floor(diameter / 2) - centre;
     magContext.clearRect(0, 0, diameter, diameter);
     magContext.save();
     magContext.beginPath();
