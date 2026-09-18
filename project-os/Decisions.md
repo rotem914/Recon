@@ -1256,3 +1256,7 @@ cost is what it was. The self test reads the frame's band mid-glide and after it
 jump or a glide that never arrives turns the overlay row red. Cost: the duration and the
 easing are guesses until Rotem has seen them. Revisit them by eye, and revisit the
 one-display rule if a glide between displays is ever wanted.
+
+Later the same night, Rotem's values: 256 ms and ease-in, cubic, slow to set out and quick
+to arrive, in place of A1's 144 ms and ease-out. The self test's looks moved to 200 and 450
+ms after the move to suit them.

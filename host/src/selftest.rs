@@ -648,12 +648,17 @@ fn glide_seen(
     let animates = crate::overlay::windows_animates();
     let mut on_the_way = None;
     if animates {
+        // Slow to set out: the look waits for the glide's second half, and the screen's
+        // copy sits a tick and a composition behind the clock.
+        std::thread::sleep(
+            std::time::Duration::from_millis(200).saturating_sub(moved_at.elapsed()),
+        );
         let looked_at = moved_at.elapsed().as_millis();
         let pixels = copy_rect(strip).map_err(|e| e.to_string())?;
         let edge = band_left(&pixels, &frozen, width)
             .ok_or("no frame band in the strip while the lit area was on its way")?;
         if edge == 0 {
-            if looked_at > 90 {
+            if looked_at > 230 {
                 println!(
                     "  inconclusive: the strip was looked at {looked_at} ms after the move, too late to catch the glide"
                 );
@@ -671,7 +676,7 @@ fn glide_seen(
         }
     }
     // The arrival: past the glide's length, the frame sits on the window's own edge.
-    std::thread::sleep(std::time::Duration::from_millis(300).saturating_sub(moved_at.elapsed()));
+    std::thread::sleep(std::time::Duration::from_millis(450).saturating_sub(moved_at.elapsed()));
     let pixels = copy_rect(strip).map_err(|e| e.to_string())?;
     let edge =
         band_left(&pixels, &frozen, width).ok_or("no frame band in the strip after the glide")?;

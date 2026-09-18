@@ -82,10 +82,10 @@ const ANTS_GAP_RGB: (u8, u8, u8) = (0x20, 0x20, 0x20);
 
 /// The glide (Rotem, 2026-09-18): when the pointer moves from one window to the next, the
 /// lit area and its frame glide from the one to the other instead of jumping, each edge on
-/// its own, read off the clock on the frame's own ticks. The duration and the easing are
-/// not stated: the design system's one motion token, A1's 144 ms and ease-out, until they
-/// are. Off when Windows' own animations are off.
-const GLIDE_MS: f64 = 144.0;
+/// its own, read off the clock on the frame's own ticks. 256 ms and ease-in, Rotem's
+/// values, by eye, the same night; A1's 144 ms and ease-out stood until then. Off when
+/// Windows' own animations are off.
+const GLIDE_MS: f64 = 256.0;
 
 /// The size label (Rotem, 2026-09-17): while a drag lasts, the dragged area's width and
 /// height in pixels, 14 px text on the app's background colour, 8 px corners, 8 px of
@@ -1069,7 +1069,7 @@ impl State {
         let mut glide = self.glide.filter(|g| g.surface == surface)?;
         let fraction = glide.started.elapsed().as_secs_f64() * 1000.0 / GLIDE_MS;
         let before = glide.shown;
-        glide.shown = glide_rect(glide.from, glide.to, ease_out(fraction));
+        glide.shown = glide_rect(glide.from, glide.to, ease_in(fraction));
         let after = glide.shown;
         self.glide = if fraction >= 1.0 { None } else { Some(glide) };
         if before == after {
@@ -1131,11 +1131,11 @@ pub(crate) fn windows_animates() -> bool {
     asked.is_err() || on.as_bool()
 }
 
-/// How far along the glide is for how much of its time has passed: quick to set out and
-/// slow to arrive, an ease-out, cubic.
-fn ease_out(time: f64) -> f64 {
+/// How far along the glide is for how much of its time has passed: slow to set out and
+/// quick to arrive, an ease-in, cubic.
+fn ease_in(time: f64) -> f64 {
     let t = time.clamp(0.0, 1.0);
-    1.0 - (1.0 - t).powi(3)
+    t.powi(3)
 }
 
 /// The rectangle a fraction of the way from one to the other, each edge on its own,
@@ -2264,15 +2264,15 @@ mod tests {
     }
 
     #[test]
-    fn the_glide_eases_out() {
-        assert_eq!(ease_out(0.0), 0.0);
-        assert_eq!(ease_out(1.0), 1.0);
-        // Quick to set out, slow to arrive: more than half the way at half the time.
-        assert!(ease_out(0.5) > 0.5);
+    fn the_glide_eases_in() {
+        assert_eq!(ease_in(0.0), 0.0);
+        assert_eq!(ease_in(1.0), 1.0);
+        // Slow to set out, quick to arrive: less than half the way at half the time.
+        assert!(ease_in(0.5) < 0.5);
         // And never back: every step is at least as far as the one before.
         let mut last = 0.0;
         for step in 1..=100 {
-            let now = ease_out(step as f64 / 100.0);
+            let now = ease_in(step as f64 / 100.0);
             assert!(now >= last, "step {step}: {now} after {last}");
             last = now;
         }
