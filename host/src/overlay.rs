@@ -1183,10 +1183,15 @@ impl State {
     }
 
     /// How far the dashes have walked: whole pixels, and the fraction of the next one.
+    /// The walk is clockwise, rightwards along the top, so the pattern is pulled back one
+    /// pixel more than it has walked and the edge blend runs the other way to make it up.
     fn phase(&self) -> (u32, f64) {
         let walked = self.started.elapsed().as_secs_f64() * ANTS_SPEED;
         let whole = walked.floor();
-        ((whole as u64 % u32::MAX as u64) as u32, walked - whole)
+        (
+            ((whole as u64 + 1) % u32::MAX as u64) as u32,
+            1.0 - (walked - whole),
+        )
     }
 
     fn origin_of_surface(&self, surface: isize) -> (i32, i32) {
@@ -2022,7 +2027,7 @@ fn ant_runs(sel: RECT, phase: u32) -> Vec<Ant> {
         let mut at = 0;
         while at < length {
             // The run ends at the next dash or gap boundary, or the band's end.
-            let position = walked + at as i64 + phase as i64;
+            let position = walked + at as i64 - phase as i64;
             let into = position.rem_euclid(period);
             let light = ink_at(position);
             let to_boundary = if light {
@@ -2360,13 +2365,17 @@ mod tests {
         assert_eq!(light.iter().filter(|l| **l).count() as u32, ANTS_DASH);
         assert!(light[..ANTS_DASH as usize].iter().all(|l| *l));
         assert!(light[ANTS_DASH as usize..].iter().all(|l| !*l));
-        // One phase step: what a pixel shows is what its neighbour showed a step before.
+        // One phase step walks the pattern one pixel rightwards along the top: a pixel of
+        // gap comes in at the corner, and the first dash starts one pixel further right.
         let sel = rect(0, 0, 50, 30);
         let before = ant_runs(sel, 0);
         let after = ant_runs(sel, 1);
-        let first_before = before[0].run.right - before[0].run.left;
-        let first_after = after[0].run.right - after[0].run.left;
-        assert_eq!(first_after, first_before - 1);
+        assert!(before[0].light);
+        assert_eq!(before[0].run.left, 0);
+        assert!(!after[0].light);
+        assert_eq!(after[0].run.right - after[0].run.left, 1);
+        assert!(after[1].light);
+        assert_eq!(after[1].run.left, 1);
     }
 
     #[test]
