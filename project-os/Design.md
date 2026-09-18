@@ -236,7 +236,7 @@ drag lasts, in the size bubble's text and padding; the panel is up the whole tim
 overlay is, below the pointer with its left edge 8 px right of it, and on the pointer's
 other side where that would leave the display; 8 px to a source pixel, an odd count of them
 so the pointer's own is the middle one; a 1 px grid between them, the pixel darkened by
-half; the marching frame's #00B9F7 through the middle of the centre pixel; a 2 px ring in
+half; the marching frame's #00B9F7 on the centre pixel's top and left edges, crossing at its top left corner, as another tool's picture shows (Rotem, 2026-09-18); a 2 px ring in
 the text's white; every number at 100%, scaled by the display's own scale as the cursor is.
 Provisional for the guide lines: they stop 12 px short of the pointer on every side, since
 Windows draws the plus as the inverse of what is under it and the blue turned it red; the

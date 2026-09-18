@@ -629,11 +629,12 @@ fn magnifier_seen(
         ));
     }
     // The pointer's pixel and its eight neighbours, each an 8 px cell around the circle's
-    // centre at 60 across and the row found: read 2 px past each cell's start, off the
-    // grid and off the blue lines through the centre.
+    // centre at 60 across and the row found, the pointer's own cell starting 1 px past the
+    // blue lines on its top and left edges: read 2 px past each cell's start, off the grid
+    // and off those lines.
     for (n, expected) in around.iter().enumerate() {
         let (i, j) = (n as i32 % 3 - 1, n as i32 / 3 - 1);
-        let probe = (scaled(58 + 8 * i), centre_row - scaled(2) + scaled(8 * j));
+        let probe = (scaled(63 + 8 * i), centre_row + scaled(3) + scaled(8 * j));
         let shown = at(probe.0, probe.1).ok_or("a cell probe is off the copy")?;
         if shown != *expected {
             return Err(format!(

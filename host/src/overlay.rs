@@ -111,7 +111,7 @@ const SIZE_TEXT_RGB: (u8, u8, u8) = (0xF2, 0xF2, 0xF2);
 /// it (the pointer's right is Rotem's word, from the picture's left), and on the
 /// pointer's other side where that would leave the display; 8 px to a
 /// source pixel; a 1 px grid between them, the pixel darkened by half; the frame's blue
-/// through the centre pixel; a 2 px ring in the text's white.
+/// on the centre pixel's top and left edges (his, the same day); a 2 px ring in the text's white.
 const MAG_DIAMETER_PX: i32 = 112;
 const MAG_CELL_PX: i32 = 8;
 const MAG_INSET_PX: i32 = 4;
@@ -1678,7 +1678,7 @@ fn cell_count(diameter: i32, cell: i32) -> i32 {
 
 /// The pixels around the pointer, each one a cell wide, BGRA: the frozen slice stretched
 /// with no smoothing, the grid's line on the last pixel of every cell across and down,
-/// darkened by half, and the frame's blue through the middle of the centre cell. Past the
+/// darkened by half, and the frame's blue on the centre cell's top and left edges. Past the
 /// display's edge the panel's own fill shows, since a stretch reads nothing beyond the
 /// bitmap.
 unsafe fn magnified(hdc: HDC, surface: &Surface, panel: &Panel) -> Option<Vec<u8>> {
@@ -1750,9 +1750,10 @@ unsafe fn magnified(hdc: HDC, surface: &Surface, panel: &Panel) -> Option<Vec<u8
     let _ = unsafe { DeleteObject(HGDIOBJ(bitmap.0)) };
     let _ = unsafe { DeleteDC(dc) };
 
-    // The middle of the centre cell's own pixels: its last one is the grid's line, so the
-    // middle is counted without it (Rotem, 2026-09-18: the lines sat 1 px off the pixel).
-    let centre = half * cell + (cell - 1) / 2;
+    // The blue lines run on the centre cell's top and left edges, the grid's line there, so
+    // they cross at the pointer's pixel's top left corner and the pixel itself is whole
+    // (Rotem, 2026-09-18, from another tool's picture, after the middle of the cell).
+    let centre = half * cell - 1;
     for y in 0..side {
         for x in 0..side {
             let at = ((y * side + x) * 4) as usize;
@@ -1837,7 +1838,7 @@ unsafe fn draw_panel(hdc: HDC, surface: &Surface, panel: &Panel) {
         let (r, g, b) = SIZE_FILL_RGB;
         let (cx, cy, radius) = panel.circle;
         let side = panel.cells * panel.cell;
-        let centre = (panel.cells / 2) * panel.cell + (panel.cell - 1) / 2;
+        let centre = (panel.cells / 2) * panel.cell - 1;
         let ring = (MAG_RING_RGB.2, MAG_RING_RGB.1, MAG_RING_RGB.0);
         for y in 0..h {
             for x in 0..w {
