@@ -623,6 +623,24 @@
 
   const emptyStateText = (hotkey) => (hotkey ? `Press ${hotkey} to capture` : 'no capture yet');
 
+  // The canvas is opaque, and a see-through pixel written into an opaque canvas is not
+  // cleared on screen: the paint before it stays visible through it, so a transparent
+  // picture zoomed in showed every earlier size at once (Rotem, 2026-09-18). Every pixel
+  // that is not solid is laid over the page's own colour before it is painted.
+  const flattenOntoPaper = (pixels, count) => {
+    const paper = (getComputedStyle(document.body).backgroundColor.match(/\d+/g) || [0, 0, 0]).map(Number);
+    const words = new Uint32Array(pixels.buffer, 0, count);
+    for (let i = 0; i < count; i += 1) {
+      const a = words[i] >>> 24;
+      if (a === 255) continue;
+      const at = i * 4;
+      pixels[at] = Math.round((pixels[at] * a + paper[0] * (255 - a)) / 255);
+      pixels[at + 1] = Math.round((pixels[at + 1] * a + paper[1] * (255 - a)) / 255);
+      pixels[at + 2] = Math.round((pixels[at + 2] * a + paper[2] * (255 - a)) / 255);
+      pixels[at + 3] = 255;
+    }
+  };
+
   const paintRegion = async () => {
     const vp = viewport();
     if (!model.image.width || vp.w < 2 || vp.h < 2) return;
@@ -675,7 +693,10 @@
     canvas.style.width = `${width / dpr()}px`;
     canvas.style.height = `${height / dpr()}px`;
     placeComposition(vp);
-    context.putImageData(new ImageData(new Uint8ClampedArray(bytes), width, height), 0, 0);
+    const pixels = new Uint8ClampedArray(bytes);
+    // A capture is opaque; only a file can carry transparency.
+    if (model.image.file) flattenOntoPaper(pixels, width * height);
+    context.putImageData(new ImageData(pixels, width, height), 0, 0);
     // The whole picture on the canvas is copied under it for the next drag, and an ordinary
     // paint landing ends the copy's showing (Rotem, 2026-09-15).
     if (x === pic.x && y === pic.y && srcW === pic.w && srcH === pic.h) captureBackdrop(width, height);

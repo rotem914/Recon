@@ -1635,6 +1635,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_copy,
         checks::editor_svg_cases,
         checks::editor_svg_compare,
+        checks::editor_screen_compare,
     ]);
     #[cfg(not(feature = "stage0-checks"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
@@ -2561,6 +2562,30 @@ fn region_bytes_inner(query: &str) -> Result<(Vec<u8>, u32, u32), String> {
     )?;
     let region = plan.region;
 
+    // A vector seen closer than it was rasterized is drawn from the file itself, at the
+    // zoom: enlarging the scale-one render would show that render's pixels, not the
+    // drawing's edges. A managed document keeps its preserved pixels, which are what it
+    // copies and saves.
+    if plan.target_w > region.width || plan.target_h > region.height {
+        if let Some(drawing) = viewed_drawing() {
+            let drawn = drawing
+                .region(
+                    region.x,
+                    region.y,
+                    plan.target_w as f32 / region.width as f32,
+                    plan.target_h as f32 / region.height as f32,
+                    plan.target_w,
+                    plan.target_h,
+                )
+                .map_err(|err| err.to_string())?;
+            return Ok((
+                with_size_prefix(drawn.rgba, plan.target_w, plan.target_h),
+                plan.target_w,
+                plan.target_h,
+            ));
+        }
+    }
+
     if plan.is_one_to_one() {
         // The 1:1 case, which is what a 100% view must be: no resampling at all.
         let cropped = image.frame.crop(region).ok_or("the crop was refused")?;
@@ -2587,6 +2612,23 @@ fn region_bytes_inner(query: &str) -> Result<(Vec<u8>, u32, u32), String> {
         .ok_or("the level could not be built")?;
     let rect = scaled_rect(region, plan.shift, level.width, level.height);
     resample_from(&level.rgba, level.width, level.height, rect, plan)
+}
+
+/// The vector behind the picture on screen, while that picture is the file being viewed
+/// and not a managed document's preserved image.
+fn viewed_drawing() -> Option<source::svg::Drawing> {
+    let drawing = state()
+        .document
+        .lock()
+        .ok()?
+        .as_ref()
+        .and_then(|document| document.opened.drawing())?;
+    let id = current_document_id();
+    let managed = DOCUMENTS
+        .lock()
+        .map(|documents| documents.iter().any(|d| d.id == id))
+        .unwrap_or(true);
+    (!managed).then_some(drawing)
 }
 
 /// The region's rectangle on a level at 1/2^shift, widened outwards to whole pixels and
@@ -2884,6 +2926,60 @@ mod checks {
             pixels: count,
             differing,
             percent: differing as f64 * 100.0 / count.max(1) as f64,
+            bbox,
+        })
+    }
+
+    /// The screen against the pixels the page says its canvas holds, at a rectangle the
+    /// page names on the desktop in physical pixels. A picture with transparency is the
+    /// case: the page can hold the right pixels while the screen still shows an earlier
+    /// paint through them, and only the screen can say so.
+    #[tauri::command]
+    pub fn editor_screen_compare(request: tauri::ipc::Request<'_>) -> Result<SvgVerdict, String> {
+        let header = |key: &str| -> Result<i64, String> {
+            request
+                .headers()
+                .get(key)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse::<i64>().ok())
+                .ok_or(format!("no {key} header"))
+        };
+        let (x, y) = (header("x")? as i32, header("y")? as i32);
+        let (width, height) = (header("width")? as u32, header("height")? as u32);
+        let mut expected = match request.body() {
+            tauri::ipc::InvokeBody::Raw(bytes) => bytes.clone(),
+            tauri::ipc::InvokeBody::Json(_) => return Err("the pixels arrived as JSON".into()),
+        };
+        if expected.len() != (width * height * 4) as usize {
+            return Err(format!(
+                "the page sent {} bytes for {width}x{height}",
+                expected.len()
+            ));
+        }
+        let live = screen::copy_rect(DesktopRect {
+            x,
+            y,
+            width,
+            height,
+        })
+        .map_err(|err| err.to_string())?;
+        // The screen is opaque, so the comparison is on colour alone.
+        for px in expected.as_chunks_mut::<4>().0 {
+            px[3] = 255;
+        }
+        let (differing, bbox) = compare(&live, &expected, width, height);
+        let name = "svg-screen.png";
+        let path = std::env::current_exe()
+            .map(|exe| exe.with_file_name(name))
+            .unwrap_or_else(|_| name.into());
+        if let Some(img) = image::RgbaImage::from_raw(width, height, live) {
+            let _ = img.save(&path);
+        }
+        Ok(SvgVerdict {
+            name: name.to_string(),
+            pixels: (width * height) as usize,
+            differing,
+            percent: differing as f64 * 100.0 / (width * height).max(1) as f64,
             bbox,
         })
     }

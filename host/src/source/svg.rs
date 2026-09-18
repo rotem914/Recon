@@ -10,7 +10,7 @@
 //! view's own rendering of the same file; the report names any element that went missing.
 
 use std::path::Path;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use resvg::{tiny_skia, usvg};
 
@@ -59,7 +59,10 @@ pub fn open(path: &Path, bytes: Vec<u8>) -> Result<Opened, OpenError> {
         width,
         height,
         notes,
-        source: Box::new(Vector { tree, scale: 1.0 }),
+        source: Box::new(Vector {
+            tree: Arc::new(tree),
+            scale: 1.0,
+        }),
     })
 }
 
@@ -96,13 +99,56 @@ pub fn rasterize(tree: &usvg::Tree, scale: f32) -> Result<DecodedFrame, OpenErro
     })
 }
 
+/// The vector itself, for a view closer than the size it was rasterized at: the region
+/// service draws the part on screen from it, at the zoom, so an enlarged SVG has its own
+/// edges and not the pixels of a smaller render. Shared, so a draw never holds the
+/// document's lock.
+#[derive(Clone)]
+pub struct Drawing(Arc<usvg::Tree>);
+
+impl Drawing {
+    /// The rectangle at `x`, `y` of the scale-one render, drawn `width` by `height` pixels
+    /// at `scale_x` by `scale_y`, straight alpha.
+    pub fn region(
+        &self,
+        x: u32,
+        y: u32,
+        scale_x: f32,
+        scale_y: f32,
+        width: u32,
+        height: u32,
+    ) -> Result<DecodedFrame, OpenError> {
+        let mut pixmap = tiny_skia::Pixmap::new(width, height).ok_or(OpenError::Corrupt {
+            format: Format::Svg,
+            detail: format!("no pixmap of {width}x{height}"),
+        })?;
+        let transform = tiny_skia::Transform::from_scale(scale_x, scale_y)
+            .post_translate(-(x as f32) * scale_x, -(y as f32) * scale_y);
+        resvg::render(&self.0, transform, &mut pixmap.as_mut());
+        let mut rgba = Vec::with_capacity((width * height * 4) as usize);
+        for px in pixmap.pixels() {
+            let c = px.demultiply();
+            rgba.extend_from_slice(&[c.red(), c.green(), c.blue(), c.alpha()]);
+        }
+        Ok(DecodedFrame {
+            width,
+            height,
+            rgba,
+        })
+    }
+}
+
 struct Vector {
-    tree: usvg::Tree,
+    tree: Arc<usvg::Tree>,
     scale: f32,
 }
 
 impl FrameSource for Vector {
     fn frame(&mut self, _index: u32) -> Result<DecodedFrame, OpenError> {
         rasterize(&self.tree, self.scale)
+    }
+
+    fn drawing(&self) -> Option<Drawing> {
+        Some(Drawing(self.tree.clone()))
     }
 }

@@ -128,11 +128,21 @@ impl Opened {
         }
         self.source.frame(index)
     }
+
+    /// The vector behind the picture, when the file is one; a raster has none.
+    pub fn drawing(&self) -> Option<svg::Drawing> {
+        self.source.drawing()
+    }
 }
 
 /// What a provider has to offer past open.
 pub trait FrameSource: Send {
     fn frame(&mut self, index: u32) -> Result<DecodedFrame, OpenError>;
+
+    /// The vector to draw a closer view from. Only an SVG has one.
+    fn drawing(&self) -> Option<svg::Drawing> {
+        None
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

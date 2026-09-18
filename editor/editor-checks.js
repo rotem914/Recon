@@ -648,6 +648,55 @@ export async function runChecks(editor, invoke) {
     }
   }
 
+  // ---------------------------------------------------------------- a vector, enlarged
+  say('');
+  say('A vector enlarged: drawn from the file at the zoom, and the screen holds only the last paint');
+  {
+    await editor.setMode('view');
+    const svg = await openFixture('svg-css-style-block.svg');
+    // Four times: the square's left edge is at 20 and its right at 140, so on the row through
+    // its middle the columns up to 600 cross both. Drawn from the file, no pixel there is
+    // part way; an enlargement of the 240 by 160 raster leaves a ramp at each edge.
+    const region = await fetch('http://region.localhost/?x=0&y=0&w=150&h=160&ow=600&oh=640', { cache: 'no-store' });
+    const pixels = new Uint8Array(await region.arrayBuffer()).subarray(8);
+    let partial = 0;
+    for (let x = 0; x < 600; x += 1) {
+      const a = pixels[(240 * 600 + x) * 4 + 3];
+      if (a > 0 && a < 255) partial += 1;
+    }
+    check('a vector asked for at four times its size has hard edges, not a ramp', svg.kind === 'vector' && partial <= 2, `${partial} part-way pixels on the row`);
+
+    // Zoomed in step by step, the way the wheel does, then the screen against the canvas.
+    await invoke('editor_show');
+    for (let i = 0; i < 40 && !(await invoke('editor_window_visible')); i += 1) await sleep(50);
+    await sleep(300);
+    await editor.setZoom(1);
+    for (const zoom of [1.5, 2.2, 3.3]) {
+      await editor.setZoom(zoom);
+      await sleep(120);
+    }
+    // The report is drawn over the stage, so it steps aside while the screen is read.
+    document.body.classList.remove('reporting');
+    await sleep(400);
+    const origin = await invoke('editor_window_origin');
+    const ratio = editor.ratioOf();
+    const box = editor.canvas.getBoundingClientRect();
+    const held = editor.canvas.getContext('2d').getImageData(0, 0, editor.canvas.width, editor.canvas.height).data;
+    let seen = null;
+    try {
+      if (!(await invoke('editor_in_front'))) throw new Error('another window is over ours');
+      seen = await invoke('editor_screen_compare', new Uint8Array(held.buffer), {
+        headers: { x: String(origin.x + Math.round(box.left * ratio)), y: String(origin.y + Math.round(box.top * ratio)), width: String(editor.canvas.width), height: String(editor.canvas.height) },
+      });
+    } catch (err) {
+      skipped('after three zoom steps the screen shows the canvas and nothing of the earlier paints', `the screen could not be copied: ${err}`);
+    } finally {
+      document.body.classList.add('reporting');
+    }
+    if (seen) check('after three zoom steps the screen shows the canvas and nothing of the earlier paints', seen.percent <= 0.5, `${seen.differing} of ${seen.pixels} differ, ${seen.percent.toFixed(2)}%, bbox ${JSON.stringify(seen.bbox)}`);
+    await editor.setZoom(model.fitZoom);
+  }
+
   // ---------------------------------------------------------------- 14. carried from S0.5: the export shows the frame, the orientation, the colour, the size
   say('');
   say('carried from S0.5: the frame chosen, the orientation applied, the profile converted and the SVG size are what the export shows');
