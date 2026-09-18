@@ -2613,7 +2613,7 @@ export async function runChecks(editor, invoke) {
 
   // ---------------------------------------------------------------- settings: the two global shortcuts
   say('');
-  say('Settings: three dots left of minimize open a modal; a shortcut for opening Recon and one for the capture are picked by pressing them; a taken one is refused in words and the old one stays; the file keeps both');
+  say('Settings: a chevron left of minimize opens a modal; a shortcut for opening Recon and one for the capture are picked by pressing them; a taken one is refused in words and the old one stays; the file keeps both');
   {
     const button = document.getElementById('win-settings');
     const veil = document.getElementById('settings-veil');
@@ -2631,7 +2631,7 @@ export async function runChecks(editor, invoke) {
     const box = button.getBoundingClientRect();
     const icon = button.querySelector('svg').getBoundingClientRect();
     const minIcon = document.querySelector('#win-min svg').getBoundingClientRect();
-    check('the three dots sit left of minimize, in the same box with the same icon size, named Settings', Math.round(box.right) === Math.round(min.left) && box.width === min.width && box.height === min.height && box.top === min.top
+    check('the chevron sits left of minimize, in the same box with the same icon size, named Settings', Math.round(box.right) === Math.round(min.left) && box.width === min.width && box.height === min.height && box.top === min.top
       && icon.width === minIcon.width && icon.height === minIcon.height && button.title === 'Settings',
       `${Math.round(box.left)}-${Math.round(box.right)} by ${box.height}, the icon ${icon.width}, minimize from ${Math.round(min.left)}`);
     check('closed, the modal is not on screen', !shown());

@@ -125,6 +125,24 @@ pub fn change(
     Ok(())
 }
 
+/// What a press of the open shortcut does.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum OpenPress {
+    Show,
+    Minimize,
+}
+
+/// The second press minimizes (Rotem, 2026-09-18), and only when Recon is the window in
+/// front: hidden in the tray, minimized, or open behind another application, a press still
+/// brings it forward, since that is what the shortcut is for.
+pub fn open_press(visible: bool, minimized: bool, focused: bool) -> OpenPress {
+    if visible && !minimized && focused {
+        OpenPress::Minimize
+    } else {
+        OpenPress::Show
+    }
+}
+
 static KEYS: Mutex<Keys> = Mutex::new(Keys {
     capture: Slot {
         label: String::new(),
@@ -472,6 +490,15 @@ mod tests {
         let (result, log) = run(&mut k, Which::Open, Some("Win+Shift+R"), &[]);
         assert_eq!(result, Ok(()));
         assert_eq!(log, ["+Win+Shift+R"]);
+    }
+
+    #[test]
+    fn the_open_shortcut_minimizes_only_the_window_in_front() {
+        assert_eq!(open_press(true, false, true), OpenPress::Minimize);
+        // In the tray, minimized, or behind another application: brought forward.
+        assert_eq!(open_press(false, false, false), OpenPress::Show);
+        assert_eq!(open_press(true, true, false), OpenPress::Show);
+        assert_eq!(open_press(true, false, false), OpenPress::Show);
     }
 
     #[test]

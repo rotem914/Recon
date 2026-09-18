@@ -1297,6 +1297,24 @@ pub fn create_hidden(app: &AppHandle) -> tauri::Result<()> {
 /// window that is already visible, and the focus call skips a minimized one, so a capture
 /// taken with the editor minimized left it in the taskbar. Restored, it comes to the front
 /// the way a click on its taskbar button brings it.
+/// The open shortcut, pressed: shows the window, or minimizes it when it is already the
+/// one in front (Rotem, 2026-09-18). Returns what it did, for the log.
+pub fn toggle(app: &AppHandle) -> Result<&'static str, String> {
+    let window = app
+        .get_webview_window("editor")
+        .ok_or("there is no editor window")?;
+    let visible = window.is_visible().map_err(|err| err.to_string())?;
+    let minimized = window.is_minimized().map_err(|err| err.to_string())?;
+    let focused = window.is_focused().map_err(|err| err.to_string())?;
+    match crate::settings::open_press(visible, minimized, focused) {
+        crate::settings::OpenPress::Minimize => {
+            window.minimize().map_err(|err| err.to_string())?;
+            Ok("minimized")
+        }
+        crate::settings::OpenPress::Show => show(app).map(|_| "shown"),
+    }
+}
+
 pub fn show(app: &AppHandle) -> Result<u128, String> {
     let started = Instant::now();
     let window = app

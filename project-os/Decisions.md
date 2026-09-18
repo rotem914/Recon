@@ -116,6 +116,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-18 · The lit window glides to the next one edge by edge on the frame's own clock, inside one display, and jumps when Windows does not animate.
 - 2026-09-18 · Settings changes a global shortcut by trying the new one first; the shortcut that opens Recon is none until picked; the two are let go while one is being pressed.
 - 2026-09-18 · A change made in Settings stays outside Ctrl+Z, Rotem's call.
+- 2026-09-18 · The Open Recon shortcut, pressed again, minimizes the window only when it is the one in front.
 
 ---
 
@@ -1324,3 +1325,24 @@ Rule 23 carries the exception in its own text. The undo list stays a list of act
 pictures, notes, tabs and the timeline; a Ctrl+Z pressed after closing Settings undoes the
 last of those, never a shortcut. A later setting follows this entry unless Rotem says
 otherwise for it. This closes the open question in the entry above.
+
+## 2026-09-18 · The Open Recon shortcut minimizes only the window in front
+
+### Context
+Rotem asked that a second press of the Open Recon shortcut minimize the window: press, it
+opens; press again, it minimizes. A press can also arrive while Recon's window is open
+behind another application, where "again" is not what the person means.
+
+### Options
+1. Minimize whenever the window is open, wherever it sits.
+2. Minimize only when Recon is the window in front; in every other state bring it forward.
+
+### Decision
+Option 2, the assistant's, Rotem's to veto. With option 1 a press meant to reach Recon from
+another application would make it vanish instead of arrive, and a second press would be
+needed every time. In the tray, minimized, or behind another window, the press shows it.
+
+### Consequences
+It minimizes to the taskbar, as the minimize button does, never hides to the tray: Rotem's
+word was minimize. The rule is one pure function, `settings::open_press`, under a unit
+test. The tray icon's click and a capture still only ever show the window.

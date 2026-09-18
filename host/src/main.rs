@@ -540,11 +540,12 @@ fn main() {
                             begin_capture();
                         }
                         // The second shortcut: Recon's window, from anywhere, as a click
-                        // on the tray icon shows it (Rotem, 2026-09-18).
-                        Some(settings::Which::Open) => match editor::show(app) {
-                            Ok(ms) => log(&format!("OPEN HOTKEY: editor shown in {ms} ms")),
+                        // on the tray icon shows it; pressed again with the window in
+                        // front, it minimizes it (Rotem, 2026-09-18).
+                        Some(settings::Which::Open) => match editor::toggle(app) {
+                            Ok(did) => log(&format!("OPEN HOTKEY: editor {did}")),
                             Err(err) => {
-                                log(&format!("EDITOR NOT SHOWN for the open hotkey: {err}"))
+                                log(&format!("EDITOR NOT TOGGLED by the open hotkey: {err}"))
                             }
                         },
                         None => log(&format!("a shortcut fired and was ignored: {shortcut}")),

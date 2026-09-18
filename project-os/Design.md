@@ -139,7 +139,7 @@ Stated by Rotem on 2026-09-18.
 
 | Part | Value |
 |---|---|
-| Button | three dots, left of minimize in the top bar, in the window buttons' own box and icon size: 48 by 40 with a 10 by 10 icon |
+| Button | a chevron pointing down (Rotem, 2026-09-18, from three dots the same day), left of minimize in the top bar, in the window buttons' own box and icon size: 48 by 40 with a 10 by 10 icon |
 | Opens | a modal |
 | Content | a shortcut that opens Recon itself, and the shortcut that starts a capture, each picked by pressing it |
 
