@@ -1263,3 +1263,5 @@ ms after the move to suit them.
 
 Then again, the same night: 164 ms and ease-out, cubic, quick to set out and slow to
 arrive; the looks at 80 and 300 ms after the move.
+
+Then 192 ms, the ease-out kept; the look past 140 ms inconclusive.

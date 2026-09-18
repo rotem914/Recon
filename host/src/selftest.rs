@@ -665,7 +665,7 @@ fn glide_seen(
         let edge = band_left(&pixels, &frozen, width)
             .ok_or("no frame band in the strip while the lit area was on its way")?;
         if edge == 0 {
-            if looked_at > 120 {
+            if looked_at > 140 {
                 println!(
                     "  inconclusive: the strip was looked at {looked_at} ms after the move, too late to catch the glide"
                 );

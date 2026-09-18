@@ -82,10 +82,10 @@ const ANTS_GAP_RGB: (u8, u8, u8) = (0x20, 0x20, 0x20);
 
 /// The glide (Rotem, 2026-09-18): when the pointer moves from one window to the next, the
 /// lit area and its frame glide from the one to the other instead of jumping, each edge on
-/// its own, read off the clock on the frame's own ticks. 164 ms and ease-out, Rotem's
-/// values, by eye, the same night, after 256 ms and ease-in, and A1's 144 ms and ease-out
-/// before that. Off when Windows' own animations are off.
-const GLIDE_MS: f64 = 164.0;
+/// its own, read off the clock on the frame's own ticks. 192 ms and ease-out, Rotem's
+/// values, by eye, the same night, after 164 ms, 256 ms with an ease-in, and A1's 144 ms
+/// and ease-out before that. Off when Windows' own animations are off.
+const GLIDE_MS: f64 = 192.0;
 
 /// The size label (Rotem, 2026-09-17): while a drag lasts, the dragged area's width and
 /// height in pixels, 14 px text on the app's background colour, 8 px corners, 8 px of
