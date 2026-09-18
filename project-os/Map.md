@@ -43,7 +43,7 @@ Recon/
 │   ├── build.rs
 │   ├── tauri.conf.json             # zero windows in the config: the host creates its own, hidden
 │   ├── capabilities/default.json   # what the editor page may call: the host's commands and events
-│   ├── icons/                      # placeholder tray icon, the real one is a design task
+│   ├── icons/                      # the Recon logo: icon.ico for the exe and the taskbar, icon.png for the tray
 │   ├── pixels/                     # recon-pixels: crop and resample, optimised in every profile
 │   ├── references/s06/             # the six reviewed reference outputs and their environment (S0.6)
 │   └── src/
