@@ -13,7 +13,7 @@
                overflow: hidden; }
 
   /* The top bar (Rotem's call, 2026-09-14): Recon draws its own in place of Windows'
-     frame. The title on the left, the controls in the middle, and minimize, maximize and
+     frame. The logo on the left, no title line beside it (Rotem, 2026-09-18; the window's own title still names the file), the controls in the middle, and minimize, maximize and
      close on the right at 48 wide by 40 tall (Rotem, 2026-09-18), at the top of a bar 64 tall (Rotem, 2026-09-18, from
      40, the buttons' height kept), the logo at its left with 16 px above it and to its left. The bar itself is the
      drag region; fullscreen puts it away. Provisional look, Rotem's to restyle. */
@@ -21,8 +21,8 @@
          align-items: center; user-select: none; }
   /* No pointer of its own, so a press on it reaches the bar and drags the window. */
   #logo { flex: none; width: 103px; height: 32px; margin-left: 16px; pointer-events: none; }
-  #title { flex: 1 1 auto; min-width: 0; padding: 0 12px; font-size: 12px; color: #cfd4da;
-           white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* The bar's empty middle: it holds no text, it keeps the window buttons at the right. */
+  #title { flex: 1 1 auto; min-width: 0; }
   #winbtns { display: flex; flex: 0 0 auto; height: 100%; }
   #winbtns button { width: 48px; height: 40px; border: none; padding: 0; background: transparent;
                     color: #cfd4da; display: grid; place-items: center; cursor: default; }
@@ -116,16 +116,16 @@
   .tab.selected { background: #21222C; color: #f2f2f2; }
   .tab.dragging { z-index: 1; transition: none; }
   .tab .name[contenteditable] { outline: none; min-width: 1ch; }
-  /* The tab's menu (Rotem, 2026-09-18, in place of the × on the tab): a right press on a tab
-     after Main opens it at the pointer, above the bar, with Delete in it. Outside the bar,
-     which clips. Provisional look until Rotem states one: the tabs' fill, text and corners. */
-  #tab-menu { position: fixed; display: none; z-index: 6; padding: 4px; border-radius: 10px; background: #21222C; }
-  #tab-menu.open { display: block; }
-  #tab-menu button { display: block; width: 100%; height: 32px; padding: 0 10px; border: none; border-radius: 6px; text-align: left;
-                     background: transparent; color: #f2f2f2; font: 14px/32px ui-sans-serif, "Segoe UI", system-ui, sans-serif;
-                     cursor: pointer; transition: background-color 144ms ease-out; /* A1 */ }
-  #tab-menu button:hover, #tab-menu button:focus-visible { background: #c0392b; color: #fff; outline: none; }
-  @media (prefers-reduced-motion: reduce) { #tab-add, .tab, #tab-menu button { transition: none; } }
+  /* The ×, an icon; its first press turns it into a ✓ and the second deletes (Rotem, 2026-09-16). */
+  .tab .x { flex: none; width: 16px; height: 16px; border: none; border-radius: 8px; padding: 0; margin-right: -4px;
+            background: transparent; color: inherit; cursor: pointer; visibility: hidden; display: grid; place-items: center; }
+  .tab .x svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .tab .x .tick { display: none; }
+  .tab .x.armed .cross { display: none; }
+  .tab .x.armed .tick { display: block; }
+  .tab:hover .x, .tab.selected .x, .tab .x.armed { visibility: visible; }
+  .tab .x:hover { background: #c0392b; color: #fff; }
+  @media (prefers-reduced-motion: reduce) { #tab-add, .tab { transition: none; } }
   /* Above the sidebar, so a strip dragged taller covers it (Rotem, 2026-09-15); the handle above both. */
   #strip { position: absolute; left: 0; right: 0; bottom: 0; height: var(--strip-h, 96px); display: none;
            overflow-x: auto; overflow-y: hidden; z-index: 4;
@@ -358,7 +358,7 @@
 </clipPath>
 </defs>
 </svg>
-  <div id="title" data-tauri-drag-region>Recon</div>
+  <div id="title" data-tauri-drag-region></div>
   <div id="controls" hidden>
    <div id="buttons">
     <div id="tools">
@@ -413,7 +413,6 @@
 <div id="hud"></div>
 <div id="image-size"></div>
 <div id="tabbar" role="tablist"><button id="tab-add" type="button" aria-label="New tab" title="New tab"><svg viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></svg></button></div>
-<div id="tab-menu" role="menu"><button type="button" role="menuitem">Delete</button></div>
 <div id="strip"></div>
 <div id="strip-handle" title="Drag to resize the timeline; double-click to reset"></div>
 <div id="report"></div>
@@ -1416,7 +1415,6 @@
     if (imageSize.textContent !== text) imageSize.textContent = text;
   };
   const drawHud = () => {
-    drawTitle();
     drawImageSize();
     if (!model.image.width) {
       hud.textContent = emptyText + (currentNotice ? `\n${currentNotice}` : '');
@@ -1845,38 +1843,33 @@
       if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectTab(tab.id); }
     });
     name.addEventListener('blur', () => endRename(tab, name));
-    // A right press on a tab after Main opens its menu; Main has none (Rotem, 2026-09-18).
-    el.addEventListener('contextmenu', (event) => {
-      event.preventDefault();
-      if (tab.id !== MAIN_TAB && !renaming) openTabMenu(tab.id, event.clientX, event.clientY);
-    });
+    if (tab.id !== MAIN_TAB) {
+      // The ×: the first press turns it into a ✓, the second deletes; the pointer leaving the
+      // tab puts the × back (Rotem, 2026-09-16, the two presses).
+      const x = document.createElement('button');
+      x.className = 'x';
+      x.type = 'button';
+      x.innerHTML = '<svg class="cross" viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8"/></svg><svg class="tick" viewBox="0 0 12 12"><path d="M2 6.5l3 3 5-7"/></svg>';
+      x.setAttribute('aria-label', `Delete the tab ${tab.name}`);
+      x.title = 'Delete this tab: press once, then once more to confirm; its captures stay in Main';
+      x.addEventListener('pointerdown', (event) => event.stopPropagation()); // no drag from the ×
+      x.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (!x.classList.contains('armed')) {
+          x.classList.add('armed');
+          x.setAttribute('aria-label', `Confirm deleting the tab ${tab.name}`);
+          return;
+        }
+        deleteTab(tab.id);
+      });
+      el.addEventListener('pointerleave', () => {
+        x.classList.remove('armed');
+        x.setAttribute('aria-label', `Delete the tab ${tab.name}`);
+      });
+      el.appendChild(x);
+    }
     return el;
   };
-  // The tab's menu: Delete, which deletes the tab at once, its captures staying in Main and
-  // Ctrl+Z bringing it back. A press anywhere else, Escape, or the window losing focus closes it.
-  const tabMenu = document.getElementById('tab-menu');
-  let tabMenuFor = null;
-  const closeTabMenu = () => { tabMenuFor = null; tabMenu.classList.remove('open'); };
-  const openTabMenu = (id, x, y) => {
-    tabMenuFor = id;
-    tabMenu.classList.add('open');
-    const box = tabMenu.getBoundingClientRect();
-    tabMenu.style.left = `${Math.max(0, Math.min(window.innerWidth - box.width, x))}px`;
-    tabMenu.style.top = `${Math.max(0, y - box.height)}px`;
-    tabMenu.firstElementChild.focus();
-  };
-  tabMenu.firstElementChild.addEventListener('click', () => {
-    const id = tabMenuFor;
-    closeTabMenu();
-    if (id != null) deleteTab(id);
-  });
-  tabMenu.addEventListener('contextmenu', (event) => event.preventDefault());
-  tabMenu.addEventListener('keydown', (event) => {
-    event.stopPropagation(); // the editor's keys stay out while the menu is open
-    if (event.key === 'Escape') { event.preventDefault(); closeTabMenu(); }
-  });
-  window.addEventListener('pointerdown', (event) => { if (tabMenuFor != null && !tabMenu.contains(event.target)) closeTabMenu(); }, true);
-  window.addEventListener('blur', closeTabMenu);
   // The bar holds the plus, then Main, then the tabs in their order; Main shows once any tab exists.
   const renderTabs = () => {
     const order = tabs.list.length ? [{ id: MAIN_TAB, name: 'Main' }, ...tabs.list] : [];
@@ -2167,7 +2160,6 @@
   // (§3.1). Dragging the bar moves the window and a double-click on it toggles maximize,
   // both the runtime's own from the drag-region attribute. The title is the window's.
   const currentWindow = window.__TAURI__.window.getCurrentWindow();
-  const titleLine = document.getElementById('title');
   const maxButton = document.getElementById('win-max');
   const maxGlyph = {
     maximize: '<svg viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9"/></svg>',
@@ -2317,10 +2309,6 @@
   window.addEventListener('blur', () => { stopRecording(); });
   document.getElementById('win-settings').addEventListener('click', (event) => { const button = event.currentTarget; openSettings(); button.blur(); });
   window.addEventListener('resize', () => { refreshMaxButton(); });
-  const drawTitle = () => {
-    const text = model.image.file ? `${model.image.file} - Recon` : 'Recon';
-    if (titleLine.textContent !== text) titleLine.textContent = text;
-  };
 
   // ---------------------------------------------------------------- the mode
   //
