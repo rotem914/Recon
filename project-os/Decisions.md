@@ -120,6 +120,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-18 · Save As on an annotated PNG or JPEG opens on the file itself and writes over it, Rotem's exception to rule 11; every other existing name is still never written over.
 - 2026-09-18 · A file opened by name sits in the timeline as a pointer to where it lives, in a list of its own beside the tabs, never in the store; Rotem's call over a kept copy.
 - 2026-09-18 · The mode follows what is done: a tool picked starts the annotation, a finished element puts the tool down, and the Annotate button and the A key are gone.
+- 2026-09-18 · The colour picker's HEX is put on the clipboard by the host from a colour the page names, never a text; the picker starts no annotation.
 
 ---
 
@@ -1452,3 +1453,30 @@ annotated before still opens as the plain file, and its notes appear when a tool
 picked, since the route the A key gave is the tool's now. `setMode('view')` is left in the
 page for the checks only; nothing in the product calls it. The tool in hand was never part
 of undo, so Ctrl+Z is unchanged: it takes back the note or the shape, not the tool.
+
+## 2026-09-18 · The colour picker's HEX is put on the clipboard by the host from a colour the page names, and the picker starts no annotation
+
+### Context
+Rotem asked for a colour picker in the left sidebar: a click on the picture copies the HEX
+under it. The page may not touch the clipboard (part 5, and the capability file says so),
+and since the same day a tool picked over a file only viewed starts its annotation.
+
+### Options
+1. The page writes the text itself through the browser's clipboard.
+2. A host command that publishes any text the page sends.
+3. A host command that takes three numbers, a colour, and writes the HEX itself.
+
+### Decision
+Option 3, the assistant's, Rotem's to veto. The page reads the pixel through the magnifier's
+own route, so the HEX copied is the HEX its circle shows, and sends red, green and blue;
+the host formats `#RRGGBB` and publishes it as text. The picker is the one tool that starts
+no annotation: it changes nothing, so a file only viewed stays viewed and no document is
+made for it (rule 11 untouched). Put down after the click and the zoom circle are Rotem's
+two calls.
+
+### Consequences
+The page still cannot publish anything of its choosing: seven characters of a colour is all
+this adds. The pick is no act, so Ctrl+Z has nothing to take back (rule 23), as with Copy.
+Over an SVG being viewed the colour comes from the fixed raster the magnifier reads, not the
+sharp redraw on screen, so on an edge zoomed far in the two can differ by a shade. A second
+text the host should publish would want its own narrow command, not a widening of this one.

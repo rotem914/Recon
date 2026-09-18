@@ -46,8 +46,9 @@ Stated by Rotem on 2026-09-15 for the controls sidebar; the sizes restated on 20
 | Hover | the container fills with the icon button hover colour, fading in by A1 |
 | Name | every icon button carries its name and its key as a title, so it has a name without its text |
 
-Used by: the controls sidebar down the left edge of the editor, the seven tools. Highlight, Copy
-and Save As left it on 2026-09-18 (Rotem); Copy and Save As stay on their keys.
+Used by: the controls sidebar down the left edge of the editor, the eight tools. Highlight, Copy
+and Save As left it on 2026-09-18 (Rotem); Copy and Save As stay on their keys. The colour
+picker joined it the same day.
 
 ### Button group
 
@@ -201,6 +202,24 @@ corner and at the middle of each side, 10 by 10 white squares with a 1 px dark b
 screen pixels at every zoom; a 1 px white frame on the picture's edges while the tool is in
 hand; while a handle is dragged the frame follows it and the outside is dimmed by half; the
 cut lands at the release, inward only, a side no smaller than 8 px; the key K.
+
+### Color picker
+
+Stated by Rotem on 2026-09-18 for the left sidebar.
+
+| Part | Value |
+|---|---|
+| Use | a click on the picture copies the HEX of the colour under it to the clipboard, by itself |
+| Where | a button in the controls sidebar, an icon button like the others |
+| After the click | the tool is put down, like the other tools (Rotem, 2026-09-18, of two) |
+| Magnifier | the ruler's zoom circle follows the pointer the whole time the tool is in hand, the HEX of the pixel under the pointer above it, where the ruler's size sits (Rotem, 2026-09-18, of two) |
+
+The rest is not stated yet. Provisional in the page until it is: the button after Crop, an
+eyedropper drawn in the icon line; the key I; the HEX written as `#2D41D7`, upper case with
+its hash; the picture's own pixel, whatever note lies over it; a see-through pixel as it
+shows, over the app background; a click off the picture copies nothing and keeps the tool;
+the line "copied #2D41D7 to the clipboard" where a copy of the picture says its own; it
+works over a file only viewed and makes no document for it.
 
 ### Capture size bubble
 

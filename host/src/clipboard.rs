@@ -13,7 +13,7 @@ use windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
 };
 use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
-use windows::Win32::System::Ole::{CF_DIB, CF_DIBV5};
+use windows::Win32::System::Ole::{CF_DIB, CF_DIBV5, CF_UNICODETEXT};
 
 /// What went up, for the log and the S0.6 record.
 #[derive(Debug, serde::Serialize)]
@@ -181,7 +181,43 @@ pub fn publish(rgba: &[u8], width: u32, height: u32) -> Result<Published, String
     })
 }
 
+/// The colour picker's HEX (Rotem, 2026-09-18): one short line of text, the only text the
+/// host ever publishes. Built before the clipboard is touched, as the image is.
+pub fn publish_text(text: &str) -> Result<(), String> {
+    let bytes: Vec<u8> = text
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .flat_map(u16::to_le_bytes)
+        .collect();
+    let _open = Open::acquire()?;
+    unsafe { EmptyClipboard() }.map_err(|e| format!("the clipboard could not be emptied: {e}"))?;
+    set(CF_UNICODETEXT.0 as u32, &bytes)
+}
+
 use image::ImageEncoder;
+
+/// The text the clipboard holds now, as a paste would get it. Checks only.
+#[cfg(feature = "stage0-checks")]
+pub fn read_text() -> Result<String, String> {
+    use windows::Win32::System::DataExchange::GetClipboardData;
+    let _open = Open::acquire()?;
+    unsafe {
+        let handle = GetClipboardData(CF_UNICODETEXT.0 as u32)
+            .map_err(|e| format!("the clipboard holds no text: {e}"))?;
+        let block = HGLOBAL(handle.0);
+        let source = GlobalLock(block) as *const u16;
+        if source.is_null() {
+            return Err("the clipboard's text could not be locked".into());
+        }
+        let mut len = 0;
+        while *source.add(len) != 0 {
+            len += 1;
+        }
+        let text = String::from_utf16_lossy(std::slice::from_raw_parts(source, len));
+        let _ = GlobalUnlock(block);
+        Ok(text)
+    }
+}
 
 /// What the clipboard holds now, read back the way a destination would. Checks only: the
 /// product never reads the clipboard.

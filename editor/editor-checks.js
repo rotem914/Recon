@@ -2025,7 +2025,7 @@ export async function runChecks(editor, invoke) {
     const buttons = [...controls.querySelectorAll('button')];
     const boxes = buttons.map((b) => b.getBoundingClientRect());
     const iconWidth = (b) => Math.max(...[...b.querySelectorAll('svg')].map((s) => Math.round(s.getBoundingClientRect().width)));
-    check('seven icon buttons, 48 by 48 with a 32 by 32 icon drawn with a 2 px #C3C6CA line, 8 px apart, on 13 px corners, named, with no fill of their own', buttons.length === 7
+    check('eight icon buttons, 48 by 48 with a 32 by 32 icon drawn with a 2 px #C3C6CA line, 8 px apart, on 13 px corners, named, with no fill of their own', buttons.length === 8
       && buttons.every((b) => getComputedStyle(b).borderRadius === '13px')
       && boxes.every((b) => Math.round(b.width) === 48 && Math.round(b.height) === 48)
       && boxes.every((b, i) => i === 0 || Math.round(b.top - boxes[i - 1].bottom) === 8)
@@ -2036,11 +2036,11 @@ export async function runChecks(editor, invoke) {
     check('a hover fills the square with #21222C, fading in by A1: 144 ms, ease-out', !!hoverRule && hoverRule.style.backgroundColor === 'rgb(33, 34, 44)'
       && buttons.every((b) => getComputedStyle(b).transitionProperty === 'background-color' && getComputedStyle(b).transitionDuration === '0.144s' && getComputedStyle(b).transitionTimingFunction === 'ease-out'),
       `${hoverRule && hoverRule.style.backgroundColor}, ${getComputedStyle(buttons[0]).transition}`);
-    // One container around the seven, centred across the sidebar; a tooltip on each button's right (Rotem, 2026-09-15).
+    // One container around the eight, centred across the sidebar; a tooltip on each button's right (Rotem, 2026-09-15).
     const group = document.getElementById('buttons');
     const gbox = group.getBoundingClientRect();
     const stageBottom = Math.round(stage.getBoundingClientRect().bottom);
-    check('one container holds all seven buttons, centred in the sidebar\'s height and across it, the sidebar running from the top bar to the timeline', !!group && group.parentElement === controls && buttons.every((b) => group.contains(b))
+    check('one container holds all eight buttons, centred in the sidebar\'s height and across it, the sidebar running from the top bar to the timeline', !!group && group.parentElement === controls && buttons.every((b) => group.contains(b))
       && Math.abs((gbox.left + gbox.right) / 2 - (cbox.left + cbox.right) / 2) < 0.5 && Math.round(gbox.width) === 48
       && Math.round(cbox.bottom) === stageBottom && Math.abs((gbox.top + gbox.bottom) / 2 - (cbox.top + cbox.bottom) / 2) < 0.5,
       `container ${Math.round(gbox.left)}-${Math.round(gbox.right)} by ${Math.round(gbox.top)}-${Math.round(gbox.bottom)}, centred at ${(gbox.left + gbox.right) / 2},${(gbox.top + gbox.bottom) / 2}; the sidebar ${Math.round(cbox.top)}-${Math.round(cbox.bottom)}, centred at ${(cbox.left + cbox.right) / 2},${(cbox.top + cbox.bottom) / 2}; the stage ends at ${stageBottom}`);
@@ -3886,6 +3886,90 @@ export async function runChecks(editor, invoke) {
     await editor.saveNow();
     for (let i = 0; i < 40 && !(await invoke('editor_window_visible')); i += 1) await sleep(50);
     await invoke('editor_show');
+  }
+
+  // ---------------------------------------------------------------- 45. the colour picker
+  say('');
+  say('The colour picker (Rotem, 2026-09-18): I or the button, then the zoom circle follows the pointer with the HEX of the pixel under it above it; a click copies that HEX to the clipboard as text and puts the tool down; nothing is changed, so no step of undo and no document over a file only viewed');
+  {
+    const stage = editor.stage;
+    const hud = document.getElementById('hud');
+    await invoke('editor_store_reset');
+    const shot = await invoke('editor_capture_probe', { width: 400, height: 300 });
+    await editor.loadImage(shot);
+    await editor.setZoom(1);
+    const box = () => stage.getBoundingClientRect();
+    const css = (ix, iy) => ({ x: box().left + model.offset.x + ((ix - model.pan.x) * model.zoom) / editor.ratioOf(), y: box().top + model.offset.y + ((iy - model.pan.y) * model.zoom) / editor.ratioOf() });
+    const pointer = (type, ix, iy) => {
+      const at = css(ix, iy);
+      stage.dispatchEvent(new PointerEvent(type, { pointerId: 15, button: 0, buttons: type === 'pointerdown' ? 1 : 0, clientX: at.x, clientY: at.y, bubbles: true, cancelable: true }));
+    };
+    const press = (init) => { const e = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }); window.dispatchEvent(e); return e.defaultPrevented; };
+    const sourceHex = async (ix, iy) => {
+      const whole = new Uint8Array(await (await fetch(`http://region.localhost/?x=${ix}&y=${iy}&w=1&h=1&ow=1&oh=1`, { cache: 'no-store' })).arrayBuffer());
+      return `#${[...whole.subarray(8, 11)].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase()}`;
+    };
+    const magEl = document.getElementById('mag');
+    const magText = () => magEl.querySelector('.size').textContent;
+
+    press({ key: 'i', code: 'KeyI' });
+    const button = document.querySelector('#tools [data-tool="picker"]');
+    check('I picks the colour picker, and its button in the sidebar is lit, after Crop, named Color picker', model.tool === 'picker' && !!button && button.classList.contains('active') && button.previousElementSibling.dataset.tool === 'crop' && button.getAttribute('aria-label') === 'Color picker' && getComputedStyle(button).width === '48px', `tool ${model.tool}`);
+    // The middle of pixel 200,150: the circle's text against the picture's own pixel, asked of the host.
+    pointer('pointermove', 200.5, 150.5);
+    await sleep(250);
+    const want = await sourceHex(200, 150);
+    check('with the picker in hand the zoom circle is up with the HEX of the pixel under the pointer above it', getComputedStyle(magEl).display === 'flex' && magEl.classList.contains('sized') && magText() === want && magEl.querySelector('.size').getBoundingClientRect().bottom <= magEl.querySelector('canvas').getBoundingClientRect().top, `circle "${magText()}", picture ${want}`);
+    const stepsBefore = model.history.index;
+    pointer('pointerdown', 200.5, 150.5);
+    pointer('pointerup', 200.5, 150.5);
+    for (let i = 0; i < 60 && model.tool !== null; i += 1) await sleep(50);
+    let text = await invoke('editor_clipboard_text').catch((err) => `none: ${err}`);
+    check('a click copies that pixel\'s HEX to the clipboard as text, says so, and puts the tool down with the circle', text === want && /^#[0-9A-F]{6}$/.test(text) && model.tool === null && getComputedStyle(magEl).display === 'none' && hud.textContent.includes(`copied ${want}`), `clipboard "${text}", picture ${want}, tool ${model.tool}, "${hud.textContent}"`);
+    check('the pick made nothing and is no step of history', model.history.index === stepsBefore && model.callouts.length === 0 && model.shapes.length === 0, `history ${stepsBefore} then ${model.history.index}`);
+
+    // Another pixel is another HEX, so the clipboard follows the click and not the last pick.
+    let other = null;
+    for (const [ix, iy] of [[10, 10], [60, 40], [390, 290], [123, 77], [300, 20]]) { const h = await sourceHex(ix, iy); if (h !== want) { other = { ix, iy, h }; break; } }
+    if (other) {
+      press({ key: 'i', code: 'KeyI' });
+      pointer('pointermove', other.ix + 0.5, other.iy + 0.5);
+      pointer('pointerdown', other.ix + 0.5, other.iy + 0.5);
+      pointer('pointerup', other.ix + 0.5, other.iy + 0.5);
+      for (let i = 0; i < 60 && model.tool !== null; i += 1) await sleep(50);
+      text = await invoke('editor_clipboard_text').catch((err) => `none: ${err}`);
+      check('a click on a pixel of another colour copies that one', text === other.h, `clipboard "${text}", picture ${other.h} at ${other.ix},${other.iy}`);
+    } else {
+      skipped('a click on a pixel of another colour copies that one', 'the probe showed one colour at every place tried');
+    }
+
+    // Off the picture: nothing is copied, nothing is said, and the tool stays.
+    press({ key: 'i', code: 'KeyI' });
+    pointer('pointermove', -20, -20);
+    pointer('pointerdown', -20, -20);
+    pointer('pointerup', -20, -20);
+    await sleep(300);
+    const kept = await invoke('editor_clipboard_text').catch((err) => `none: ${err}`);
+    check('a click off the picture copies nothing and keeps the picker in hand', model.tool === 'picker' && kept === text && !hud.textContent.includes('NOT COPIED'), `tool ${model.tool}, clipboard "${kept}", "${hud.textContent}"`);
+    editor.setTool(null);
+
+    // Over a file only viewed: the picker works and no document is made.
+    const dir = await invoke('editor_make_folder');
+    const storeBefore = (await invoke('editor_store_list')).length;
+    const info = await invoke('editor_open_file', { path: `${dir}\\img2.png` });
+    await editor.loadImage(info);
+    await editor.setZoom(1);
+    document.querySelector('#tools [data-tool="picker"]').click();
+    check('over a file only viewed the button puts the picker in hand and the file stays viewed', model.tool === 'picker' && model.mode === 'view', `tool ${model.tool}, mode ${model.mode}`);
+    pointer('pointermove', 5.5, 5.5);
+    await sleep(250);
+    const shown = magText();
+    pointer('pointerdown', 5.5, 5.5);
+    pointer('pointerup', 5.5, 5.5);
+    for (let i = 0; i < 60 && model.tool !== null; i += 1) await sleep(50);
+    text = await invoke('editor_clipboard_text').catch((err) => `none: ${err}`);
+    const store = await invoke('editor_store_list');
+    check('a click there copies the HEX the circle showed, and no document is made for the file', /^#[0-9A-F]{6}$/.test(text) && text === shown && model.tool === null && model.mode === 'view' && store.length === storeBefore, `clipboard "${text}", circle "${shown}", mode ${model.mode}, store ${storeBefore} then ${store.length}`);
   }
 
   // ---------------------------------------------------------------- an opened file in the timeline

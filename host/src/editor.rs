@@ -1922,8 +1922,10 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         checks::editor_export_check,
         checks::editor_live_compare,
         checks::editor_clipboard_readback,
+        checks::editor_clipboard_text,
         checks::editor_environment,
         editor_copy,
+        editor_copy_color,
         checks::editor_svg_cases,
         checks::editor_svg_compare,
         checks::editor_screen_compare,
@@ -1936,6 +1938,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_log,
         editor_frame,
         editor_copy,
+        editor_copy_color,
         editor_mark,
         editor_hide,
         editor_hotkey,
@@ -2121,6 +2124,22 @@ pub fn editor_copy(request: tauri::ipc::Request<'_>) -> Result<CopyReport, Strin
         compose_ms,
         published,
     })
+}
+
+/// A colour as the picker copies it: `#RRGGBB`, upper case.
+fn color_hex(r: u8, g: u8, b: u8) -> String {
+    format!("#{r:02X}{g:02X}{b:02X}")
+}
+
+/// The colour picker (Rotem, 2026-09-18): the page reads the pixel under the click, as its
+/// zoom circle shows it, and the host writes its HEX and puts it on the clipboard as text.
+/// The page names a colour, never a text, so this is no way for it to publish anything else.
+#[tauri::command]
+pub fn editor_copy_color(r: u8, g: u8, b: u8) -> Result<String, String> {
+    let hex = color_hex(r, g, b);
+    crate::clipboard::publish_text(&hex)?;
+    println!("copied the colour {hex} to the clipboard");
+    Ok(hex)
 }
 
 /// The timeline's thumbnail with the notes on it (Rotem, 2026-09-16). After every save of
@@ -3766,6 +3785,12 @@ mod checks {
         pub png_bytes: usize,
     }
 
+    /// The text on the clipboard now, for the colour picker's check: what a paste would get.
+    #[tauri::command]
+    pub fn editor_clipboard_text() -> Result<String, String> {
+        crate::clipboard::read_text()
+    }
+
     #[tauri::command]
     pub fn editor_clipboard_readback() -> Result<ClipboardReadBack, String> {
         let composite = last_composite()?;
@@ -4619,6 +4644,12 @@ mod checks {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_colour_is_written_as_six_upper_case_hex_digits() {
+        assert_eq!(color_hex(0x2D, 0x41, 0xD7), "#2D41D7");
+        assert_eq!(color_hex(0, 10, 255), "#000AFF");
+    }
 
     fn plan(x: i64, y: i64, w: i64, h: i64, ow: i64, oh: i64) -> RegionPlan {
         plan_region(3840, 2160, x, y, w, h, ow, oh, MAX_SHIFT).unwrap()

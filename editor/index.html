@@ -288,6 +288,10 @@
   /* Space held takes the pointer off the notes, as viewing does, so a drag pans whatever it
      starts on (Rotem, 2026-09-14). */
   body.space #scene { pointer-events: none; }
+  /* The colour picker (Rotem, 2026-09-18) works over a file only viewed too, and a click
+     with it lands on the picture whatever is over it, so the notes take no pointer. */
+  body.picking:not(.space) #stage { cursor: crosshair; }
+  body.picking #scene { pointer-events: none; }
   #arrows [data-shape] { pointer-events: visiblePainted; cursor: move; }
   #handles { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
   .blur { position: absolute; cursor: move; border: 1px dashed rgba(255,82,82,.6); box-sizing: border-box; }
@@ -384,6 +388,7 @@
       <button type="button" data-tool="blur" aria-label="Blur"><svg viewBox="0 0 20 20"><path d="M10 3c-3 4-5 6.5-5 9a5 5 0 0 0 10 0c0-2.5-2-5-5-9z"/></svg></button>
       <button type="button" data-tool="ruler" aria-label="Ruler"><svg viewBox="0 0 20 20"><rect x="2" y="7" width="16" height="6" rx="1"/><path d="M6 7v3M10 7v3M14 7v3"/></svg></button>
       <button type="button" data-tool="crop" aria-label="Crop"><svg viewBox="0 0 20 20"><path d="M6 2v12h12"/><path d="M2 6h12v12"/></svg></button>
+      <button type="button" data-tool="picker" aria-label="Color picker"><svg viewBox="0 0 20 20"><path d="M11 5l4 4"/><path d="M12.5 6.5L5 14l-1.5 3.5L7 16l7.5-7.5"/><path d="M13 3.5a2 2 0 0 1 3.5 1.5a2 2 0 0 1-.6 1.4L14.5 8 12 5.5z"/></svg></button>
     </div>
    </div>
   </div>
@@ -1180,6 +1185,12 @@
   const MAG_FILL = [0x0D, 0x0E, 0x12];
   const MAG_BLUE = [0x00, 0xB9, 0xF7];
   let magPointer = null; // where the pointer last was over the stage, in client pixels
+  // The circle's middle pixel. The ruler's is the one right of and below the corner a drag
+  // lands on; the colour picker's is the one under the pointer, the one a click copies.
+  const magAt = (point) => (model.tool === 'picker'
+    ? { x: Math.floor(point.x), y: Math.floor(point.y) }
+    : { x: Math.round(point.x), y: Math.round(point.y) });
+  const hexOf = (r, g, b) => `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase()}`;
   let magKey = '';
   let magAsking = false;
   let magAgain = false;
@@ -1241,8 +1252,7 @@
     if (magAsking) { magAgain = true; return; }
     magAsking = true;
     try {
-      const point = toImage(magPointer);
-      const at = { x: Math.round(point.x), y: Math.round(point.y) };
+      const at = magAt(toImage(magPointer));
       const diameter = Math.round(MAG_DIAMETER * dpr());
       const cell = Math.max(1, Math.round(MAG_CELL * dpr()));
       let count = Math.ceil(diameter / cell);
@@ -1266,6 +1276,16 @@
         if (model.image.file) flattenOntoPaper(pixels, got.w * got.h);
       }
       paintMag(at, count, got);
+      // The colour picker's HEX above the circle, where the ruler's size sits: the middle
+      // pixel's, and nothing where the pointer is off the picture.
+      if (model.tool === 'picker') {
+        const sx = at.x - got.x;
+        const sy = at.y - got.y;
+        const inside = sx >= 0 && sy >= 0 && sx < got.w && sy < got.h;
+        const i = (sy * got.w + sx) * 4;
+        mag.classList.toggle('sized', inside);
+        if (inside) magSize.textContent = hexOf(got.pixels[i], got.pixels[i + 1], got.pixels[i + 2]);
+      }
     } finally {
       magAsking = false;
       if (magAgain) { magAgain = false; magKey = ''; drawMag(); }
@@ -1273,12 +1293,13 @@
   };
 
   const drawMag = () => {
-    const on = model.tool === 'ruler' && !!magPointer && !!model.image.width && model.mode === 'annotate';
+    const picking = model.tool === 'picker';
+    const on = (picking || (model.tool === 'ruler' && model.mode === 'annotate')) && !!magPointer && !!model.image.width;
     mag.classList.toggle('on', on);
     if (!on) { magKey = ''; return; }
     // The size above the circle while a ruler is dragged out, as in a capture.
     const drawing = drag && drag.kind === 'draw' && drag.shape.kind === 'ruler' ? rectOfShape(drag.shape) : null;
-    mag.classList.toggle('sized', !!drawing);
+    if (!picking) mag.classList.toggle('sized', !!drawing);
     if (drawing) {
       const text = `${drawing.w}x${drawing.h}`;
       if (magSize.textContent !== text) magSize.textContent = text;
@@ -1295,9 +1316,9 @@
     let top = py + MAG_GAP;
     if (top + h > box.height) top = py - MAG_GAP - h;
     mag.style.transform = `translate(${Math.max(0, Math.round(left))}px, ${Math.max(0, Math.round(top))}px)`;
-    const point = toImage(magPointer);
+    const at = magAt(toImage(magPointer));
     const crop = model.crop ? `${model.crop.x},${model.crop.y},${model.crop.w},${model.crop.h}` : '';
-    const key = `${model.image.document_id}|${Math.round(point.x)}|${Math.round(point.y)}|${crop}|${dpr()}`;
+    const key = `${model.tool}|${model.image.document_id}|${at.x}|${at.y}|${crop}|${dpr()}`;
     if (key === magKey) return;
     magKey = key;
     askMag().catch((err) => console.error('magnifier', err && err.stack ? err.stack : String(err)));
@@ -1521,6 +1542,7 @@
       button.classList.toggle('active', button.dataset.tool === tool);
     }
     document.body.classList.toggle('armed', !!tool);
+    document.body.classList.toggle('picking', tool === 'picker');
     layoutScene(); // the crop's frame shows with its tool and goes with it
     drawHud();
   };
@@ -2516,6 +2538,8 @@
   // arrive while the host answers, and the tool is in hand when the document is.
   let annotating = null;
   const pickTool = async (tool) => {
+    // The colour picker changes nothing, so it starts no annotation and makes no document.
+    if (tool === 'picker') { if (model.image.width) setTool(tool); return; }
     if (model.mode !== 'annotate' && model.image.width) {
       annotating = annotating || setMode('annotate').finally(() => { annotating = null; });
       await annotating;
@@ -2622,9 +2646,37 @@
     drawHud();
   };
 
+  // The colour picker (Rotem, 2026-09-18): a click copies the HEX of the picture's pixel
+  // under it, as the zoom circle shows it, and puts the tool down. A click off the picture
+  // copies nothing and keeps the tool. Nothing is changed, so there is no step of undo.
+  const pickColor = async (event) => {
+    const at = magAt(toImage(event));
+    const pic = pictureRect();
+    if (at.x < pic.x || at.y < pic.y || at.x >= pic.x + pic.w || at.y >= pic.y + pic.h) return;
+    try {
+      const response = await fetch(`http://region.localhost/?mag&x=${at.x}&y=${at.y}&w=1&h=1&ow=1&oh=1`, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`the pixel was refused: ${response.status}`);
+      const pixel = new Uint8ClampedArray(new Uint8Array(await response.arrayBuffer()).slice(8));
+      if (pixel.length !== 4) throw new Error(`the picker got ${pixel.length} bytes for one pixel`);
+      if (model.image.file) flattenOntoPaper(pixel, 1);
+      const hex = await invoke('editor_copy_color', { r: pixel[0], g: pixel[1], b: pixel[2] });
+      notice(`copied ${hex} to the clipboard`, 1500);
+    } catch (err) {
+      notice(`NOT COPIED: ${err}. Try again`, 0);
+      throw err;
+    }
+    if (model.tool === 'picker') setTool(null);
+  };
+
   stage.addEventListener('pointerdown', (event) => {
     if (event.button !== 0) return;
     const target = event.target;
+
+    if (model.tool === 'picker' && !spaceHeld && model.image.width) {
+      pickColor(event).catch((err) => console.error('picker', err && err.stack ? err.stack : String(err)));
+      event.preventDefault();
+      return;
+    }
 
     // Viewing mode, or Space held: the drag pans, whatever it started on, and nothing is
     // created or selected (§3.3). The scene takes no pointer then, so the target is the
@@ -3057,6 +3109,7 @@
       if (event.code === 'KeyB') { pickTool('blur').catch((err) => console.error('tool', err)); event.preventDefault(); return; }
       if (event.code === 'KeyM') { pickTool('ruler').catch((err) => console.error('tool', err)); event.preventDefault(); return; }
       if (event.code === 'KeyK') { pickTool('crop').catch((err) => console.error('tool', err)); event.preventDefault(); return; } // provisional key
+      if (event.code === 'KeyI') { pickTool('picker').catch((err) => console.error('tool', err)); event.preventDefault(); return; } // provisional key
     }
     if (event.key === 'Enter' && model.selected) { startEditing(model.selected); event.preventDefault(); return; }
 
