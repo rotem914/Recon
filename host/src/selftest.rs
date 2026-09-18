@@ -28,10 +28,10 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows::Win32::UI::WindowsAndMessaging::ShowWindow;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DispatchMessageW, FindWindowW, GetForegroundWindow,
-    GetMessageW, GetWindowRect, IsWindow, PostMessageW, PostQuitMessage, RegisterClassExW,
-    SetCursorPos, TranslateMessage, CW_USEDEFAULT, MSG, SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE,
-    WM_DESTROY, WNDCLASSEXW, WS_CHILD, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
+    CreateWindowExW, DefWindowProcW, DispatchMessageW, FindWindowW, GetCursorPos,
+    GetForegroundWindow, GetMessageW, GetWindowRect, IsWindow, PostMessageW, PostQuitMessage,
+    RegisterClassExW, SetCursorPos, TranslateMessage, CW_USEDEFAULT, MSG, SW_SHOW, WINDOW_EX_STYLE,
+    WM_CLOSE, WM_DESTROY, WNDCLASSEXW, WS_CHILD, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
 };
 
 use crate::capture::coords::{DesktopRect, FrameGeometry};
@@ -474,7 +474,7 @@ fn pixels_around(frame: &Frame, pointer: (i32, i32)) -> Option<[(u8, u8, u8); 9]
     Some(out)
 }
 
-/// Looks at the magnifier beside the pointer: the screen below and left of the pointer is
+/// Looks at the magnifier beside the pointer: the screen below and right of the pointer is
 /// written beside the executable, and read for the panel's ground in the app's background
 /// colour, its ring, the pixels around the pointer shown large at its centre, and the light
 /// pixels of the size text under the circle, which the panel's fill has none of. The
@@ -495,15 +495,24 @@ fn magnifier_seen(
         })
         .ok_or("the pointer is on no display")?;
     let scaled = |px: i32| (px * display.scale_percent as i32 + 50) / 100;
-    // The panel: 120 wide, 8 px left of the pointer and 8 below it; the copy takes 4 px
+    // The panel: 120 wide, 8 px right of the pointer and 8 below it; the copy takes 4 px
     // more on each side and enough height for the text row.
     let region = DesktopRect::from_points(
-        (pointer.0 - scaled(132)).max(display.rect.x),
+        (pointer.0 - scaled(4)).max(display.rect.x),
         pointer.1,
-        (pointer.0 + scaled(4)).min(display.rect.x + display.rect.width as i32),
+        (pointer.0 + scaled(132)).min(display.rect.x + display.rect.width as i32),
         (pointer.1 + scaled(168)).min(display.rect.y + display.rect.height as i32),
     );
     let pixels = copy_rect(region).map_err(|e| e.to_string())?;
+    // Where the pointer really is at the copy, against where the script put it: a
+    // difference here is the script's, not the overlay's.
+    let mut cursor = POINT::default();
+    if unsafe { GetCursorPos(&mut cursor) }.is_ok() && (cursor.x, cursor.y) != pointer {
+        println!(
+            "  while {name}, the pointer was put at {},{} but is at {},{} as the screen is copied",
+            pointer.0, pointer.1, cursor.x, cursor.y
+        );
+    }
     if let Ok(exe) = std::env::current_exe() {
         let path = exe.with_file_name(format!("s02-magnifier-{name}.png"));
         match image::RgbaImage::from_raw(region.width, region.height, pixels.clone()) {
@@ -515,7 +524,7 @@ fn magnifier_seen(
         }
     }
     // Where the panel's top left lands in the copy.
-    let panel = (pointer.0 - scaled(128) - region.x, scaled(8));
+    let panel = (pointer.0 + scaled(8) - region.x, scaled(8));
     let at = |x: i32, y: i32| -> Option<(u8, u8, u8)> {
         let (x, y) = (panel.0 + x, panel.1 + y);
         if x < 0 || y < 0 || x >= region.width as i32 || y >= region.height as i32 {
@@ -529,7 +538,7 @@ fn magnifier_seen(
     let ground = at(scaled(2), scaled(60)).ok_or("the ground probe is off the copy")?;
     if ground != (0x0D, 0x0E, 0x12) {
         return Err(format!(
-            "while {name}, the pixel 2,60 into the panel is {ground:?}, not the app background (13, 14, 18): no magnifier below and left of the pointer"
+            "while {name}, the pixel 2,60 into the panel is {ground:?}, not the app background (13, 14, 18): no magnifier below and right of the pointer"
         ));
     }
     // The ring: the circle's leftmost 2 px on its centre row.
@@ -569,7 +578,7 @@ fn magnifier_seen(
         ));
     }
     println!(
-        "  while {name}, the magnifier sits below and left of the pointer on the app background, ringed, its centre cells the frozen pixels, {light} light pixels of size text under it"
+        "  while {name}, the magnifier sits below and right of the pointer on the app background, ringed, its centre cells the frozen pixels, {light} light pixels of size text under it"
     );
     Ok(())
 }

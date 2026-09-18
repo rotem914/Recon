@@ -207,12 +207,13 @@ Stated by Rotem on 2026-09-18 for the capture overlay, with a picture of another
 | Part | Value |
 |---|---|
 | Circle | 112 px across, showing the pixels around the pointer large enough to tell apart |
+| Side | on the pointer's right (Rotem, 2026-09-18, from the picture's left) |
 
 From the picture, not his words, so provisional in the overlay until he states it: the
 circle sits in a panel of the size bubble's fill and corners, 4 px around it, with the
 selection's size under it, the lit window's while hovering and the dragged area's while a
 drag lasts, in the size bubble's text and padding; the panel is up the whole time the
-overlay is, below the pointer with its right edge 8 px left of it, and on the pointer's
+overlay is, below the pointer with its left edge 8 px right of it, and on the pointer's
 other side where that would leave the display; 8 px to a source pixel, an odd count of them
 so the pointer's own is the middle one; a 1 px grid between them, the pixel darkened by
 half; the marching frame's #00B9F7 through the middle of the centre pixel; a 2 px ring in

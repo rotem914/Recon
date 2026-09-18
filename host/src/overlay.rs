@@ -106,8 +106,9 @@ const SIZE_TEXT_RGB: (u8, u8, u8) = (0xF2, 0xF2, 0xF2);
 /// pixels around the pointer large enough to tell apart, the whole time the overlay is
 /// up, with the selection's size written under it. What the picture shows and his words
 /// do not, provisional until he states it: the circle in a panel of the label's fill and
-/// corners, 4 px around it; the panel below the pointer with its right edge 8 px left of
-/// it, and on the pointer's other side where that would leave the display; 8 px to a
+/// corners, 4 px around it; the panel below the pointer with its left edge 8 px right of
+/// it (the pointer's right is Rotem's word, from the picture's left), and on the
+/// pointer's other side where that would leave the display; 8 px to a
 /// source pixel; a 1 px grid between them, the pixel darkened by half; the frame's blue
 /// through the centre pixel; a 2 px ring in the text's white.
 const MAG_DIAMETER_PX: i32 = 112;
@@ -1460,13 +1461,13 @@ struct Panel {
     text: Option<(Vec<u16>, (i32, i32))>,
 }
 
-/// Where the panel goes: below the pointer by the gap, its right edge the gap left of the
+/// Where the panel goes: below the pointer by the gap, its left edge the gap right of the
 /// pointer, and on the pointer's other side where that would leave the display, so it is
 /// never cut off at an edge.
 fn place_panel(pointer: (i32, i32), size: (i32, i32), display: (i32, i32), gap: i32) -> (i32, i32) {
-    let mut left = pointer.0 - gap - size.0;
-    if left < 0 {
-        left = (pointer.0 + gap).min(display.0 - size.0);
+    let mut left = pointer.0 + gap;
+    if left + size.0 > display.0 {
+        left = pointer.0 - gap - size.0;
     }
     let mut top = pointer.1 + gap;
     if top + size.1 > display.1 {
@@ -2183,32 +2184,32 @@ mod tests {
     }
 
     #[test]
-    fn the_panel_sits_below_the_pointer_with_its_right_edge_left_of_it() {
+    fn the_panel_sits_below_the_pointer_with_its_left_edge_right_of_it() {
         assert_eq!(
             place_panel((500, 100), (120, 143), (1920, 1080), 8),
-            (372, 108)
+            (508, 108)
         );
     }
 
     #[test]
     fn the_panel_flips_to_the_other_side_at_a_display_edge() {
-        // Too close to the left edge: right of the pointer. Too close to the bottom: above.
+        // Too close to the right edge: left of the pointer. Too close to the bottom: above.
         assert_eq!(
-            place_panel((100, 100), (120, 143), (1920, 1080), 8),
-            (108, 108)
+            place_panel((1850, 100), (120, 143), (1920, 1080), 8),
+            (1722, 108)
         );
         assert_eq!(
             place_panel((500, 1000), (120, 143), (1920, 1080), 8),
-            (372, 849)
+            (508, 849)
         );
         assert_eq!(
-            place_panel((100, 1000), (120, 143), (1920, 1080), 8),
-            (108, 849)
+            place_panel((1850, 1000), (120, 143), (1920, 1080), 8),
+            (1722, 849)
         );
-        // Flipped right on a display too narrow for the gap: kept inside it.
+        // Flipped left on a display too narrow for the gap: kept inside it.
         assert_eq!(
             place_panel((100, 100), (120, 143), (200, 1080), 8),
-            (80, 108)
+            (0, 108)
         );
     }
 
