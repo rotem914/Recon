@@ -23,10 +23,13 @@ use windows::Win32::UI::Shell::{
 /// `name` filled in, and blocks until it closes. `Ok(None)` is a cancel. The dialog's own
 /// overwrite prompt is off on purpose: an existing name is never overwritten, the caller
 /// offers an available one instead, so the question the prompt asks must never be asked.
+/// The one exception is the caller's too: an annotated document's own PNG or JPEG, which
+/// the dialog then opens on, under a title that does not promise a new file.
 pub fn save_as(
     owner: Option<HWND>,
     folder: &std::path::Path,
     name: &str,
+    title: &str,
 ) -> Result<Option<PathBuf>, String> {
     unsafe {
         let init = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
@@ -73,7 +76,7 @@ pub fn save_as(
             dialog
                 .SetFileName(PCWSTR(name_wide.as_ptr()))
                 .map_err(|err| err.to_string())?;
-            let title = wide("Save As, a new file");
+            let title = wide(title);
             dialog
                 .SetTitle(PCWSTR(title.as_ptr()))
                 .map_err(|err| err.to_string())?;

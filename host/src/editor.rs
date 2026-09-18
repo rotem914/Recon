@@ -1898,6 +1898,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         checks::editor_open_path,
         checks::editor_open_file,
         checks::editor_file_print,
+        checks::editor_folder_names,
         checks::editor_opened_reload,
         checks::editor_remove_from_folder,
         checks::editor_history,
@@ -2431,6 +2432,56 @@ fn source_file() -> Option<std::path::PathBuf> {
     })
 }
 
+/// Where Save As opens, and the one file it may write over (Rotem, 2026-09-18): for an
+/// annotated document that came from a PNG or a JPEG still there, the file's own folder and
+/// name, and that file; for everything else the last export folder, a name marked as
+/// annotated, and nothing.
+fn save_as_plan() -> (std::path::PathBuf, String, Option<std::path::PathBuf>) {
+    let id = current_document_id();
+    let original = DOCUMENTS.lock().ok().and_then(|documents| {
+        documents
+            .iter()
+            .find(|d| d.id == id)
+            .and_then(|d| match &d.source {
+                Source::File { path, .. } => Some(path.clone()),
+                Source::Capture => None,
+            })
+    });
+    if let Some(original) = original.filter(|path| crate::export::replaceable(path)) {
+        if let (Some(folder), Some(name)) = (original.parent(), original.file_name()) {
+            return (
+                folder.to_path_buf(),
+                name.to_string_lossy().to_string(),
+                Some(original.clone()),
+            );
+        }
+    }
+    (
+        crate::export::folder(),
+        crate::export::suggested_name(source_file().as_deref()),
+        None,
+    )
+}
+
+/// After Save As wrote over a document's own file: the document's note of that file's size
+/// and time follows, so the document does not report its own save as a change on disk.
+fn note_own_save(id: u64, path: &std::path::Path) {
+    let (new_modified, new_len) = file_stamp(path);
+    if let Ok(mut documents) = DOCUMENTS.lock() {
+        if let Some(document) = documents.iter_mut().find(|d| d.id == id) {
+            if let Source::File { modified, len, .. } = &mut document.source {
+                *modified = new_modified;
+                *len = new_len;
+            }
+            if let Err(err) = write_record_of(document) {
+                crate::log(&format!(
+                    "document {id}: the saved file's stamp NOT kept: {err}"
+                ));
+            }
+        }
+    }
+}
+
 /// Save As (§3.6, S1.11): the composition is taken NOW, as the copy takes it, and the
 /// dialog runs on its own thread with the last export folder and a name derived from the
 /// source, marked as annotated. A chosen name that exists is never written over: the
@@ -2459,8 +2510,13 @@ pub fn editor_save_as(app: AppHandle, request: tauri::ipc::Request<'_>) -> Resul
         .get_webview_window("editor")
         .ok_or("there is no editor window")?;
     let owner = window.hwnd().map_err(|err| err.to_string())?.0 as isize;
-    let folder = crate::export::folder();
-    let name = crate::export::suggested_name(source_file().as_deref());
+    let (folder, name, replaces) = save_as_plan();
+    let document_id = current_document_id();
+    let title = if replaces.is_some() {
+        "Save As"
+    } else {
+        "Save As, a new file"
+    };
     set_save_as_outcome(SaveAsOutcome::open());
     std::thread::spawn(move || {
         let started = Instant::now();
@@ -2470,7 +2526,7 @@ pub fn editor_save_as(app: AppHandle, request: tauri::ipc::Request<'_>) -> Resul
                 let mut folder = folder;
                 let mut name = name;
                 loop {
-                    match crate::dialog::save_as(Some(owner), &folder, &name) {
+                    match crate::dialog::save_as(Some(owner), &folder, &name, title) {
                         Ok(None) => break SaveAsOutcome::cancelled(),
                         Err(err) => break SaveAsOutcome::failed(err),
                         Ok(Some(chosen)) => match crate::export::encode(
@@ -2479,10 +2535,19 @@ pub fn editor_save_as(app: AppHandle, request: tauri::ipc::Request<'_>) -> Resul
                             composite.height,
                             &chosen,
                         )
-                        .and_then(|bytes| crate::export::write_new(&chosen, &bytes))
-                        {
+                        .and_then(|bytes| {
+                            crate::export::write(&chosen, &bytes, replaces.as_deref())
+                        }) {
                             Ok(crate::export::Written::New(path)) => {
                                 break SaveAsOutcome::saved(path, composite.width, composite.height)
+                            }
+                            Ok(crate::export::Written::Replaced(path)) => {
+                                note_own_save(document_id, &path);
+                                break SaveAsOutcome::saved_over(
+                                    path,
+                                    composite.width,
+                                    composite.height,
+                                );
                             }
                             Ok(crate::export::Written::Exists { chosen, offered }) => {
                                 crate::log(&format!(
@@ -2543,6 +2608,16 @@ impl SaveAsOutcome {
         Self {
             state: "saved".into(),
             line: format!("saved {}x{} to {}", width, height, path.display()),
+            path: path.display().to_string(),
+            width,
+            height,
+            ..Default::default()
+        }
+    }
+    fn saved_over(path: std::path::PathBuf, width: u32, height: u32) -> Self {
+        Self {
+            state: "saved".into(),
+            line: format!("saved {}x{} over {}", width, height, path.display()),
             path: path.display().to_string(),
             width,
             height,
@@ -3870,6 +3945,16 @@ mod checks {
         editor_image_info()
     }
 
+    /// The names of the files in a folder, so a check can say nothing was left beside one.
+    #[tauri::command]
+    pub fn editor_folder_names(dir: String) -> Result<Vec<String>, String> {
+        let entries = std::fs::read_dir(&dir).map_err(|err| err.to_string())?;
+        Ok(entries
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().to_string())
+            .collect())
+    }
+
     /// A file's length and a hash of its bytes, so a check can say the file was not
     /// touched (rule 11).
     #[tauri::command]
@@ -4210,16 +4295,22 @@ mod checks {
         pub folder: String,
         pub name: String,
         pub source: String,
+        /// The one file this Save As may write over, empty when there is none.
+        pub replaces: String,
     }
 
     /// The folder and the name the dialog would open with, for the image on screen.
     #[tauri::command]
     pub fn editor_save_as_plan() -> SaveAsPlan {
         let source = source_file();
+        let (folder, name, replaces) = save_as_plan();
         SaveAsPlan {
-            folder: crate::export::folder().display().to_string(),
-            name: crate::export::suggested_name(source.as_deref()),
+            folder: folder.display().to_string(),
+            name,
             source: source.map(|p| p.display().to_string()).unwrap_or_default(),
+            replaces: replaces
+                .map(|p| p.display().to_string())
+                .unwrap_or_default(),
         }
     }
 
@@ -4253,7 +4344,12 @@ mod checks {
         let target = std::path::Path::new(&path);
         let encoded =
             crate::export::encode(&composite.rgba, composite.width, composite.height, target)?;
-        crate::export::write_new(target, &encoded)
+        let (_, _, replaces) = save_as_plan();
+        let written = crate::export::write(target, &encoded, replaces.as_deref())?;
+        if let crate::export::Written::Replaced(path) = &written {
+            note_own_save(current_document_id(), path);
+        }
+        Ok(written)
     }
 
     /// Whether the window is shown, for the S1.7 Copy and Return check.

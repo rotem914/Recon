@@ -3909,6 +3909,55 @@ export async function runChecks(editor, invoke) {
     await editor.setMode('view');
   }
 
+  // ---------------------------------------------------------------- Save As over the annotated file
+  say('');
+  say('Save As on an annotated PNG or JPEG opens on the file itself and writes over it, and over nothing else; any other type keeps the new annotated PNG');
+  {
+    await invoke('editor_store_reset');
+    const dir = await invoke('editor_make_folder');
+    const at = (name) => `${dir}\\${name}`;
+    const writeTo = async (path) => {
+      const layer = await editor.exportLayer();
+      return invoke('editor_save_as_write', layer.bytes, { headers: { margin: layer.margin, path } });
+    };
+    await editor.loadImage(await invoke('editor_open_file', { path: at('img2.png') }));
+    let plan = await invoke('editor_save_as_plan');
+    check('only viewed, the file keeps the new name marked as annotated, and nothing may be written over', plan.name === 'img2 annotated.png' && plan.replaces === '', JSON.stringify(plan));
+
+    await editor.setMode('annotate');
+    const note = editor.createCallout({ x: 40, y: 40 });
+    note.text = 'saved over';
+    editor.layoutScene();
+    editor.record();
+    await editor.saveNow();
+    plan = await invoke('editor_save_as_plan');
+    check('annotated, Save As opens on the file\'s own folder and name, and names it as the one file it may write over',
+      plan.name === 'img2.png' && plan.folder.toLowerCase() === dir.toLowerCase() && plan.replaces.toLowerCase() === at('img2.png').toLowerCase(), JSON.stringify(plan));
+
+    const otherBefore = await invoke('editor_file_print', { path: at('IMG1.png') });
+    const other = await writeTo(at('IMG1.png'));
+    check('another file that exists is still never written over: a free name is offered and its bytes stay',
+      other.Exists !== undefined && (await invoke('editor_file_print', { path: at('IMG1.png') })) === otherBefore, JSON.stringify(other).slice(0, 160));
+
+    const before = await invoke('editor_file_print', { path: at('img2.png') });
+    const over = await writeTo(at('img2.png'));
+    const after = await invoke('editor_file_print', { path: at('img2.png') });
+    const kind = await invoke('editor_file_kind', { path: at('img2.png') });
+    check('the file itself is written over with the picture and its notes, still a PNG that opens', over.Replaced !== undefined && after !== before && kind.format === 'png' && kind.width >= 200,
+      `${JSON.stringify(over).slice(0, 120)}; ${before} then ${after}; ${kind.format} ${kind.width}x${kind.height}`);
+    const leftovers = (await invoke('editor_folder_names', { dir })).filter((n) => !['img10.png', 'img2.png', 'IMG1.png', 'b.jpg', 'a.gif', 'notes.txt'].includes(n));
+    check('nothing else is left in the folder: no temporary file, no second version', leftovers.length === 0, JSON.stringify(leftovers));
+    const info = await invoke('editor_image_info');
+    check('the document does not call its own save a change on disk, and keeps its clean picture and its note', info.source_changed === false && info.managed === true && model.callouts.length === 1, `changed ${info.source_changed}`);
+
+    // A type that cannot be written back as itself keeps today's Save As.
+    await editor.loadImage(await invoke('editor_open_file', { path: at('a.gif') }));
+    await editor.setMode('annotate');
+    plan = await invoke('editor_save_as_plan');
+    check('an annotated GIF keeps the new annotated PNG, and nothing may be written over', plan.name === 'a annotated.png' && plan.replaces === '', JSON.stringify(plan));
+    await editor.setMode('view');
+  }
+
   say('');
   const unrun = notRun ? `, ${notRun} not run` : '';
   if (failures === 0) {

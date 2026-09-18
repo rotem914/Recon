@@ -1,7 +1,10 @@
-//! Save As (§3.6, S1.11): a PNG of the composition to a NEW file, every time. The suggested
-//! name is derived from the source and marked as annotated, the folder is the last one
-//! exported to, and a name that exists is never written over: an available one is offered
-//! instead. There is no overwrite path here, and rule 11 is why.
+//! Save As (§3.6, S1.11): a PNG of the composition to a NEW file. The suggested name is
+//! derived from the source and marked as annotated, the folder is the last one exported to,
+//! and a name that exists is never written over: an available one is offered instead.
+//!
+//! One file may be written over, and only that one (Rotem, 2026-09-18): the PNG or JPEG an
+//! annotated document came from, when Save As is pointed at it, which is where the dialog
+//! then opens. Every other existing name keeps the rule above, and rule 11 is why.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -51,6 +54,22 @@ pub fn suggested_name(source_file: Option<&Path>) -> String {
         Some(stem) => format!("{} annotated.png", stem.to_string_lossy()),
         None => format!("capture {} annotated.png", local_stamp()),
     }
+}
+
+/// Whether Save As may write over this file: a PNG or a JPEG that is there. Any other type
+/// cannot be written back as itself, so it keeps the new annotated PNG.
+pub fn replaceable(source: &Path) -> bool {
+    let ext = source
+        .extension()
+        .map(|e| e.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    matches!(ext.as_str(), "png" | "jpg" | "jpeg") && source.is_file()
+}
+
+/// The same file under Windows' case-insensitive names.
+fn same_file(a: &Path, b: &Path) -> bool {
+    a.to_string_lossy()
+        .eq_ignore_ascii_case(b.to_string_lossy().as_ref())
 }
 
 /// The first of `name`, `name (2)`, `name (3)`... that does not exist in `folder`.
@@ -117,6 +136,21 @@ pub enum Written {
     New(PathBuf),
     /// That name exists; nothing was written, and this one is free.
     Exists { chosen: PathBuf, offered: PathBuf },
+    /// The annotated document's own file, written over with these bytes.
+    Replaced(PathBuf),
+}
+
+/// The write Save As makes: over `replaces` when that is the path chosen, through a
+/// temporary file, a flush and a rename, so a write that fails leaves the original whole;
+/// to a new file, never over an existing one, for every other path.
+pub fn write(path: &Path, bytes: &[u8], replaces: Option<&Path>) -> Result<Written, String> {
+    match replaces {
+        Some(original) if same_file(path, original) => {
+            crate::store::write_atomic(original, bytes)?;
+            Ok(Written::Replaced(original.to_path_buf()))
+        }
+        _ => write_new(path, bytes),
+    }
 }
 
 /// Writes `png` to `path` only if nothing is there: the file is created new, never
@@ -193,6 +227,41 @@ mod tests {
             dir.join("a annotated (3).png")
         );
         assert_eq!(folder(), dir);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn only_the_documents_own_file_is_written_over() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join(format!("export-replace-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let original = dir.join("Header.PNG");
+        let other = dir.join("other.png");
+        std::fs::write(&original, b"clean").unwrap();
+        std::fs::write(&other, b"other").unwrap();
+        assert!(replaceable(&original));
+        assert!(!replaceable(&dir.join("gone.png")));
+        assert!(!replaceable(Path::new("C:\\Client\\logo.svg")));
+        // The original, named in another case: written over.
+        let chosen = dir.join("header.png");
+        assert_eq!(
+            write(&chosen, b"annotated", Some(&original)).unwrap(),
+            Written::Replaced(original.clone())
+        );
+        assert_eq!(std::fs::read(&original).unwrap(), b"annotated");
+        // Any other existing file, with or without an original named: never.
+        assert!(matches!(
+            write(&other, b"x", Some(&original)).unwrap(),
+            Written::Exists { .. }
+        ));
+        assert!(matches!(
+            write(&original, b"x", None).unwrap(),
+            Written::Exists { .. }
+        ));
+        assert_eq!(std::fs::read(&other).unwrap(), b"other");
+        assert_eq!(std::fs::read(&original).unwrap(), b"annotated");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -2182,6 +2182,13 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       walk. One behaviour differs, Rotem's to veto: "the latest reopens" is now the
       last-modified of the fifty newest by creation, so an old document annotated last,
       with more than fifty newer ones, would not be the one reopened.
+- [x] S2.11 Save As over the annotated file: for an annotated document that came from a
+      PNG or a JPEG, Save As opens on the file's own folder and name and writes the picture
+      with its notes over it; any other existing name is still never written over, a file
+      only viewed keeps the new name marked as annotated, and a type that cannot be written
+      back as itself keeps the new annotated PNG. Rotem's exception to rule 11 and to
+      S1.11's "a new file every time", asked and decided on 2026-09-18. Model: Fable 5.1,
+      it writes over an original.
 - [x] S2.10 An opened file in the timeline: a file opened by name, from the picker, "Open
       with" or the command line, sits in the timeline like a capture, as a pointer to where
       it lives. Nothing of it is copied (rule 11): its thumbnail is made from the file and

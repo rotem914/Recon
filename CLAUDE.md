@@ -241,6 +241,11 @@ no matter how good the rest of it is. Check them before you finish.
   folders of originals, client material included, and every way of breaking this is
   invisible until the original is already gone.
   Where it is carried: `project-os/Plan.md` F17, S0.4, S1.5 and S1.11.
+  **One exception, Rotem's on 2026-09-18:** Save As on an ANNOTATED document that came from
+  a PNG or a JPEG opens on that file and, when that file is the name chosen, writes the
+  picture with its notes over it. Nothing else is ever written over: not a file only being
+  viewed, not any other existing name, not a type that cannot be written back as itself,
+  which keeps the new annotated PNG. Viewing alone still never modifies anything.
 
 When the owner states one of these, add it here in one line with its reason. When
 a task touches one, say so at pickup.
