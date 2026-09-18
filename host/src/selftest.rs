@@ -477,7 +477,7 @@ fn pixels_around(frame: &Frame, pointer: (i32, i32)) -> Option<[(u8, u8, u8); 9]
 /// Looks at the magnifier beside the pointer: the screen below and right of the pointer is
 /// written beside the executable, and read for the panel's ground in the app's background
 /// colour, its ring, the pixels around the pointer shown large at its centre, and the light
-/// pixels of the size text under the circle, which the panel's fill has none of. The
+/// pixels of the size text above the circle, which the panel's fill has none of. The
 /// offsets are the spec's own numbers at 100%, the display's scale applied to each, so on
 /// a scaled display a rounding can put a probe a pixel off.
 fn magnifier_seen(
@@ -533,27 +533,35 @@ fn magnifier_seen(
         let i = ((y * region.width as i32 + x) * 4) as usize;
         Some((pixels[i], pixels[i + 1], pixels[i + 2]))
     };
+    // The circle's centre row: the size text sits above the circle, its height the face's,
+    // so the row is found rather than assumed, by the frame's blue line through the
+    // centre, read 30 px in from the panel's left edge where nothing else is that blue.
+    let centre_row = (0..region.height as i32)
+        .find(|&y| at(scaled(30), y) == Some((0x00, 0xB9, 0xF7)))
+        .ok_or(format!(
+            "while {name}, no blue line through a circle's centre below and right of the pointer: no magnifier there"
+        ))?;
     // The ground: 2 px in from the panel's left edge on the circle's centre row, inside
     // the 4 px around the circle.
-    let ground = at(scaled(2), scaled(60)).ok_or("the ground probe is off the copy")?;
+    let ground = at(scaled(2), centre_row).ok_or("the ground probe is off the copy")?;
     if ground != (0x0D, 0x0E, 0x12) {
         return Err(format!(
-            "while {name}, the pixel 2,60 into the panel is {ground:?}, not the app background (13, 14, 18): no magnifier below and right of the pointer"
+            "while {name}, the pixel 2,{centre_row} into the panel is {ground:?}, not the app background (13, 14, 18): no magnifier below and right of the pointer"
         ));
     }
     // The ring: the circle's leftmost 2 px on its centre row.
-    let ring = at(scaled(5), scaled(60)).ok_or("the ring probe is off the copy")?;
+    let ring = at(scaled(5), centre_row).ok_or("the ring probe is off the copy")?;
     if ring != (0xF2, 0xF2, 0xF2) {
         return Err(format!(
-            "while {name}, the pixel 5,60 into the panel is {ring:?}, not the ring's (242, 242, 242)"
+            "while {name}, the pixel 5,{centre_row} into the panel is {ring:?}, not the ring's (242, 242, 242)"
         ));
     }
     // The pointer's pixel and its eight neighbours, each an 8 px cell around the circle's
-    // centre at 60,60: read 2 px past each cell's start, off the grid and off the blue
-    // lines through the centre.
+    // centre at 60 across and the row found: read 2 px past each cell's start, off the
+    // grid and off the blue lines through the centre.
     for (n, expected) in around.iter().enumerate() {
         let (i, j) = (n as i32 % 3 - 1, n as i32 / 3 - 1);
-        let probe = (scaled(58 + 8 * i), scaled(58 + 8 * j));
+        let probe = (scaled(58 + 8 * i), centre_row - scaled(2) + scaled(8 * j));
         let shown = at(probe.0, probe.1).ok_or("a cell probe is off the copy")?;
         if shown != *expected {
             return Err(format!(
@@ -561,9 +569,10 @@ fn magnifier_seen(
             ));
         }
     }
-    // The text row under the circle: its light pixels.
+    // The text row above the circle, between the panel's top and the circle's: its
+    // light pixels.
     let mut light = 0;
-    for y in scaled(120)..scaled(150) {
+    for y in scaled(2)..(centre_row - scaled(57)) {
         for x in 0..scaled(120) {
             if let Some((r, g, b)) = at(x, y) {
                 if r > 0x80 && g > 0x80 && b > 0x80 {
@@ -574,11 +583,11 @@ fn magnifier_seen(
     }
     if light < 20 {
         return Err(format!(
-            "while {name}, only {light} light pixels under the circle: the panel has no size text"
+            "while {name}, only {light} light pixels above the circle: the panel has no size text"
         ));
     }
     println!(
-        "  while {name}, the magnifier sits below and right of the pointer on the app background, ringed, its centre cells the frozen pixels, {light} light pixels of size text under it"
+        "  while {name}, the magnifier sits below and right of the pointer on the app background, ringed, its centre cells the frozen pixels, {light} light pixels of size text above it"
     );
     Ok(())
 }

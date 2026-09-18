@@ -104,7 +104,7 @@ const SIZE_TEXT_RGB: (u8, u8, u8) = (0xF2, 0xF2, 0xF2);
 
 /// The magnifier (Rotem, 2026-09-18, with a picture): a 112 px circle showing the frozen
 /// pixels around the pointer large enough to tell apart, the whole time the overlay is
-/// up, with the selection's size written under it. What the picture shows and his words
+/// up, with the selection's size written above it. What the picture shows and his words
 /// do not, provisional until he states it: the circle in a panel of the label's fill and
 /// corners, 4 px around it; the panel below the pointer with its left edge 8 px right of
 /// it (the pointer's right is Rotem's word, from the picture's left), and on the
@@ -903,7 +903,7 @@ impl State {
     }
 
     /// The magnifier on this window: the panel beside the pointer, the circle inside it
-    /// and the selection's size under the circle, measured with the display's face on the
+    /// and the selection's size above the circle, measured with the display's face on the
     /// given DC, in client coordinates. None while the pointer is on another window, or
     /// before it was seen at all.
     fn magnifier(&self, hwnd: HWND, hdc: HDC) -> Option<Panel> {
@@ -940,8 +940,11 @@ impl State {
         });
         let pad = (scaled(SIZE_PAD_X_PX, scale), scaled(SIZE_PAD_Y_PX, scale));
         let width = (diameter + 2 * inset).max(text.as_ref().map_or(0, |(_, e)| e.cx + 2 * pad.0));
-        let height = inset + diameter + text.as_ref().map_or(inset, |(_, e)| pad.1 + e.cy + pad.1);
-        let text = text.map(|(t, e)| (t, ((width - e.cx) / 2, inset + diameter + pad.1)));
+        // The size above the circle (Rotem, 2026-09-18, from under it): the text row first,
+        // with its padding, then the circle with its inset.
+        let above = text.as_ref().map_or(inset, |(_, e)| pad.1 + e.cy + pad.1);
+        let height = above + diameter + inset;
+        let text = text.map(|(t, e)| (t, ((width - e.cx) / 2, pad.1)));
         let (left, top) = place_panel(
             source,
             (width, height),
@@ -956,7 +959,7 @@ impl State {
                 bottom: top + height,
             },
             radius: scaled(SIZE_RADIUS_PX, scale),
-            circle: (width / 2, inset + diameter / 2, diameter / 2),
+            circle: (width / 2, above + diameter / 2, diameter / 2),
             ring: scaled(MAG_RING_PX, scale),
             cell,
             cells: cell_count(diameter, cell),
@@ -1424,7 +1427,7 @@ unsafe fn paint(hwnd: HWND) {
                 let _ = unsafe { DeleteObject(HGDIOBJ(to_dash.0)) };
             }
 
-            // 4. the magnifier beside the pointer, the size under it, wherever the dirty
+            // 4. the magnifier beside the pointer, the size above it, wherever the dirty
             // region touches it: a tick's strip through it redraws that strip of it, and a
             // move redraws it whole.
             if let Some(panel) = state.magnifier(hwnd, hdc) {
@@ -1457,7 +1460,7 @@ struct Panel {
     cells: i32,
     /// The source pixel at the circle's centre: the pointer, in client coordinates.
     source: (i32, i32),
-    /// The selection's size under the circle, and where its text sits inside the panel.
+    /// The selection's size above the circle, and where its text sits inside the panel.
     text: Option<(Vec<u16>, (i32, i32))>,
 }
 

@@ -193,8 +193,8 @@ Stated by Rotem on 2026-09-17 for the capture overlay.
 | Text | 14 px |
 | Bubble | the app background as its fill, 8 px corners, 8 px of padding at the sides and 4 above and below |
 
-Since 2026-09-18 the bubble is the magnifier's panel, below, and the text sits under its
-circle, as the picture Rotem sent shows; the fill, the corners and the padding around the
+Since 2026-09-18 the bubble is the magnifier's panel, below, and the text sits above its
+circle, at Rotem's word, where the picture he sent had it under; the fill, the corners and the padding around the
 text are the panel's. The rest is not stated yet. Provisional in the overlay until it is:
 the text the ruler's #f2f2f2 in Segoe UI, regular; every number at 100%, scaled by the
 display's own scale as the cursor is. The fill is a constant in the host
@@ -208,10 +208,11 @@ Stated by Rotem on 2026-09-18 for the capture overlay, with a picture of another
 |---|---|
 | Circle | 112 px across, showing the pixels around the pointer large enough to tell apart |
 | Side | on the pointer's right (Rotem, 2026-09-18, from the picture's left) |
+| Size | above the circle (Rotem, 2026-09-18, from under it as the picture had) |
 
 From the picture, not his words, so provisional in the overlay until he states it: the
 circle sits in a panel of the size bubble's fill and corners, 4 px around it, with the
-selection's size under it, the lit window's while hovering and the dragged area's while a
+selection's size above it, the lit window's while hovering and the dragged area's while a
 drag lasts, in the size bubble's text and padding; the panel is up the whole time the
 overlay is, below the pointer with its left edge 8 px right of it, and on the pointer's
 other side where that would leave the display; 8 px to a source pixel, an odd count of them
