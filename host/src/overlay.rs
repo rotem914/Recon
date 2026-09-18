@@ -110,7 +110,7 @@ const SIZE_TEXT_RGB: (u8, u8, u8) = (0xF2, 0xF2, 0xF2);
 /// corners, 4 px around it; the panel below the pointer with its left edge 8 px right of
 /// it (the pointer's right is Rotem's word, from the picture's left), and on the
 /// pointer's other side where that would leave the display; 8 px to a
-/// source pixel; a 1 px grid between them, the pixel darkened by half; the frame's blue
+/// source pixel; a 1 px grid between them, the pixel darkened by half; #2554FB lines
 /// on the centre pixel's top and left edges (his, the same day); a 2 px ring in the text's white.
 const MAG_DIAMETER_PX: i32 = 112;
 const MAG_CELL_PX: i32 = 8;
@@ -118,6 +118,15 @@ const MAG_INSET_PX: i32 = 4;
 const MAG_GAP_PX: i32 = 8;
 const MAG_RING_PX: i32 = 2;
 const MAG_RING_RGB: (u8, u8, u8) = (0xF2, 0xF2, 0xF2);
+/// The two lines inside the circle, Rotem's #2554FB (2026-09-18, from the frame's blue).
+const MAG_LINE_RGB: (u8, u8, u8) = (0x25, 0x54, 0xFB);
+/// How much of the lines' colour the pixel on each side of them takes: 1.64 px wide (after 1.44), less
+/// the whole pixel in the middle, halved.
+const MAG_LINE_SIDE: f64 = 0.32;
+/// The grid between the pixels, Rotem's #808080 (2026-09-18, after #A8A8A8, #8C8C8C and #707070, from the pixel darkened by half).
+const MAG_GRID_RGB: (u8, u8, u8) = (0x80, 0x80, 0x80);
+/// How much of the grid's colour lies over the pixel under it: his 48%, the same day, after 64%.
+const MAG_GRID_STRENGTH: f64 = 0.48;
 
 /// The pointer's lines (Rotem, 2026-09-18): one across and one down through the pointer,
 /// 1 px each, the whole width and height of the display it is on whatever is selected, in
@@ -125,7 +134,9 @@ const MAG_RING_RGB: (u8, u8, u8) = (0xF2, 0xF2, 0xF2);
 /// 72%). They stop 12 px short of the pointer on every side, under the system's cross:
 /// it is drawn as the inverse of what is under it, which over the blue made it red where
 /// Rotem wants it white. The 12 px is the cross's arm at 100%, by eye, provisional.
-const CROSS_RGB: (u8, u8, u8) = ANTS_DASH_RGB;
+/// Since later that day they carry the circle's lines' settings, his word: their #2554FB,
+/// and their 1.64 px, the pixel on each side of the line taking `MAG_LINE_SIDE` of it.
+const CROSS_RGB: (u8, u8, u8) = MAG_LINE_RGB;
 const CROSS_ALPHA: u8 = 122;
 const CROSS_GAP_PX: i32 = 12;
 
@@ -860,7 +871,7 @@ unsafe fn drag_move(hwnd: HWND, point: POINT) {
 unsafe fn invalidate_cross() {
     let cross = STATE.with(|cell| cell.borrow().as_ref()?.cross());
     if let Some((surface, strips)) = cross {
-        for strip in strips {
+        for (strip, _) in strips {
             let _ = unsafe { InvalidateRect(Some(HWND(surface as *mut _)), Some(&strip), false) };
         }
     }
@@ -942,9 +953,10 @@ impl State {
 
     /// The pointer's lines, and the window they are on, in its client coordinates: the row
     /// left and right of the pointer, then the column above and below it, each stopping
-    /// the gap short of it. A drag that has moved has them at its clamped point, as the magnifier
+    /// the gap short of it, each followed by the pixel-wide strips on its two sides, marked,
+    /// which take a part of the line's strength. A drag that has moved has them at its clamped point, as the magnifier
     /// has; otherwise they are at the pointer as last seen.
-    fn cross(&self) -> Option<(isize, [RECT; 4])> {
+    fn cross(&self) -> Option<(isize, [(RECT, bool); 12])> {
         let (surface, desktop) = match self.drag.as_ref() {
             Some(drag) if drag.moved => (drag.hwnd, drag.current),
             _ => self.pointer?,
@@ -964,15 +976,25 @@ impl State {
             right,
             bottom,
         };
-        Some((
-            surface,
+        let across = |left, right| {
             [
-                strip(0, y, x - gap, y + 1),
-                strip(x + gap + 1, y, width, y + 1),
-                strip(x, 0, x + 1, y - gap),
-                strip(x, y + gap + 1, x + 1, height),
-            ],
-        ))
+                (strip(left, y, right, y + 1), false),
+                (strip(left, y - 1, right, y), true),
+                (strip(left, y + 1, right, y + 2), true),
+            ]
+        };
+        let down = |top, bottom| {
+            [
+                (strip(x, top, x + 1, bottom), false),
+                (strip(x - 1, top, x, bottom), true),
+                (strip(x + 1, top, x + 2, bottom), true),
+            ]
+        };
+        let [a, b, c] = across(0, x - gap);
+        let [d, e, f] = across(x + gap + 1, width);
+        let [g, h, i] = down(0, y - gap);
+        let [j, k, l] = down(y + gap + 1, height);
+        Some((surface, [a, b, c, d, e, f, g, h, i, j, k, l]))
     }
 
     /// The size written under the magnifier: the dragged area's once a drag on this window
@@ -1565,13 +1587,18 @@ unsafe fn paint_piece(hwnd: HWND, hdc: HDC, dirty: RECT) {
             // The pointer's lines, over the dim and the lit area alike and under the frame:
             // the pieces of them inside the dirty region.
             if let Some((_, strips)) = state.cross().filter(|(s, _)| *s == hwnd.0 as isize) {
-                let blend = BLENDFUNCTION {
-                    BlendOp: AC_SRC_OVER as u8,
-                    BlendFlags: 0,
-                    SourceConstantAlpha: CROSS_ALPHA,
-                    AlphaFormat: 0,
-                };
-                for strip in strips {
+                for (strip, side) in strips {
+                    let strength = if side {
+                        (CROSS_ALPHA as f64 * MAG_LINE_SIDE).round() as u8
+                    } else {
+                        CROSS_ALPHA
+                    };
+                    let blend = BLENDFUNCTION {
+                        BlendOp: AC_SRC_OVER as u8,
+                        BlendFlags: 0,
+                        SourceConstantAlpha: strength,
+                        AlphaFormat: 0,
+                    };
                     let left = strip.left.max(dirty.left);
                     let top = strip.top.max(dirty.top);
                     let right = strip.right.min(dirty.right);
@@ -1747,7 +1774,7 @@ fn cell_count(diameter: i32, cell: i32) -> i32 {
 
 /// The pixels around the pointer, each one a cell wide, BGRA: the frozen slice stretched
 /// with no smoothing, the grid's line on the last pixel of every cell across and down,
-/// darkened by half, and the frame's blue on the centre cell's top and left edges. Past the
+/// darkened by half, and the #2554FB lines on the centre cell's top and left edges. Past the
 /// display's edge the panel's own fill shows, since a stretch reads nothing beyond the
 /// bitmap.
 unsafe fn magnified(hdc: HDC, surface: &Surface, panel: &Panel) -> Option<Vec<u8>> {
@@ -1827,13 +1854,28 @@ unsafe fn magnified(hdc: HDC, surface: &Surface, panel: &Panel) -> Option<Vec<u8
         for x in 0..side {
             let at = ((y * side + x) * 4) as usize;
             if x == centre || y == centre {
-                bytes[at] = ANTS_DASH_RGB.2;
-                bytes[at + 1] = ANTS_DASH_RGB.1;
-                bytes[at + 2] = ANTS_DASH_RGB.0;
+                bytes[at] = MAG_LINE_RGB.2;
+                bytes[at + 1] = MAG_LINE_RGB.1;
+                bytes[at + 2] = MAG_LINE_RGB.0;
             } else if x % cell == cell - 1 || y % cell == cell - 1 {
-                bytes[at] /= 2;
-                bytes[at + 1] /= 2;
-                bytes[at + 2] /= 2;
+                let over = |under: u8, grid: u8| {
+                    (under as f64 * (1.0 - MAG_GRID_STRENGTH) + grid as f64 * MAG_GRID_STRENGTH)
+                        .round() as u8
+                };
+                bytes[at] = over(bytes[at], MAG_GRID_RGB.2);
+                bytes[at + 1] = over(bytes[at + 1], MAG_GRID_RGB.1);
+                bytes[at + 2] = over(bytes[at + 2], MAG_GRID_RGB.0);
+            }
+            // The lines are 1.64 px wide, centred on the grid's line (Rotem, 2026-09-18, so
+            // the eye finds them sooner): the pixel on each side takes 0.32 of their colour.
+            if x != centre && y != centre && ((x - centre).abs() == 1 || (y - centre).abs() == 1) {
+                let side_of = |under: u8, line: u8| {
+                    (under as f64 * (1.0 - MAG_LINE_SIDE) + line as f64 * MAG_LINE_SIDE).round()
+                        as u8
+                };
+                bytes[at] = side_of(bytes[at], MAG_LINE_RGB.2);
+                bytes[at + 1] = side_of(bytes[at + 1], MAG_LINE_RGB.1);
+                bytes[at + 2] = side_of(bytes[at + 2], MAG_LINE_RGB.0);
             }
             bytes[at + 3] = 255;
         }

@@ -582,7 +582,7 @@ fn magnifier_seen(
         let lit = [frozen.0, frozen.1, frozen.2];
         let dimmed = lit.map(|c| (c as u32 * (255 - 140) / 255) as u8);
         let lined = |base: [u8; 3]| {
-            let blue = [0x00u32, 0xB9, 0xF7];
+            let blue = [0x25u32, 0x54, 0xFB];
             [0, 1, 2].map(|c| ((blue[c] * 122 + base[c] as u32 * (255 - 122)) / 255) as u8)
         };
         if near(lined(lit), lit) || near(lined(dimmed), dimmed) {
@@ -606,10 +606,10 @@ fn magnifier_seen(
         Some((pixels[i], pixels[i + 1], pixels[i + 2]))
     };
     // The circle's centre row: the size text sits above the circle, its height the face's,
-    // so the row is found rather than assumed, by the frame's blue line through the
+    // so the row is found rather than assumed, by the circle's #2554FB line through the
     // centre, read 30 px in from the panel's left edge where nothing else is that blue.
     let centre_row = (0..region.height as i32)
-        .find(|&y| at(scaled(30), y) == Some((0x00, 0xB9, 0xF7)))
+        .find(|&y| at(scaled(30), y) == Some((0x25, 0x54, 0xFB)))
         .ok_or(format!(
             "while {name}, no blue line through a circle's centre below and right of the pointer: no magnifier there"
         ))?;

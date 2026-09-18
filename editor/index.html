@@ -1183,7 +1183,8 @@
   const MAG_GAP = 8;
   const MAG_RING = 2;
   const MAG_FILL = [0x0D, 0x0E, 0x12];
-  const MAG_BLUE = [0x00, 0xB9, 0xF7];
+  const MAG_GRID = [0x80, 0x80, 0x80]; // Rotem's #808080, 2026-09-18, after #A8A8A8, #8C8C8C and #707070, from the pixel darkened by half
+  const MAG_BLUE = [0x25, 0x54, 0xFB]; // Rotem's #2554FB, 2026-09-18, as the capture's circle
   let magPointer = null; // where the pointer last was over the stage, in client pixels
   // The circle's middle pixel. The ruler's is the one right of and below the corner a drag
   // lands on; the colour picker's is the one under the pointer, the one a click copies.
@@ -1222,9 +1223,15 @@
           }
           line = x % cell === cell - 1 || y % cell === cell - 1;
         }
-        out[o] = line ? rgb[0] >> 1 : rgb[0];
-        out[o + 1] = line ? rgb[1] >> 1 : rgb[1];
-        out[o + 2] = line ? rgb[2] >> 1 : rgb[2];
+        if (line) rgb = rgb.map((c, n) => Math.round(c * 0.52 + MAG_GRID[n] * 0.48)); // the grid at 48% over the pixel, Rotem's, after 64%
+        // The lines are 1.64 px wide, centred on the grid's line (Rotem, 2026-09-18): the
+        // pixel on each side takes 0.32 of their colour, as in the capture's circle.
+        if (x !== centre && y !== centre && (Math.abs(x - centre) === 1 || Math.abs(y - centre) === 1)) {
+          rgb = rgb.map((c, n) => Math.round(c * 0.68 + MAG_BLUE[n] * 0.32));
+        }
+        out[o] = rgb[0];
+        out[o + 1] = rgb[1];
+        out[o + 2] = rgb[2];
         out[o + 3] = 255;
       }
     }
