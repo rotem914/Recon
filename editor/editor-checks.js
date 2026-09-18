@@ -3203,7 +3203,7 @@ export async function runChecks(editor, invoke) {
     plus.click();
     await sleep(150);
     check('the first press puts Main and New tab beside the plus, New tab selected', tabNames().join('|') === 'Main|New tab' && selectedName() === 'New tab', `${tabNames().join('|')}, selected "${selectedName()}"`);
-    check('Main is right after the plus, and it has no ×', plus.nextElementSibling === tabEls()[0] && !tabEls()[0].querySelector('.x') && !!tabEls()[1].querySelector('.x'));
+    check('Main is right after the plus, and no tab carries a ×', plus.nextElementSibling === tabEls()[0] && !tabEls()[0].querySelector('.x') && !tabEls()[1].querySelector('.x'));
     const tabStyle = getComputedStyle(tabEls()[1]);
     check('a tab is 32 px tall with 14 px text on a 10 px radius', tabStyle.fontSize === '14px' && tabStyle.borderRadius === '10px' && Math.round(tabEls()[1].getBoundingClientRect().height) === 32, `${tabStyle.fontSize}, radius ${tabStyle.borderRadius}`);
     check('the new tab\'s feed is empty, so the timeline shows nothing yet, and stays', await until(() => thumbs().length === 0) && document.body.classList.contains('strip'), `${thumbs().length} thumbnails`);
@@ -3320,20 +3320,32 @@ export async function runChecks(editor, invoke) {
     check('Main cannot be dragged: a press and a move on it changes nothing', tabEls()[0] === mainEl && !mainEl.classList.contains('dragging') && editor.tabsOf().list.map((t) => t.id).join() === orderDuring);
     check('and a move of it by the page is refused', editor.moveTab(0, 1) === false && editor.deleteTab(0) === false && tabNames()[0] === 'Main');
 
-    // The ×: the first press turns it into a ✓ and deletes nothing; the second deletes; the pointer leaving puts the × back.
+    // The tab's menu (Rotem, 2026-09-18): a right press on a tab after Main opens it with Delete; a press elsewhere or Escape closes it; Main has none.
     const t1El = tabEls().find((el) => Number(el.dataset.tab) === t1.id);
     t1El.click();
     await until(() => thumbs().length === 1);
-    const x = t1El.querySelector('.x');
-    x.click();
-    await sleep(50);
-    check('the first press on the × turns it into a ✓ and deletes nothing', x.classList.contains('armed') && getComputedStyle(x.querySelector('.tick')).display !== 'none' && getComputedStyle(x.querySelector('.cross')).display === 'none' && editor.tabsOf().list.length === 3,
-      `armed ${x.classList.contains('armed')}, ${editor.tabsOf().list.length} tabs`);
-    t1El.dispatchEvent(new PointerEvent('pointerleave', { pointerId: 7 }));
-    check('the pointer leaving the tab puts the × back', !x.classList.contains('armed') && getComputedStyle(x.querySelector('.cross')).display !== 'none');
-    x.click();
-    x.click();
-    check('two presses on the × delete the selected tab and select Main: the whole library again, the capture still there', await until(() => thumbs().length === 3) && selectedName() === 'Main' && editor.tabsOf().list.length === 2 && !editor.tabsOf().list.some((t) => t.id === t1.id),
+    const tabMenu = document.getElementById('tab-menu');
+    const rightPress = (el) => { const b = el.getBoundingClientRect(); return el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: b.left + 12, clientY: b.top + 16 })); };
+    const els2 = tabEls();
+    const gapMain = Math.round(els2[1].getBoundingClientRect().left - els2[0].getBoundingClientRect().right);
+    const gapNext = Math.round(els2[2].getBoundingClientRect().left - els2[1].getBoundingClientRect().right);
+    const nameEnd = Math.round(els2[1].getBoundingClientRect().right - els2[1].querySelector('.name').getBoundingClientRect().right);
+    check('two new tabs are as far apart as Main and the first one, 8 px, and a name ends 10 px before its tab does: no room is held for a ×', gapMain === 8 && gapNext === 8 && nameEnd === 10, `${gapMain}, ${gapNext}, name end ${nameEnd}`);
+    const mainTook = !rightPress(tabEls()[0]);
+    check('a right press on Main opens nothing, and not the system menu either', mainTook && getComputedStyle(tabMenu).display === 'none');
+    const took = !rightPress(t1El);
+    const menuBox = tabMenu.getBoundingClientRect();
+    check('a right press on a tab opens a menu with Delete alone, above the bar at the pointer, and deletes nothing', took && getComputedStyle(tabMenu).display === 'block' && tabMenu.querySelectorAll('button').length === 1 && tabMenu.textContent.trim() === 'Delete'
+        && Math.abs(menuBox.bottom - (t1El.getBoundingClientRect().top + 16)) < 1 && Math.abs(menuBox.left - (t1El.getBoundingClientRect().left + 12)) < 1 && editor.tabsOf().list.length === 3,
+      `took ${took}, ${getComputedStyle(tabMenu).display}, "${tabMenu.textContent.trim()}", ${menuBox.left},${menuBox.bottom} for ${t1El.getBoundingClientRect().left + 12},${t1El.getBoundingClientRect().top + 16}, ${editor.tabsOf().list.length} tabs`);
+    document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 7, button: 0 }));
+    check('a press elsewhere closes the menu and deletes nothing', getComputedStyle(tabMenu).display === 'none' && editor.tabsOf().list.length === 3);
+    rightPress(t1El);
+    tabMenu.querySelector('button').dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Escape', code: 'Escape' }));
+    check('Escape closes it too', getComputedStyle(tabMenu).display === 'none' && editor.tabsOf().list.length === 3);
+    rightPress(t1El);
+    tabMenu.querySelector('button').click();
+    check('Delete in the menu deletes the selected tab and selects Main: the whole library again, the capture still there, the menu closed', await until(() => thumbs().length === 3) && selectedName() === 'Main' && editor.tabsOf().list.length === 2 && !editor.tabsOf().list.some((t) => t.id === t1.id) && getComputedStyle(tabMenu).display === 'none',
       `${thumbs().length} thumbnails, selected "${selectedName()}", ${editor.tabsOf().list.length} tabs`);
     saved = await invoke('editor_tabs');
     check('the deletion is on disk', !!saved && saved.tabs.length === 2 && saved.selected === 0, JSON.stringify(saved && saved.tabs.map((t) => t.id)));
