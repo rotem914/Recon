@@ -188,13 +188,16 @@ ordinary arrow, a click on the picture creates nothing until a tool is chosen, a
 the picture pans it, as in viewing; every picture shown starts that way again. With a tool
 in hand, Space held gives the ordinary pointer and the same pan, and letting go gives the
 tool back. Rotem's calls on 2026-09-14; until then the callout tool was live and a click
-started a note.
+started a note. A finished note or a drawn shape puts its tool down, so the next one starts
+with a tool picked again, and a click on a finished note edits it with no tool in hand
+(Rotem, 2026-09-18).
 
 **An existing file opens in viewing mode.** Ordinary clicking and dragging pan, select
 nothing and create nothing, so no stray callout can land on someone's photograph because
-the pointer moved. An explicit **Annotate** action switches that window into annotation,
-arms the tools, and creates the managed document in §3.8. Leaving annotation returns to
-viewing without discarding the work.
+the pointer moved. Picking a tool, by its button or its key, switches that window into
+annotation with that tool in hand, and creates the managed document in §3.8. There is no
+mode control: Rotem's call on 2026-09-18 took the Annotate button and the `A` key away,
+since jumping between the modes by hand was the problem.
 
 Everything else about the editor holds for both:
 
@@ -426,7 +429,7 @@ is a contract broken on day one.
 | Fit to window · actual size · zoom in · zoom out | Viewing controls, no effect on export resolution; zoom out stops at the whole picture (§3.4) | 1, built: keys, and the wheel to zoom around the pointer, with Ctrl or without, at Rotem's call on 2026-09-14; a sideways wheel pans; the zoom-out floor at Rotem's word on 2026-09-15 |
 | `Space` held, outside text editing | The ordinary pointer, and a drag pans the picture whatever tool is in hand; letting go gives the tool back | 1, built at Rotem's word on 2026-09-14 |
 | Fullscreen | Enter fullscreen | 1, built: F11, and the same key or Escape out |
-| Annotate, and back to viewing | Switch the window between viewing, where no click creates anything, and annotation, where the tools are live and none is in hand until one is chosen (§3.3). The work stays either way | 1, built at S1.5: the `A` key and a button at the window's top right, both, Rotem's call on 2026-09-14 |
+| Annotate, and back to viewing | Switch the window between viewing, where no click creates anything, and annotation, where the tools are live and none is in hand until one is chosen (§3.3). The work stays either way | 1, built at S1.5: the `A` key and a button at the window's top right, both, Rotem's call on 2026-09-14; removed on 2026-09-18 at Rotem's call: picking a tool enters annotation, and a finished element puts the tool down |
 | `Ctrl+S` | Save As a PNG file, to a new file. Internal saving stays automatic | 1, built at S1.11: Windows' own Save As, the last export folder, the suggested name, an available name offered when the chosen one exists |
 | `Ctrl+Shift+Enter` | Send to Rogers, once that exists and is configured | 4 |
 

@@ -46,8 +46,8 @@ Stated by Rotem on 2026-09-15 for the controls sidebar; the sizes restated on 20
 | Hover | the container fills with the icon button hover colour, fading in by A1 |
 | Name | every icon button carries its name and its key as a title, so it has a name without its text |
 
-Used by: the controls sidebar down the left edge of the editor, the eight tools, Copy, Save
-As and the mode.
+Used by: the controls sidebar down the left edge of the editor, the eight tools, Copy and Save
+As.
 
 ### Button group
 

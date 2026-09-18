@@ -241,17 +241,14 @@
   /* With no timeline the HUD, which carries the notices, sits above the picture's size, not under it (2026-09-16). */
   body:not(.strip) #hud { bottom: calc(10px + var(--size-band, 0px)); }
   #probe { position: absolute; inset: 0; display: none; }
-  /* The mode button (§3.3), the other half of the Annotate control beside the A key:
-     Rotem's call on 2026-09-14, both. Outside the stage so a click on it reaches no
-     canvas handler. */
-  /* The controls (§3.3, S1.5, S2.3, Stage 3): the tools, Copy, Save As and the mode, as a
+  /* The controls (§3.3, S1.5, S2.3, Stage 3): the tools, Copy and Save As, as a
      sidebar of icon buttons down the left edge (Rotem, 2026-09-15). Each button is a 48 by
      48 square with no fill of its own and a 32 by 32 icon in it (Rotem, 2026-09-16, from 32
      and 20; the sidebar 64 wide with it, from 48), 8 px between buttons, and
      a hover fills the square with #21222C, fading in by the design system's A1
      (project-os/Design.md). Outside the stage so a click on them reaches no canvas handler;
      the stage starts at the sidebar's right edge, and fullscreen puts it away with the bar.
-     One container holds all nine buttons, centred in the sidebar's height and across it, and each button's
+     One container holds all ten buttons, centred in the sidebar's height and across it, and each button's
      name opens as a tooltip on its right under the pointer (Rotem, 2026-09-15). Above the
      stage, so a tooltip is not painted under the picture. */
   /* A height, not a bottom: the sidebar sits inside the top bar, so a bottom would be measured
@@ -281,10 +278,6 @@
   /* The tools (Stage 3): which one a click on the picture uses. */
   #tools { flex: none; display: flex; flex-direction: column; gap: 8px; }
   #tools button.active { background: #26303c; }
-  /* The mode button shows the mode it offers: the pencil in viewing, the eye in annotation. */
-  #mode svg { display: none; }
-  body.viewing #mode .to-annotate { display: block; }
-  body:not(.viewing) #mode .to-view { display: block; }
   /* The stage's crosshair is for a tool in hand in annotation. With no tool, the state every
      picture opens in since Rotem's word on 2026-09-14, in viewing, and while Space is held,
      the pointer is the ordinary one. */
@@ -360,7 +353,6 @@
     </div>
     <button id="copy" type="button" aria-label="Copy"><svg viewBox="0 0 20 20"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M13 7V4.5A1.5 1.5 0 0 0 11.5 3h-7A1.5 1.5 0 0 0 3 4.5v7A1.5 1.5 0 0 0 4.5 13H7"/></svg></button>
     <button id="saveas" type="button" aria-label="Save As"><svg viewBox="0 0 20 20"><path d="M3 4.5A1.5 1.5 0 0 1 4.5 3H13l4 4v8.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 15.5z"/><path d="M6.5 3v4h6V3"/><rect x="6.5" y="11" width="7" height="6"/></svg></button>
-    <button id="mode" type="button" aria-label="Annotate"><svg class="to-annotate" viewBox="0 0 20 20"><path d="M4 16l1-4 8-8 3 3-8 8-4 1z"/><path d="M12 5l3 3"/></svg><svg class="to-view" viewBox="0 0 20 20"><path d="M2 10s3-5.5 8-5.5 8 5.5 8 5.5-3 5.5-8 5.5-8-5.5-8-5.5z"/><circle cx="10" cy="10" r="2.5"/></svg></button>
    </div>
   </div>
   <div id="winbtns">
@@ -433,7 +425,6 @@
   const cropFrame = document.getElementById('crop');
   const hud = document.getElementById('hud');
   const imageSize = document.getElementById('image-size');
-  const modeButton = document.getElementById('mode');
   const controls = document.getElementById('controls');
   const strip = document.getElementById('strip');
   const context = canvas.getContext('2d', { alpha: false });
@@ -520,8 +511,7 @@
     cropping: null,
     fullscreen: false,
     // 'view' or 'annotate' (§3.3). A capture opens in annotation; a file opens in viewing,
-    // where no click creates anything, and Annotate switches. Leaving annotation keeps
-    // the work: the notes stay in the model and the host keeps the document.
+    // where no click creates anything, and picking a tool switches (Rotem, 2026-09-18).
     mode: 'view',
   };
 
@@ -1377,7 +1367,7 @@
     return r;
   };
   for (const button of document.querySelectorAll('#tools button')) {
-    button.addEventListener('click', (event) => { setTool(button.dataset.tool); event.currentTarget.blur(); });
+    button.addEventListener('click', (event) => { pickTool(button.dataset.tool).catch((err) => console.error('tool', err)); event.currentTarget.blur(); });
   }
 
   /// Where the line from the anchor meets the bubble's edge, so the arrow touches the box
@@ -1426,8 +1416,8 @@
     const saveText = model.save.state === 'failed' ? `   NOT SAVED: ${model.save.error}`
       : model.save.state === 'saving' ? '   saving' : (model.image.managed ? '   saved' : '');
     const modeLine = model.mode === 'annotate'
-      ? `mode annotate   tool ${model.tool || 'none'}   A to view${model.image.source_changed ? '   the file on disk has changed since; this document keeps its own pixels' : ''}${saveText}`
-      : `mode view   A to annotate${model.image.edited_ago_s != null ? `   annotated before, ${ago(model.image.edited_ago_s)}; A resumes it` : ''}`;
+      ? `mode annotate   tool ${model.tool || 'none'}${model.image.source_changed ? '   the file on disk has changed since; this document keeps its own pixels' : ''}${saveText}`
+      : `mode view   a tool annotates${model.image.edited_ago_s != null ? `   annotated before, ${ago(model.image.edited_ago_s)}; a tool resumes it` : ''}`;
     const pointerHint = model.mode === 'annotate' && model.tool ? 'click to add  Space+drag pan  ' : 'drag to pan  ';
     hud.textContent =
       `${model.image.width}x${model.image.height}  ${where}\n` +
@@ -2308,24 +2298,17 @@
 
   // ---------------------------------------------------------------- the mode
   //
-  // §3.3: viewing arms no tool, annotation arms the callout. The mode is the page's; the
-  // document behind it is the host's, and Annotate asks the host for it: created for the
+  // §3.3: viewing arms no tool. The mode is the page's; the document behind it is the
+  // host's, and the first tool picked asks the host for it (pickTool): created for the
   // file on screen, or resumed if one exists for that file and frame, never a second one.
   const applyMode = () => {
     document.body.classList.toggle('viewing', model.mode !== 'annotate');
-    // An icon button's name is its aria-label, which its tooltip shows; the icon follows body.viewing.
-    modeButton.setAttribute('aria-label', model.mode === 'annotate' ? 'View' : 'Annotate');
     controls.hidden = !model.image.width;
     // The picture's size shows while a picture does, and the stage ends above it, so this comes
     // before any fit is measured (Rotem, 2026-09-16).
     document.body.classList.toggle('sized', !!model.image.width);
     drawHud();
   };
-  modeButton.addEventListener('click', () => {
-    setMode(model.mode === 'annotate' ? 'view' : 'annotate').catch((err) => console.error('mode', err));
-    // The keys stay the page's: a focused button would swallow Space and Enter.
-    modeButton.blur();
-  });
   // The image, with the note being typed if there is one, as Ctrl+C outside typing does.
   document.getElementById('copy').addEventListener('click', (event) => {
     copyComposed().catch(() => {});
@@ -2363,6 +2346,20 @@
     }
     applyMode();
     return model.mode;
+  };
+
+  // The mode follows what is done, with no control of its own (Rotem, 2026-09-18): a tool
+  // picked over a file only viewed starts its annotation first, once however many picks
+  // arrive while the host answers, and the tool is in hand when the document is.
+  let annotating = null;
+  const pickTool = async (tool) => {
+    if (model.mode !== 'annotate' && model.image.width) {
+      annotating = annotating || setMode('annotate').finally(() => { annotating = null; });
+      await annotating;
+      // Another picture shown meanwhile is only viewed, and takes no tool it was not picked over.
+      if (model.mode !== 'annotate') return;
+    }
+    setTool(tool);
   };
 
   // ---------------------------------------------------------------- editing
@@ -2404,6 +2401,9 @@
       removeCallout(callout);
       if (callout.kind !== 'text' && callout.number === model.nextNumber - 1) model.nextNumber -= 1;
     }
+    // A note finished puts its tool down, so the pointer is the ordinary one and a drag pans
+    // until a tool is picked again (Rotem, 2026-09-18).
+    if (model.tool) setTool(null);
     settle();
     record();
     drawHud();
@@ -2695,9 +2695,11 @@
     const panned = drag.kind === 'pan' && (model.pan.x !== drag.pan.x || model.pan.y !== drag.pan.y);
     // A drawn shape with no length is a click, not a shape, and it takes no number, so
     // nothing of it reaches the history.
-    if (drag.kind === 'draw' && Math.hypot(drag.shape.b.x - drag.shape.a.x, drag.shape.b.y - drag.shape.a.y) < 4) {
+    let drew = drag.kind === 'draw';
+    if (drew && Math.hypot(drag.shape.b.x - drag.shape.a.x, drag.shape.b.y - drag.shape.a.y) < 4) {
       removeShape(drag.shape);
       model.nextShape -= 1;
+      drew = false;
     }
     drag = null;
     if (panned) paintRegion();
@@ -2705,6 +2707,8 @@
     // A dropped bubble takes, or gives back, its margin, and is one step of history.
     settle();
     if (moved) record();
+    // A shape drawn puts its tool down, as a note finished does (Rotem, 2026-09-18).
+    if (drew) setTool(null);
   };
   // A note growing as it is typed takes its room as it goes, so nothing it holds is ever
   // outside the composition an export would cut at.
@@ -2870,26 +2874,19 @@
       else if (model.selectedShape) { removeShape(model.selectedShape); settle(); record(); drawHud(); event.preventDefault(); }
       return;
     }
-    // The tools, by physical key, in annotation only (Stage 3).
-    if (model.mode === 'annotate' && !event.ctrlKey && !event.altKey && !event.metaKey) {
-      if (event.code === 'KeyC') { setTool('callout'); event.preventDefault(); return; }
-      if (event.code === 'KeyL') { setTool('arrow'); event.preventDefault(); return; }
-      if (event.code === 'KeyR') { setTool('rect'); event.preventDefault(); return; }
-      if (event.code === 'KeyH') { setTool('highlight'); event.preventDefault(); return; }
-      if (event.code === 'KeyT') { setTool('text'); event.preventDefault(); return; }
-      if (event.code === 'KeyB') { setTool('blur'); event.preventDefault(); return; }
-      if (event.code === 'KeyM') { setTool('ruler'); event.preventDefault(); return; }
-      if (event.code === 'KeyK') { setTool('crop'); event.preventDefault(); return; } // provisional key
+    // The tools, by physical key (Stage 3); over a file only viewed the pick starts the
+    // annotation (Rotem, 2026-09-18).
+    if (model.image.width && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      if (event.code === 'KeyC') { pickTool('callout').catch((err) => console.error('tool', err)); event.preventDefault(); return; }
+      if (event.code === 'KeyL') { pickTool('arrow').catch((err) => console.error('tool', err)); event.preventDefault(); return; }
+      if (event.code === 'KeyR') { pickTool('rect').catch((err) => console.error('tool', err)); event.preventDefault(); return; }
+      if (event.code === 'KeyH') { pickTool('highlight').catch((err) => console.error('tool', err)); event.preventDefault(); return; }
+      if (event.code === 'KeyT') { pickTool('text').catch((err) => console.error('tool', err)); event.preventDefault(); return; }
+      if (event.code === 'KeyB') { pickTool('blur').catch((err) => console.error('tool', err)); event.preventDefault(); return; }
+      if (event.code === 'KeyM') { pickTool('ruler').catch((err) => console.error('tool', err)); event.preventDefault(); return; }
+      if (event.code === 'KeyK') { pickTool('crop').catch((err) => console.error('tool', err)); event.preventDefault(); return; } // provisional key
     }
     if (event.key === 'Enter' && model.selected) { startEditing(model.selected); event.preventDefault(); return; }
-
-    // Annotate, and back to viewing (§3.3). A provisional key until the control is
-    // decided; by physical key like the others.
-    if (event.code === 'KeyA' && !event.ctrlKey && !event.altKey && !event.metaKey) {
-      setMode(model.mode === 'annotate' ? 'view' : 'annotate').catch((err) => console.error('mode', err));
-      event.preventDefault();
-      return;
-    }
 
     // Previous and next through the folder the file came from, first and last at the ends
     // (§3.4, §3.6). The host answers with the image now on screen; at an end that is the
@@ -3341,6 +3338,7 @@
     setZoomAround,
     setFullscreen,
     setMode,
+    pickTool,
     stage,
     settle,
     record,

@@ -1091,7 +1091,7 @@ export async function runChecks(editor, invoke) {
 
   // ---------------------------------------------------------------- 20. S1.5: viewing and annotation part ways
   say('');
-  say('S1.5: viewing arms no tool, Annotate creates or resumes one managed document, a reopened file shows the route to its edit');
+  say('S1.5: viewing arms no tool, the first tool picked creates or resumes one managed document, a reopened file shows the route to its edit');
   {
     const dir = await invoke('editor_make_folder');
     const at = (name) => `${dir}\\${name}`;
@@ -1137,8 +1137,13 @@ export async function runChecks(editor, invoke) {
     cx = box.left + model.offset.x + 60;
     cy = box.top + model.offset.y + 60;
     const viewId = info.document_id;
-    await editor.setMode('annotate');
-    check('Annotate switches the mode', model.mode === 'annotate' && model.image.managed === true && !document.body.classList.contains('viewing'));
+    // The mode has no control of its own (Rotem, 2026-09-18): the tool's key over a viewed file
+    // starts the annotation, and the tool is in hand when the document is.
+    window.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, code: 'KeyC', key: 'c' }));
+    for (let i = 0; i < 50 && !(model.mode === 'annotate' && model.tool === 'callout'); i += 1) await sleep(20);
+    check('a tool picked over a viewed file switches the mode, the tool in hand', model.mode === 'annotate' && model.tool === 'callout' && model.image.managed === true && !document.body.classList.contains('viewing'),
+      `mode ${model.mode}, tool ${model.tool}`);
+    editor.setTool(null);
     let managed = await invoke('editor_managed');
     let mine = forFile(managed, 'img2.png');
     check('one managed document is created for the file, frame 0, at its size',
@@ -1161,6 +1166,27 @@ export async function runChecks(editor, invoke) {
     check('the second click locks the bubble and the typing begins', model.placing === null && model.editing === model.callouts[0]);
     document.querySelector(`[data-id="${model.callouts[0].id}"] .t`).textContent = 'kept across the modes';
     editor.commitEditing();
+    check('the note finished puts the tool down: the ordinary pointer, and a drag pans', model.tool === null && !document.body.classList.contains('armed') && model.mode === 'annotate');
+    // A press on the finished note's text edits it again, with no tool and no mode to switch.
+    {
+      const t = document.querySelector(`[data-id="${model.callouts[0].id}"] .t`);
+      const r = t.getBoundingClientRect();
+      t.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 7, button: 0, buttons: 1, clientX: r.left + 2, clientY: r.top + 2, bubbles: true, cancelable: true }));
+      check('a press on the finished note edits it again', model.editing === model.callouts[0] && model.tool === null);
+      pointer('pointerup', r.left + 2, r.top + 2);
+      editor.commitEditing();
+    }
+    // A shape drawn puts its tool down as well; a press that draws nothing keeps it.
+    editor.setTool('rect');
+    pointer('pointerdown', cx + 40, cy + 40);
+    pointer('pointerup', cx + 40, cy + 40);
+    check('a press that draws nothing keeps the tool in hand', model.tool === 'rect' && model.shapes.length === 0);
+    pointer('pointerdown', cx + 40, cy + 40);
+    pointer('pointermove', cx + 120, cy + 100);
+    pointer('pointerup', cx + 120, cy + 100);
+    check('a shape drawn puts its tool down', model.tool === null && model.shapes.length === 1, `tool ${model.tool}, shapes ${model.shapes.length}`);
+    editor.undo();
+    check('and Ctrl+Z takes the shape back, the tool still down', model.shapes.length === 0 && model.tool === null);
 
     await editor.setMode('view');
     check('leaving annotation keeps the work', model.mode === 'view' && model.callouts.length === 1 && model.callouts[0].text === 'kept across the modes');
@@ -1188,9 +1214,9 @@ export async function runChecks(editor, invoke) {
     check('the position in the folder is untouched by any of it', back.position === info.position && back.total === info.total,
       `${back.position} of ${back.total}`);
 
-    await editor.setMode('annotate');
+    await editor.pickTool('callout');
     managed = await invoke('editor_managed');
-    check('Annotate resumes that one document, its note where it was',
+    check('a tool picked resumes that one document, its note where it was',
       model.image.document_id === viewId && model.callouts.length === 1 && model.callouts[0].text === 'kept across the modes' && forFile(managed, 'img2.png').length === 1,
       `document ${model.image.document_id}, ${forFile(managed, 'img2.png').length} for the file`);
     check('on its own preserved pixels, and it says the file has moved on',
@@ -1201,14 +1227,10 @@ export async function runChecks(editor, invoke) {
     const shot = await invoke('editor_capture_probe', { width: 320, height: 200 });
     await editor.loadImage(shot);
     check('a capture opens ready for annotation', model.mode === 'annotate' && shot.managed === true);
-    const button = document.getElementById('mode');
-    check('the button offers the other mode', !button.hidden && button.getAttribute('aria-label') === 'View', button.getAttribute('aria-label'));
-    button.click();
-    for (let i = 0; i < 20 && model.mode !== 'view'; i += 1) await sleep(20);
-    check('clicking it switches to viewing, and it offers Annotate', model.mode === 'view' && button.getAttribute('aria-label') === 'Annotate' && document.activeElement !== button);
-    button.click();
-    for (let i = 0; i < 20 && model.mode !== 'annotate'; i += 1) await sleep(20);
-    check('and back', model.mode === 'annotate' && button.getAttribute('aria-label') === 'View');
+    check('no mode button is left in the sidebar', document.getElementById('mode') === null);
+    window.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, code: 'KeyA', key: 'a' }));
+    await sleep(100);
+    check('and the A key switches nothing', model.mode === 'annotate');
     await editor.setMode('view');
     await editor.setMode('annotate');
     managed = await invoke('editor_managed');
@@ -1997,13 +2019,13 @@ export async function runChecks(editor, invoke) {
     const stage = document.getElementById('stage');
     const cbox = controls.getBoundingClientRect();
     const stageLeft = Math.round(stage.getBoundingClientRect().left);
-    check('the controls are a sidebar down the left edge, below the top bar, and the stage starts at its right edge', !controls.hidden && copyButton && saveButton && document.getElementById('mode')
+    check('the controls are a sidebar down the left edge, below the top bar, and the stage starts at its right edge', !controls.hidden && copyButton && saveButton
       && cbox.left === 0 && Math.round(cbox.top) === 40 && Math.round(cbox.width) === 64 && stageLeft === 64,
       `sidebar ${Math.round(cbox.left)}-${Math.round(cbox.right)} from ${Math.round(cbox.top)}, the stage from ${stageLeft}`);
     const buttons = [...controls.querySelectorAll('button')];
     const boxes = buttons.map((b) => b.getBoundingClientRect());
     const iconWidth = (b) => Math.max(...[...b.querySelectorAll('svg')].map((s) => Math.round(s.getBoundingClientRect().width)));
-    check('eleven icon buttons, 48 by 48 with a 32 by 32 icon drawn with a 2 px #C3C6CA line, 8 px apart, on 13 px corners, named, with no fill of their own', buttons.length === 11
+    check('ten icon buttons, 48 by 48 with a 32 by 32 icon drawn with a 2 px #C3C6CA line, 8 px apart, on 13 px corners, named, with no fill of their own', buttons.length === 10
       && buttons.every((b) => getComputedStyle(b).borderRadius === '13px')
       && boxes.every((b) => Math.round(b.width) === 48 && Math.round(b.height) === 48)
       && boxes.every((b, i) => i === 0 || Math.round(b.top - boxes[i - 1].bottom) === 8)
@@ -2014,11 +2036,11 @@ export async function runChecks(editor, invoke) {
     check('a hover fills the square with #21222C, fading in by A1: 144 ms, ease-out', !!hoverRule && hoverRule.style.backgroundColor === 'rgb(33, 34, 44)'
       && buttons.every((b) => getComputedStyle(b).transitionProperty === 'background-color' && getComputedStyle(b).transitionDuration === '0.144s' && getComputedStyle(b).transitionTimingFunction === 'ease-out'),
       `${hoverRule && hoverRule.style.backgroundColor}, ${getComputedStyle(buttons[0]).transition}`);
-    // One container around the eleven, centred across the sidebar; a tooltip on each button's right (Rotem, 2026-09-15).
+    // One container around the ten, centred across the sidebar; a tooltip on each button's right (Rotem, 2026-09-15).
     const group = document.getElementById('buttons');
     const gbox = group.getBoundingClientRect();
     const stageBottom = Math.round(stage.getBoundingClientRect().bottom);
-    check('one container holds all eleven buttons, centred in the sidebar\'s height and across it, the sidebar running from the top bar to the timeline', !!group && group.parentElement === controls && buttons.every((b) => group.contains(b))
+    check('one container holds all ten buttons, centred in the sidebar\'s height and across it, the sidebar running from the top bar to the timeline', !!group && group.parentElement === controls && buttons.every((b) => group.contains(b))
       && Math.abs((gbox.left + gbox.right) / 2 - (cbox.left + cbox.right) / 2) < 0.5 && Math.round(gbox.width) === 48
       && Math.round(cbox.bottom) === stageBottom && Math.abs((gbox.top + gbox.bottom) / 2 - (cbox.top + cbox.bottom) / 2) < 0.5,
       `container ${Math.round(gbox.left)}-${Math.round(gbox.right)} by ${Math.round(gbox.top)}-${Math.round(gbox.bottom)}, centred at ${(gbox.left + gbox.right) / 2},${(gbox.top + gbox.bottom) / 2}; the sidebar ${Math.round(cbox.top)}-${Math.round(cbox.bottom)}, centred at ${(cbox.left + cbox.right) / 2},${(cbox.top + cbox.bottom) / 2}; the stage ends at ${stageBottom}`);
@@ -2697,7 +2719,6 @@ export async function runChecks(editor, invoke) {
     const toolBefore = editor.model.tool;
     const modeBefore = editor.model.mode;
     press({ code: 'KeyT', key: 't' });
-    press({ code: 'KeyA', key: 'a' });
     await sleep(100);
     check('the editor under the modal hears no key', editor.model.tool === toolBefore && editor.model.mode === modeBefore && shown(), `tool ${editor.model.tool}, mode ${editor.model.mode}`);
 
@@ -2764,11 +2785,13 @@ export async function runChecks(editor, invoke) {
     document.getElementById('settings-close').click();
     await settled(() => !shown());
     check('a press inside it does not, and its × does', stayed && !shown());
-    // A is the mode's key: under the modal it did nothing, closed it switches the mode.
+    // T is the text tool's key: under the modal it did nothing, closed it picks the tool.
     const modeClosed = editor.model.mode;
-    press({ code: 'KeyA', key: 'a' });
-    await settled(() => editor.model.mode !== modeClosed);
-    check('closed, the keys are the editor\'s again', editor.model.mode !== modeClosed, `mode ${modeClosed} to ${editor.model.mode}`);
+    const toolClosed = editor.model.tool;
+    const other = toolClosed === 'text' ? { code: 'KeyR', key: 'r', tool: 'rect' } : { code: 'KeyT', key: 't', tool: 'text' };
+    press({ code: other.code, key: other.key });
+    await settled(() => editor.model.tool === other.tool);
+    check('closed, the keys are the editor\'s again', editor.model.tool === other.tool, `tool ${toolClosed} to ${editor.model.tool}`);
     // Every way out of a note keeps it: one being typed when Settings opens is committed.
     if (editor.model.mode === 'annotate') {
       const typed = editor.createCallout({ x: 120, y: 120 });
@@ -2786,8 +2809,8 @@ export async function runChecks(editor, invoke) {
     } else {
       check('a note being typed when Settings opens is kept, and the typing has ended', false, 'the mode never reached annotate, so no note could be typed');
     }
-    press({ code: 'KeyA', key: 'a' });
-    await settled(() => editor.model.mode === modeClosed);
+    if (modeClosed === 'view') await editor.setMode('view');
+    editor.setTool(toolClosed);
 
     // Back to the default for the sections after this one.
     await invoke('editor_settings_set', { which: 'capture', shortcut: 'Ctrl+Shift+4' });

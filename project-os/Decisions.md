@@ -88,7 +88,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-14 · The window under the pointer is the selection until a drag begins, listed once with the overlay, told from a drag by the system's threshold.
 - 2026-09-14 · The selection is the smallest part of the window under the pointer, the way Snagit picks a page.
 - 2026-09-14 · The frame's dashes are light on dark, not light on nothing, drawn by hand so they can walk.
-- 2026-09-14 · No tool is in hand when a picture opens, and a chosen one stays until the next picture.
+- _2026-09-14 · No tool is in hand when a picture opens, and a chosen one stays until the next picture._ The tool staying is superseded on 2026-09-18.
 - 2026-09-14 · The wheel zooms around the pointer, with Ctrl or without, and a sideways wheel still pans.
 - 2026-09-14 · The window's top bar is Recon's own, not Windows' frame recoloured.
 - 2026-09-14 · _The timeline is a window onto the list, with no View More, and its thumbnail file is 320 wide._ (its startup clause is superseded below; the rest stands)
@@ -119,6 +119,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-18 · The Open Recon shortcut, pressed again, minimizes the window only when it is the one in front.
 - 2026-09-18 · Save As on an annotated PNG or JPEG opens on the file itself and writes over it, Rotem's exception to rule 11; every other existing name is still never written over.
 - 2026-09-18 · A file opened by name sits in the timeline as a pointer to where it lives, in a list of its own beside the tabs, never in the store; Rotem's call over a kept copy.
+- 2026-09-18 · The mode follows what is done: a tool picked starts the annotation, a finished element puts the tool down, and the Annotate button and the A key are gone.
 
 ---
 
@@ -1409,3 +1410,45 @@ composes from the clean picture and never burns notes in twice, and the clean pi
 still be had from Recon while the document lives. A note in the margin makes the saved
 file larger than the original was. The document's record of its file's size and time
 follows the save, so it does not report its own save as a change on disk.
+
+---
+
+## 2026-09-18 · The mode follows what is done: a tool picked starts the annotation, a finished element puts the tool down, and the Annotate button and the A key are gone
+
+### Context
+
+A file opened in viewing, and nothing could be added to it until the Annotate button or
+the A key was pressed; a tool picked there lit up and did nothing. Rotem said on
+2026-09-18 that jumping between the two modes by hand is the problem and the switch has to
+happen by itself: a callout made and its text finished, and the picture is back to viewing;
+a click on that callout, and it is edited. He chose, of the scenes put to him, a tool
+picked again for every note, and the button and the key removed rather than kept as an
+override. This replaces the second half of 2026-09-14, "a chosen one stays until the next
+picture".
+
+### Options
+
+1. Flip the page's mode to viewing after every element, and back at a click on one. Viewing
+   takes the pointer off the notes, so the click would have to be hit-tested by hand, and
+   entering annotation reloads the picture from the host, in the middle of a click.
+2. Leave the mode to mean only "this picture has a document", and make the state Rotem calls
+   viewing the one that already exists inside annotation: no tool in hand, the ordinary
+   pointer, a drag pans, a click on a note edits it.
+
+### Decision
+
+Option 2. A finished note (`commitEditing`) and a drawn shape (the release of a draw that
+made one) put the tool down; a press that draws nothing keeps it, and the crop tool, which
+makes no element, stays in hand. A tool picked over a file only viewed asks the host for
+the document first (`pickTool`), once however many picks arrive, and arms the tool only if
+that picture is still the one shown. The tool keys work in viewing for that reason.
+
+### Consequences
+
+One key or button before every element, which is what Rotem chose. Any of the eight tool
+keys pressed over a viewed file now makes its managed document, where only A did; the file
+itself is never touched (rule 11), and nothing is made until a tool is picked. A file
+annotated before still opens as the plain file, and its notes appear when a tool is
+picked, since the route the A key gave is the tool's now. `setMode('view')` is left in the
+page for the checks only; nothing in the product calls it. The tool in hand was never part
+of undo, so Ctrl+Z is unchanged: it takes back the note or the shape, not the tool.
