@@ -1745,7 +1745,9 @@ unsafe fn magnified(hdc: HDC, surface: &Surface, panel: &Panel) -> Option<Vec<u8
     let _ = unsafe { DeleteObject(HGDIOBJ(bitmap.0)) };
     let _ = unsafe { DeleteDC(dc) };
 
-    let centre = half * cell + cell / 2;
+    // The middle of the centre cell's own pixels: its last one is the grid's line, so the
+    // middle is counted without it (Rotem, 2026-09-18: the lines sat 1 px off the pixel).
+    let centre = half * cell + (cell - 1) / 2;
     for y in 0..side {
         for x in 0..side {
             let at = ((y * side + x) * 4) as usize;
@@ -1830,7 +1832,7 @@ unsafe fn draw_panel(hdc: HDC, surface: &Surface, panel: &Panel) {
         let (r, g, b) = SIZE_FILL_RGB;
         let (cx, cy, radius) = panel.circle;
         let side = panel.cells * panel.cell;
-        let centre = (panel.cells / 2) * panel.cell + panel.cell / 2;
+        let centre = (panel.cells / 2) * panel.cell + (panel.cell - 1) / 2;
         let ring = (MAG_RING_RGB.2, MAG_RING_RGB.1, MAG_RING_RGB.0);
         for y in 0..h {
             for x in 0..w {

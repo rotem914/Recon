@@ -541,7 +541,8 @@ fn magnifier_seen(
     // Where the pointer really is at the copy, against where the script put it: a
     // difference here is the script's, not the overlay's.
     let mut cursor = POINT::default();
-    if unsafe { GetCursorPos(&mut cursor) }.is_ok() && (cursor.x, cursor.y) != pointer {
+    let strayed = unsafe { GetCursorPos(&mut cursor) }.is_ok() && (cursor.x, cursor.y) != pointer;
+    if strayed {
         println!(
             "  while {name}, the pointer was put at {},{} but is at {},{} as the screen is copied",
             pointer.0, pointer.1, cursor.x, cursor.y
@@ -560,7 +561,14 @@ fn magnifier_seen(
     // The pointer's lines (Rotem, 2026-09-18): the frame's blue at 48% over the frozen
     // pixel, dimmed or lit, on the pointer's row and on its column. Against the frozen
     // pixel alone, which is what a screen with no line shows; 3 a channel for the two
-    // blends' rounding.
+    // blends' rounding. With the pointer somewhere else, a hand on the mouse, the lines are
+    // somewhere else too, and nothing is read: inconclusive, not a failure.
+    let lines = if strayed {
+        println!("  while {name}, the pointer's lines were not read: the pointer is not where it was put");
+        Vec::new()
+    } else {
+        lines.to_vec()
+    };
     for (which, (point, frozen)) in ["across", "down"].iter().zip(lines) {
         let (x, y) = (point.0 - region.x, point.1 - region.y);
         if x < 0 || y < 0 || x >= region.width as i32 || y >= region.height as i32 {
