@@ -31,6 +31,7 @@ mod platform;
 mod registration;
 #[cfg(feature = "stage0-checks")]
 mod selftest;
+mod settings;
 mod source;
 mod startup;
 mod store;
@@ -46,7 +47,7 @@ use tauri::image::Image;
 use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, RunEvent, WindowEvent};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use tauri_plugin_global_shortcut::ShortcutState;
 
 /// Held while a selection is on screen, so a second hotkey press is ignored rather than
 /// stacking a second overlay on top of the first.
@@ -262,7 +263,16 @@ fn editor_run(demo: bool) -> i32 {
             editor::request_checks();
         }
         editor::set_app(app.handle().clone());
-        editor::set_hotkey(config::load().hotkey);
+        // The checks' own settings file, beside the executable and fresh each run, never
+        // Rotem's; and no shortcut plugin here, so nothing global is taken by a check.
+        let settings_file = std::env::current_exe()
+            .map(|exe| exe.with_file_name("s-settings").join("recon.json"))
+            .unwrap_or_else(|_| "s-settings/recon.json".into());
+        let _ = std::fs::remove_file(&settings_file);
+        config::set_path(settings_file);
+        let cfg = config::load();
+        settings::start(app.handle(), &cfg, false);
+        editor::set_hotkey(cfg.hotkey);
         // The checks' own store, beside the executable, never the user's documents.
         store::set_root(
             std::env::current_exe()
@@ -521,11 +531,24 @@ fn main() {
         }));
     let builder = builder.plugin(
         tauri_plugin_global_shortcut::Builder::new()
-            .with_handler(|_app, shortcut, event| {
+            .with_handler(|app, shortcut, event| {
                 if event.state == ShortcutState::Pressed {
-                    let n = FIRES.fetch_add(1, Ordering::SeqCst) + 1;
-                    log(&format!("HOTKEY FIRED: {shortcut} (fire {n})"));
-                    begin_capture();
+                    match settings::fired(shortcut) {
+                        Some(settings::Which::Capture) => {
+                            let n = FIRES.fetch_add(1, Ordering::SeqCst) + 1;
+                            log(&format!("HOTKEY FIRED: {shortcut} (fire {n})"));
+                            begin_capture();
+                        }
+                        // The second shortcut: Recon's window, from anywhere, as a click
+                        // on the tray icon shows it (Rotem, 2026-09-18).
+                        Some(settings::Which::Open) => match editor::show(app) {
+                            Ok(ms) => log(&format!("OPEN HOTKEY: editor shown in {ms} ms")),
+                            Err(err) => {
+                                log(&format!("EDITOR NOT SHOWN for the open hotkey: {err}"))
+                            }
+                        },
+                        None => log(&format!("a shortcut fired and was ignored: {shortcut}")),
+                    }
                 }
             })
             .build(),
@@ -538,6 +561,8 @@ fn main() {
                 MenuItemBuilder::with_id("hotkey", format!("Capture: {hotkey_label}"))
                     .enabled(false)
                     .build(app)?;
+            // Settings renames it when the capture shortcut changes.
+            settings::set_tray_item(hotkey_item.clone());
             let open_item = MenuItemBuilder::with_id("open", "Open Recon").build(app)?;
             let defaults_item =
                 MenuItemBuilder::with_id("defaults", "Default apps settings...").build(app)?;
@@ -653,25 +678,10 @@ fn main() {
             // Neither failure may kill the process. A capture tool that exits because a
             // shortcut was taken is a capture tool that looks broken for no visible reason,
             // and F15 says the conflict is reported and another key can be chosen.
-            match cfg.hotkey.parse::<tauri_plugin_global_shortcut::Shortcut>() {
-                Ok(shortcut) => match app.global_shortcut().register(shortcut) {
-                    Ok(()) => {
-                        HOTKEY_REGISTERED.store(true, Ordering::SeqCst);
-                        log(&format!("hotkey registered: {}", cfg.hotkey))
-                    }
-                    Err(err) => log(&format!(
-                        "HOTKEY UNAVAILABLE: {} could not be registered ({err}). \
-                         Another application is holding it. Recon is still running: \
-                         change \"hotkey\" in the config file and restart.",
-                        cfg.hotkey
-                    )),
-                },
-                Err(err) => log(&format!(
-                    "HOTKEY NOT UNDERSTOOD: {:?} is not a shortcut ({err}). \
-                     Recon is still running: fix \"hotkey\" in the config file and restart.",
-                    cfg.hotkey
-                )),
-            }
+            // Both shortcuts, the capture's and the one that shows the window, go through
+            // Settings, which is also where a taken one is explained and replaced.
+            let keys = settings::start(app.handle(), &cfg, true);
+            HOTKEY_REGISTERED.store(keys.capture.active, Ordering::SeqCst);
 
             log("ready: waiting on the hotkey or the tray");
             marks::startup(marks::READY);

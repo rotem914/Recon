@@ -133,6 +133,22 @@ Stated by Rotem on 2026-09-16 for the thumbnails in a tab after Main.
 The fills are not stated yet. Provisional in the page: the thumbnail ×'s dark fill, and the
 restore button's green once ticked.
 
+### Settings
+
+Stated by Rotem on 2026-09-18.
+
+| Part | Value |
+|---|---|
+| Button | three dots, left of minimize in the top bar, in the window buttons' own box and icon size: 48 by 40 with a 10 by 10 icon |
+| Opens | a modal |
+| Content | a shortcut that opens Recon itself, and the shortcut that starts a capture, each picked by pressing it |
+
+The modal's look is not stated yet. Provisional in the page until it is: a 50% black veil,
+a 420 px panel in the icon button hover colour on 13 px corners with 24 px of padding, the
+title in Google Sans 16 px medium, 14 px rows in the top bar title's #cfd4da, a 32 px field
+in the app background on the tabs' 10 px corners, a 1 px #7aa7ff ring while it waits for a
+shortcut, a refusal under its field in #ff5252, the veil fading in by A1.
+
 ### Callout
 
 Stated by Rotem on 2026-09-17 for the annotation tools. The pixels are at the default text

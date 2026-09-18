@@ -114,6 +114,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-18 · The capture drag's size bubble is built pixel by pixel and blended on whole, not a GDI round rectangle.
 - 2026-09-18 · The magnifier is the frozen slice stretched pixel for pixel, up from the first pointer, the size under it: the picture's reading, not the words'.
 - 2026-09-18 · The lit window glides to the next one edge by edge on the frame's own clock, inside one display, and jumps when Windows does not animate.
+- 2026-09-18 · Settings changes a global shortcut by trying the new one first; the shortcut that opens Recon is none until picked; the two are let go while one is being pressed.
 
 ---
 
@@ -1265,3 +1266,40 @@ Then again, the same night: 164 ms and ease-out, cubic, quick to set out and slo
 arrive; the looks at 80 and 300 ms after the move.
 
 Then 192 ms, the ease-out kept; the look past 140 ms inconclusive.
+
+## 2026-09-18 · Settings changes a global shortcut by trying the new one first
+
+### Context
+Rotem asked for a Settings modal, opened from three dots left of minimize, where the
+shortcut that opens Recon and the shortcut that starts a capture are chosen. Until now the
+capture shortcut was read from `%APPDATA%\Recon\recon.json` at startup and nothing wrote
+that file. The plan's §3.1 already binds the behaviour: a taken shortcut is explained and
+another allowed, and Recon never takes a shortcut over silently.
+
+### Options
+1. Drop the old shortcut, then register the new one, and put the old one back on failure.
+2. Register the new one first, and let the old one go only once Windows has given the new.
+3. Save the choice and apply it at the next start.
+
+### Decision
+Option 2, the assistant's, Rotem's to veto. With option 1 a failure to put the old one back
+leaves Recon with no capture shortcut at all; with option 3 a taken shortcut is only found
+out after a restart. Three more choices ride with it. The shortcut that opens Recon is
+NONE until Rotem picks one: a second global shortcut is a second thing that can collide
+with another application, so it is never taken by default, and it is the only one that can
+be cleared. While a field waits for a shortcut, both global shortcuts are let go, so
+pressing the current one picks it instead of firing a capture under the modal; they come
+back the moment the waiting ends, by a key, by Escape, by closing, or by the window losing
+focus. And the two can never be the same shortcut, however it is spelled. The file is
+written after Windows agrees and flushed before its rename; if the write fails the change
+is put back and the field says NOT SAVED.
+
+### Consequences
+A shortcut is a string as Rotem sees it, "Ctrl+Shift+4", built from the physical key so it
+is the same under a Hebrew layout; "Win" is translated for the parser. A check run has no
+shortcut plugin and a settings file of its own beside its executable, so a check never
+takes a global shortcut and never touches Rotem's file; the real swap against Windows is
+therefore proven by hand on the release, not by the checks. The lock on the two shortcuts
+is never held across a registration, since the plugin finishes one on the main thread,
+where a fired shortcut asks for the same lock. Open: whether a settings change joins
+Ctrl+Z (`CLAUDE.md` rule 23); it does not yet, asked of Rotem on 2026-09-18.

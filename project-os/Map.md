@@ -58,9 +58,10 @@ Recon/
 │       ├── folder.rs               # the folder context: listed once, logical order, previous and next, a gone file skipped
 │       ├── store.rs                # the document store: one folder per document, source.png once, document.json atomically
 │       ├── measure.rs              # --measure and --walk: the thirty-run measurement and memory sample, feature-gated
-│       ├── config.rs               # the hotkey, and where it was read from
+│       ├── config.rs               # the two shortcuts: read at startup, saved by Settings, and where they were read from
 │       ├── overlay.rs              # the Win32 selection overlay, one window per display
 │       ├── selftest.rs             # --selftest and --capture-demo: S0.2's evidence, feature-gated
+│       ├── settings.rs             # Settings: the two global shortcuts swapped live, a taken one refused, both let go while one is pressed
 │       ├── bench.rs                 # --bench: S0.3's boundary measurement, feature-gated
 │       ├── editor.rs                # the editor window, the image and its pyramid, the one region worker, copy, the managed documents in memory
 │       ├── compose.rs               # the composer: source exact at the margin offset, the layer over it
@@ -119,7 +120,7 @@ Where state lives and who is allowed to write it.
 |---|---|---|---|
 | The process docs | `CLAUDE.md`, `project-os/*.md` | Markdown | the assistant, under the rules each file states |
 | The hooks setting | `.claude/settings.local.json` | JSON | `project-os/install-hooks.mjs` only. Machine-local, not committed. |
-| The hotkey setting | `%APPDATA%\Recon\recon.json` | JSON | nobody yet. Recon only reads it, and says in its log where the value came from. |
+| The two shortcuts | `%APPDATA%\Recon\recon.json`, the keys `hotkey` and `open_hotkey` | JSON | the host only, when Settings changes a shortcut: every other key kept, flushed and renamed into place. Read at startup, and the log says where the value came from. |
 | Start with Windows | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, the value `Recon` | the command `"<exe>" --startup` | the host only, at the tray's "Start with Windows" tick; removed when it is unticked |
 | Recon's trash | `%LOCALAPPDATA%\Recon\trash\<number>\` | a deleted document's folder, whole, plus `trashed` with the time; removed for good at a startup thirty days on | the host only, at a delete and at the startup sweep |
 | The timeline's tabs | `%LOCALAPPDATA%\Recon\tabs.json` | JSON, schema 1: the selected tab, and every tab after Main with its name and the ids of its captures; rewritten whole through a temporary file. One that does not parse is set aside as `tabs.broken-<ms>.json` | the host only, at every change the page makes to the tabs. The checks use `host/target/debug/tabs.json` instead |

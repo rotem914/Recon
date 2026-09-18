@@ -2572,8 +2572,8 @@ export async function runChecks(editor, invoke) {
       document.getElementById('title').textContent);
     const boxes = buttons.map((b) => b.getBoundingClientRect());
     // 48 wide by 40 tall, which is the bar's whole height (Rotem, 2026-09-18).
-    check('minimize, maximize and close sit in that order at the right edge, 48 wide by 40 tall', buttons.map((b) => b.id).join() === 'win-min,win-max,win-close'
-      && boxes.every((b) => Math.round(b.width) === 48 && Math.round(b.height) === 40 && Math.round(b.height) === bar.clientHeight && b.top === 0) && Math.round(boxes[2].right) === window.innerWidth && boxes[0].right <= boxes[1].left && boxes[1].right <= boxes[2].left,
+    check('settings, minimize, maximize and close sit in that order at the right edge, 48 wide by 40 tall', buttons.map((b) => b.id).join() === 'win-settings,win-min,win-max,win-close'
+      && boxes.every((b) => Math.round(b.width) === 48 && Math.round(b.height) === 40 && Math.round(b.height) === bar.clientHeight && b.top === 0) && Math.round(boxes[3].right) === window.innerWidth && boxes[0].right <= boxes[1].left && boxes[1].right <= boxes[2].left && boxes[2].right <= boxes[3].left,
       boxes.map((b) => `${Math.round(b.left)}-${Math.round(b.right)}, ${Math.round(b.height)} tall`).join(' '));
     check('every window button has a name', buttons.every((b) => b.title.length > 0), buttons.map((b) => b.title).join(', '));
 
@@ -2609,6 +2609,140 @@ export async function runChecks(editor, invoke) {
       && stageTop() === 0 && stageLeft() === 0 && stage.clientHeight === window.innerHeight && stage.clientWidth === window.innerWidth, `the stage from ${stageLeft()},${stageTop()}`);
     await editor.setFullscreen(false);
     check('and they come back', getComputedStyle(bar).display !== 'none' && getComputedStyle(sidebar).display !== 'none' && stageTop() === 40 && stageLeft() === 64, `the stage from ${stageLeft()},${stageTop()}`);
+  }
+
+  // ---------------------------------------------------------------- settings: the two global shortcuts
+  say('');
+  say('Settings: three dots left of minimize open a modal; a shortcut for opening Recon and one for the capture are picked by pressing them; a taken one is refused in words and the old one stays; the file keeps both');
+  {
+    const button = document.getElementById('win-settings');
+    const veil = document.getElementById('settings-veil');
+    const panel = document.getElementById('settings');
+    const row = (which) => panel.querySelector(`.setting[data-which="${which}"]`);
+    const field = (which) => row(which).querySelector('.key');
+    const said = (which) => row(which).querySelector('.said');
+    const press = (init) => window.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
+    const settled = async (test) => { for (let i = 0; i < 40 && !test(); i += 1) await sleep(50); return test(); };
+    const shown = () => getComputedStyle(veil).display !== 'none';
+    const file = async () => JSON.parse((await invoke('editor_settings_file')) || '{}');
+    await invoke('editor_settings_pretend_taken', { shortcuts: ['Ctrl+Alt+T'] });
+
+    const min = document.getElementById('win-min').getBoundingClientRect();
+    const box = button.getBoundingClientRect();
+    const icon = button.querySelector('svg').getBoundingClientRect();
+    const minIcon = document.querySelector('#win-min svg').getBoundingClientRect();
+    check('the three dots sit left of minimize, in the same box with the same icon size, named Settings', Math.round(box.right) === Math.round(min.left) && box.width === min.width && box.height === min.height && box.top === min.top
+      && icon.width === minIcon.width && icon.height === minIcon.height && button.title === 'Settings',
+      `${Math.round(box.left)}-${Math.round(box.right)} by ${box.height}, the icon ${icon.width}, minimize from ${Math.round(min.left)}`);
+    check('closed, the modal is not on screen', !shown());
+
+    button.click();
+    await settled(shown);
+    const panelBox = panel.getBoundingClientRect();
+    check('a click opens the modal in the middle of the window, titled Settings and nothing more', shown() && panel.querySelector('h2').textContent === 'Settings' && panel.querySelectorAll('h2, h3, p').length === 1
+      && Math.abs((panelBox.left + panelBox.right) / 2 - window.innerWidth / 2) <= 1 && Math.abs((panelBox.top + panelBox.bottom) / 2 - window.innerHeight / 2) <= 1 && document.activeElement !== button,
+      `the panel ${Math.round(panelBox.left)}-${Math.round(panelBox.right)} by ${Math.round(panelBox.top)}-${Math.round(panelBox.bottom)}`);
+    check('it shows the capture shortcut as configured, and none for opening Recon', field('capture').textContent === 'Ctrl+Shift+4' && field('open').textContent === 'None'
+      && !row('open').querySelector('.clear').classList.contains('shown'), `${field('open').textContent} / ${field('capture').textContent}`);
+
+    const toolBefore = editor.model.tool;
+    const modeBefore = editor.model.mode;
+    press({ code: 'KeyT', key: 't' });
+    press({ code: 'KeyA', key: 'a' });
+    await sleep(100);
+    check('the editor under the modal hears no key', editor.model.tool === toolBefore && editor.model.mode === modeBefore && shown(), `tool ${editor.model.tool}, mode ${editor.model.mode}`);
+
+    field('open').click();
+    await settled(() => field('open').classList.contains('recording'));
+    check('a click on a field waits for a shortcut', field('open').textContent === 'Press a shortcut' && field('open').classList.contains('recording'));
+    press({ code: 'KeyR', key: 'r' });
+    await sleep(100);
+    check('a key alone is not a shortcut, and the field says what to hold', field('open').classList.contains('recording') && said('open').textContent.includes('Hold Ctrl'), said('open').textContent);
+    press({ code: 'ControlLeft', key: 'Control', ctrlKey: true });
+    await sleep(50);
+    check('a modifier alone keeps waiting', field('open').classList.contains('recording'));
+    press({ code: 'KeyR', key: 'ר', ctrlKey: true, altKey: true });
+    await settled(() => field('open').textContent === 'Ctrl+Alt+R');
+    check('Ctrl+Alt+R, pressed under a Hebrew layout, is kept by its physical key, and the file has it', field('open').textContent === 'Ctrl+Alt+R' && !field('open').classList.contains('recording')
+      && !said('open').classList.contains('shown') && row('open').querySelector('.clear').classList.contains('shown') && (await file()).open_hotkey === 'Ctrl+Alt+R' && (await file()).hotkey === 'Ctrl+Shift+4',
+      `${field('open').textContent}, the file ${JSON.stringify(await file())}`);
+
+    field('capture').click();
+    await settled(() => field('capture').classList.contains('recording'));
+    press({ code: 'KeyT', key: 't', ctrlKey: true, altKey: true });
+    await settled(() => said('capture').classList.contains('shown'));
+    check('a shortcut another application holds is refused in words, and the old one stays, on screen and in the file', said('capture').textContent.includes('taken by another application') && field('capture').textContent === 'Ctrl+Shift+4'
+      && (await invoke('editor_settings')).capture === 'Ctrl+Shift+4' && (await file()).hotkey === 'Ctrl+Shift+4', said('capture').textContent);
+
+    field('capture').click();
+    await settled(() => field('capture').classList.contains('recording'));
+    press({ code: 'KeyR', key: 'r', ctrlKey: true, altKey: true });
+    await settled(() => said('capture').classList.contains('shown'));
+    check('the two never share a shortcut', said('capture').textContent.includes('already Open Recon') && field('capture').textContent === 'Ctrl+Shift+4', said('capture').textContent);
+
+    field('capture').click();
+    await settled(() => field('capture').classList.contains('recording'));
+    press({ code: 'Escape', key: 'Escape' });
+    await settled(() => !field('capture').classList.contains('recording'));
+    check('Escape while waiting stops the waiting and keeps the modal and the shortcut', shown() && field('capture').textContent === 'Ctrl+Shift+4' && !field('capture').classList.contains('recording'));
+
+    field('capture').click();
+    await settled(() => field('capture').classList.contains('recording'));
+    press({ code: 'Digit5', key: '%', ctrlKey: true, shiftKey: true });
+    await settled(() => field('capture').textContent === 'Ctrl+Shift+5');
+    check('a new capture shortcut is kept, the file has it, and the host names it to the empty editor', field('capture').textContent === 'Ctrl+Shift+5' && (await file()).hotkey === 'Ctrl+Shift+5' && (await file()).open_hotkey === 'Ctrl+Alt+R'
+      && (await invoke('editor_hotkey')) === 'Ctrl+Shift+5',
+      `${field('capture').textContent}, the file ${JSON.stringify(await file())}, the host says ${await invoke('editor_hotkey')}`);
+
+    row('open').querySelector('.clear').click();
+    await settled(() => field('open').textContent === 'None');
+    check('the × beside Open Recon clears it, in the file too; Capture has no ×', field('open').textContent === 'None' && !('open_hotkey' in (await file())) && row('capture').querySelector('.clear') === null,
+      JSON.stringify(await file()));
+
+    press({ code: 'Escape', key: 'Escape' });
+    await settled(() => !shown());
+    check('Escape closes the modal', !shown());
+    button.click();
+    await settled(shown);
+    veil.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 5, clientY: 5 }));
+    await settled(() => !shown());
+    check('a press outside the panel closes it', !shown());
+    button.click();
+    await settled(shown);
+    panel.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    await sleep(100);
+    const stayed = shown();
+    document.getElementById('settings-close').click();
+    await settled(() => !shown());
+    check('a press inside it does not, and its × does', stayed && !shown());
+    // A is the mode's key: under the modal it did nothing, closed it switches the mode.
+    const modeClosed = editor.model.mode;
+    press({ code: 'KeyA', key: 'a' });
+    await settled(() => editor.model.mode !== modeClosed);
+    check('closed, the keys are the editor\'s again', editor.model.mode !== modeClosed, `mode ${modeClosed} to ${editor.model.mode}`);
+    // Every way out of a note keeps it: one being typed when Settings opens is committed.
+    if (editor.model.mode === 'annotate') {
+      const typed = editor.createCallout({ x: 120, y: 120 });
+      editor.layoutScene();
+      editor.startEditing(typed);
+      el(typed).querySelector('.t').textContent = 'typed before settings';
+      button.click();
+      await settled(shown);
+      check('a note being typed when Settings opens is kept, and the typing has ended', editor.model.editing === null && typed.text === 'typed before settings' && editor.model.callouts.includes(typed),
+        `editing ${editor.model.editing && editor.model.editing.id}, text "${typed.text}"`);
+      press({ code: 'Escape', key: 'Escape' });
+      await settled(() => !shown());
+      editor.model.callouts = editor.model.callouts.filter((c) => c !== typed);
+      editor.layoutScene();
+    } else {
+      check('a note being typed when Settings opens is kept, and the typing has ended', false, 'the mode never reached annotate, so no note could be typed');
+    }
+    press({ code: 'KeyA', key: 'a' });
+    await settled(() => editor.model.mode === modeClosed);
+
+    // Back to the default for the sections after this one.
+    await invoke('editor_settings_set', { which: 'capture', shortcut: 'Ctrl+Shift+4' });
+    await invoke('editor_settings_pretend_taken', { shortcuts: [] });
   }
 
   // ---------------------------------------------------------------- 37. S2.8: the timeline at scale

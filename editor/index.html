@@ -27,6 +27,38 @@
   #winbtns #win-close:hover { background: #c42b1c; color: #fff; }
   #winbtns svg { width: 10px; height: 10px; stroke: currentColor; fill: none; stroke-width: 1; }
   body.fullscreen #bar { display: none; }
+  /* Settings (Rotem, 2026-09-18): a three-dot button left of minimize, the window buttons'
+     own box and icon size, opening a modal with the two global shortcuts. The modal's look
+     is provisional until Rotem states one, built from values the page already has: the icon
+     button hover colour as the panel, the app background as a field, 13 px corners on the
+     panel and the tabs' 10 px on a field, the top bar title's #cfd4da, the selected ring's
+     #7aa7ff while a shortcut is being pressed, fading in by A1. */
+  #settings-veil { position: fixed; inset: 0; z-index: 20; display: none; place-items: center;
+                   background: rgba(0,0,0,.5); }
+  body.settings #settings-veil { display: grid; animation: settings-in 144ms ease-out; /* A1 */ }
+  @keyframes settings-in { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { body.settings #settings-veil { animation: none; } }
+  #settings { position: relative; width: 420px; max-width: calc(100vw - 32px); padding: 24px; border-radius: 13px;
+              background: #21222C; color: #cfd4da; outline: none;
+              font: 14px/20px ui-sans-serif, "Segoe UI", system-ui, sans-serif; }
+  #settings h2 { margin: 0 0 16px; font: 500 16px/32px "Google Sans", ui-sans-serif, "Segoe UI", system-ui, sans-serif; color: #f2f2f2; }
+  #settings-close { position: absolute; right: 16px; top: 24px; width: 32px; height: 32px; padding: 0; border: none;
+                    border-radius: 10px; background: transparent; color: #cfd4da; display: grid; place-items: center; cursor: pointer;
+                    transition: background-color 144ms ease-out; /* A1 */ }
+  #settings-close:hover, .setting .clear:hover { background: var(--paper); }
+  #settings-close svg, .setting .clear svg { width: 10px; height: 10px; stroke: currentColor; fill: none; stroke-width: 1; }
+  .setting { display: grid; grid-template-columns: 1fr auto 32px; align-items: center; column-gap: 8px; min-height: 32px; margin-top: 8px; }
+  .setting .key { min-width: 168px; height: 32px; padding: 0 12px; border: 1px solid transparent; border-radius: 10px;
+                  background: var(--paper); color: #f2f2f2; font: inherit; text-align: center; cursor: pointer; }
+  .setting .key.none { color: #8b9098; }
+  .setting .key.recording { border-color: #7aa7ff; color: #cfd4da; }
+  .setting .clear { width: 32px; height: 32px; padding: 0; border: none; border-radius: 10px; background: transparent;
+                    color: #cfd4da; display: grid; place-items: center; cursor: pointer; visibility: hidden;
+                    transition: background-color 144ms ease-out; /* A1 */ }
+  .setting .clear.shown { visibility: visible; }
+  .setting .said { grid-column: 1 / -1; margin-top: 4px; color: #ff5252; display: none; }
+  .setting .said.shown { display: block; }
+  @media (prefers-reduced-motion: reduce) { #settings-close, .setting .clear { transition: none; } }
 
   #stage { position: absolute; inset: 40px 0 var(--size-band, 0px) 64px; overflow: hidden; cursor: crosshair; }
   body.fullscreen #stage { top: 0; left: 0; }
@@ -332,9 +364,28 @@
    </div>
   </div>
   <div id="winbtns">
+    <button id="win-settings" type="button" title="Settings"><svg viewBox="0 0 10 10"><path d="M1 5h.01M5 5h.01M9 5h.01" stroke-linecap="round" stroke-width="1.5"/></svg></button>
     <button id="win-min" type="button" title="Minimize"><svg viewBox="0 0 10 10"><path d="M0 5.5h10"/></svg></button>
     <button id="win-max" type="button" title="Maximize"><svg viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9"/></svg></button>
     <button id="win-close" type="button" title="Close"><svg viewBox="0 0 10 10"><path d="M.5 .5l9 9M9.5 .5l-9 9"/></svg></button>
+  </div>
+</div>
+<div id="settings-veil">
+  <div id="settings" role="dialog" aria-modal="true" aria-labelledby="settings-title" tabindex="-1">
+    <h2 id="settings-title">Settings</h2>
+    <button id="settings-close" type="button" title="Close"><svg viewBox="0 0 10 10"><path d="M.5 .5l9 9M9.5 .5l-9 9"/></svg></button>
+    <div class="setting" data-which="open">
+      <span>Open Recon</span>
+      <button class="key" type="button"></button>
+      <button class="clear" type="button" title="Clear"><svg viewBox="0 0 10 10"><path d="M.5 .5l9 9M9.5 .5l-9 9"/></svg></button>
+      <div class="said"></div>
+    </div>
+    <div class="setting" data-which="capture">
+      <span>Capture</span>
+      <button class="key" type="button"></button>
+      <span></span>
+      <div class="said"></div>
+    </div>
   </div>
 </div>
 <div id="stage">
@@ -2096,6 +2147,133 @@
   windowButton('win-min', () => currentWindow.minimize());
   windowButton('win-max', () => currentWindow.toggleMaximize().then(refreshMaxButton));
   windowButton('win-close', () => currentWindow.close());
+
+  // ---------------------------------------------------------------- settings
+  //
+  // The three dots left of minimize open a modal with the two global shortcuts (Rotem,
+  // 2026-09-18): one that shows Recon's window from anywhere, none until it is picked, and
+  // the capture's. A press on a field waits for a shortcut; while it waits the host lets
+  // both global shortcuts go, so pressing the current one picks it instead of firing it.
+  // The host tries the new one before it drops the old: a shortcut another application
+  // holds is refused in words under the field, and the old one keeps working (§3.1).
+  // While the modal is open the keyboard is its own: nothing reaches the editor under it.
+  const settingsVeil = document.getElementById('settings-veil');
+  const settingsPanel = document.getElementById('settings');
+  const settingRows = [...settingsPanel.querySelectorAll('.setting')];
+  const settingsState = { open: false, recording: null, keys: null };
+  const settingRow = (which) => settingRows.find((row) => row.dataset.which === which);
+  const drawSettings = () => {
+    for (const row of settingRows) {
+      const which = row.dataset.which;
+      const label = settingsState.keys ? settingsState.keys[which] : '';
+      const field = row.querySelector('.key');
+      const recording = settingsState.recording === which;
+      field.textContent = recording ? 'Press a shortcut' : (label || 'None');
+      field.classList.toggle('recording', recording);
+      field.classList.toggle('none', !recording && !label);
+      const clear = row.querySelector('.clear');
+      if (clear) clear.classList.toggle('shown', !!label && !recording);
+    }
+  };
+  const saySetting = (which, text) => {
+    const said = settingRow(which).querySelector('.said');
+    said.textContent = text || '';
+    said.classList.toggle('shown', !!text);
+  };
+  // A shortcut the host could not get at startup is said under its field, as a refusal is.
+  const sayUnavailable = () => {
+    for (const which of ['open', 'capture']) {
+      const keys = settingsState.keys;
+      const dead = keys && keys[which] && !keys[`${which}_active`];
+      saySetting(which, dead ? `${keys[which]} is taken by another application. Pick another.` : '');
+    }
+  };
+  const stopRecording = async () => {
+    if (!settingsState.recording) return;
+    settingsState.recording = null;
+    drawSettings();
+    await invoke('editor_settings_recording', { on: false }).catch((err) => console.error('settings', err));
+  };
+  const startRecording = async (which) => {
+    if (settingsState.recording === which) return;
+    await stopRecording();
+    saySetting(which, '');
+    settingsState.recording = which;
+    drawSettings();
+    await invoke('editor_settings_recording', { on: true }).catch((err) => console.error('settings', err));
+  };
+  const setShortcut = async (which, shortcut) => {
+    await stopRecording();
+    try {
+      settingsState.keys = await invoke('editor_settings_set', { which, shortcut });
+      saySetting(which, '');
+      if (which === 'capture') {
+        emptyText = emptyStateText(settingsState.keys.capture);
+        drawHud();
+      }
+    } catch (err) {
+      saySetting(which, String(err));
+    }
+    drawSettings();
+  };
+  const openSettings = async () => {
+    if (settingsState.open) return;
+    // Every way out of a note keeps it: one being typed is committed before the modal
+    // takes the keyboard, as a click outside the bubble would.
+    if (model.editing) commitEditing();
+    settingsState.keys = await invoke('editor_settings').catch(() => null);
+    settingsState.open = true;
+    document.body.classList.add('settings');
+    drawSettings();
+    sayUnavailable();
+    settingsPanel.focus();
+  };
+  const closeSettings = async () => {
+    if (!settingsState.open) return;
+    await stopRecording();
+    settingsState.open = false;
+    document.body.classList.remove('settings');
+    if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+  };
+  // By the physical key, so the shortcut is the same under a Hebrew layout.
+  const MODIFIER_CODES = new Set(['ControlLeft', 'ControlRight', 'ShiftLeft', 'ShiftRight', 'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight']);
+  const shortcutOf = (event) => {
+    if (MODIFIER_CODES.has(event.code) || !event.code) return null;
+    const key = event.code.startsWith('Key') ? event.code.slice(3) : event.code.startsWith('Digit') ? event.code.slice(5) : event.code;
+    const mods = [event.ctrlKey && 'Ctrl', event.altKey && 'Alt', event.shiftKey && 'Shift', event.metaKey && 'Win'].filter(Boolean);
+    return { text: [...mods, key].join('+'), bare: mods.length === 0 && !/^F\d+$/.test(key) };
+  };
+  window.addEventListener('keydown', (event) => {
+    if (!settingsState.open) return;
+    // The modal owns the keyboard: the editor under it hears nothing.
+    event.stopImmediatePropagation();
+    const which = settingsState.recording;
+    if (which) {
+      event.preventDefault();
+      if (event.code === 'Escape' && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) { stopRecording(); return; }
+      const pressed = shortcutOf(event);
+      if (!pressed) return;
+      if (pressed.bare) { saySetting(which, 'Hold Ctrl, Alt, Shift or Win with the key.'); return; }
+      setShortcut(which, pressed.text);
+      return;
+    }
+    if (event.code === 'Escape') { event.preventDefault(); closeSettings(); return; }
+    // Tab, Enter and Space work the modal's own buttons; everything else stops here.
+    if (event.code !== 'Tab' && event.code !== 'Enter' && event.code !== 'Space') event.preventDefault();
+  }, true);
+  for (const type of ['keyup', 'paste', 'copy', 'cut', 'wheel']) {
+    window.addEventListener(type, (event) => { if (settingsState.open) event.stopImmediatePropagation(); }, true);
+  }
+  for (const row of settingRows) {
+    const which = row.dataset.which;
+    row.querySelector('.key').addEventListener('click', () => startRecording(which));
+    const clear = row.querySelector('.clear');
+    if (clear) clear.addEventListener('click', () => setShortcut(which, ''));
+  }
+  document.getElementById('settings-close').addEventListener('click', () => closeSettings());
+  settingsVeil.addEventListener('pointerdown', (event) => { if (event.target === settingsVeil) closeSettings(); });
+  window.addEventListener('blur', () => { stopRecording(); });
+  document.getElementById('win-settings').addEventListener('click', (event) => { const button = event.currentTarget; openSettings(); button.blur(); });
   window.addEventListener('resize', () => { refreshMaxButton(); });
   const drawTitle = () => {
     const text = model.image.file ? `${model.image.file} - Recon` : 'Recon';
