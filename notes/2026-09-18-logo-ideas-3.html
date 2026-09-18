@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recon logo ideas, round three</title>
+<style>
+  @font-face {
+    font-family: "Google Sans";
+    font-weight: 500;
+    src: url("../editor/fonts/google-sans-medium-latin.woff2") format("woff2");
+  }
+  :root {
+    --paper: #0D0E12;   /* the app background, project-os/Design.md */
+    --panel: #21222C;
+    --text: #cfd4da;
+    --blue: #2D41D7;    /* Rogers' disc */
+    --light: #E6E7E9;   /* Rogers' line and wordmark */
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 48px 32px 96px;
+    background: var(--paper);
+    color: var(--text);
+    font: 500 16px/1.4 "Google Sans", "Segoe UI", system-ui, sans-serif;
+  }
+  h1 { margin: 0 auto 32px; max-width: 1240px; font-size: 24px; font-weight: 500; color: var(--light); }
+  .grid {
+    max-width: 1240px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    border: 1px solid var(--panel);
+    border-radius: 13px;
+    padding: 24px;
+    display: grid;
+    gap: 28px;
+    justify-items: center;
+  }
+  .card h2 { margin: 0; font-size: 14px; font-weight: 500; justify-self: start; }
+  .big { width: 168px; height: 168px; }
+  .lockup { height: 56px; width: auto; }
+  .sizes { display: flex; align-items: center; gap: 20px; }
+  .sizes svg:nth-child(1) { width: 64px; height: 64px; }
+  .sizes svg:nth-child(2) { width: 32px; height: 32px; }
+  .sizes svg:nth-child(3) { width: 16px; height: 16px; }
+  .defs { position: absolute; width: 0; height: 0; }
+</style>
+</head>
+<body>
+
+<svg class="defs" aria-hidden="true">
+  <defs>
+    <clipPath id="disc"><circle cx="18" cy="18" r="16.84"/></clipPath>
+  </defs>
+</svg>
+
+<h1>Recon logo ideas, round three</h1>
+<div class="grid" id="grid"></div>
+
+<script>
+// Rogers' numbers, from rogers_logo.svg: a 36 box, a disc of r 16.84 in #2D41D7,
+// a 2.32 ring and 3.2 lines in #E6E7E9, lines that run out under the ring.
+const BLUE = "#2D41D7", LIGHT = "#E6E7E9";
+
+// Rogers' own diagonal is (12.73,22.86) to (21.81,9.70): the direction (0.568, 0.823).
+const marks = [
+  { no: "21", name: "Ping", art: `<path d="M11 17A8 8 0 0 1 19 25M11 10A15 15 0 0 1 26 25"/><circle cx="11" cy="25" r="2.6" fill="${LIGHT}" stroke="none"/>` },
+  { no: "22", name: "Corner and target", art: `<path d="M9 22V11.5A2.5 2.5 0 0 1 11.5 9H22"/><circle cx="22.5" cy="22.5" r="3.2" fill="${LIGHT}" stroke="none"/>` },
+  { no: "23", name: "R on the guides", art: `<path d="M13 -1V37M13 8H20.5A6 6 0 0 1 20.5 20H13M18.5 20L29.9 36.5"/>` },
+  { no: "24", name: "Blip and area", art: `<path d="M6.64 34.46L29.36 1.54"/><circle cx="12.2" cy="14" r="2.6" fill="${LIGHT}" stroke="none"/><rect x="21" y="19.2" width="5.6" height="5.6" rx="1" fill="${LIGHT}" stroke="none"/>` },
+  { no: "25", name: "Area in a frame", art: `<rect x="8.5" y="8.5" width="19" height="19" rx="2.5"/><rect x="14.5" y="14.5" width="7" height="7" rx="1" fill="${LIGHT}" stroke="none"/>` },
+  { no: "26", name: "Drag from the corner", art: `<path d="M26.5 -1V37M-1 26.5H37M9.5 26.5V11A1.5 1.5 0 0 1 11 9.5H26.5"/><circle cx="18" cy="18" r="2.4" fill="${LIGHT}" stroke="none"/>` },
+  { no: "27", name: "Eye with a sweep", art: `<path d="M-1 18C8 6 28 6 37 18C28 30 8 30 -1 18Z"/><path d="M18 18L28.22 3.19"/><circle cx="18" cy="18" r="2.6" fill="${LIGHT}" stroke="none"/>` },
+  { no: "28", name: "Magnified pixels", art: `<circle cx="18" cy="18" r="10"/><rect x="13.6" y="13.6" width="3.4" height="3.4" fill="${LIGHT}" stroke="none"/><rect x="19" y="13.6" width="3.4" height="3.4" fill="${LIGHT}" stroke="none"/><rect x="13.6" y="19" width="3.4" height="3.4" fill="${LIGHT}" stroke="none"/>` },
+  { no: "29", name: "Capture cursor", art: `<path d="M18 6.5V14M18 22V29.5M6.5 18H14M22 18H29.5"/><circle cx="18" cy="18" r="1.8" fill="${LIGHT}" stroke="none"/>` },
+  { no: "30", name: "Range from the corner", art: `<path d="M9 -1V37M-1 27H37M9 17.5A9.5 9.5 0 0 1 18.5 27M9 10.5A16.5 16.5 0 0 1 25.5 27"/>` },
+  { no: "31", name: "Numbered callout", art: `<path d="M18 18L27.66 32"/><circle cx="15.5" cy="14.5" r="7.2" fill="${LIGHT}" stroke="none"/><path d="M13.8 12.6L16.2 11.2V18.4" stroke="${BLUE}" stroke-width="2.6"/>` },
+  { no: "32", name: "Captures, stacked", art: `<path d="M13.5 9H26A1.5 1.5 0 0 1 27.5 10.5V20.5"/><rect x="7.5" y="13.5" width="15.5" height="11.5" rx="1.5" fill="${LIGHT}" stroke="none"/>` },
+  { no: "33", name: "Radar dome", art: `<path d="M-1 24H37M9 24A9 9 0 0 1 27 24"/><circle cx="25.5" cy="10.5" r="2.3" fill="${LIGHT}" stroke="none"/>` },
+  { no: "34", name: "Brackets and the line", art: `<path d="M9.5 16V11A1.5 1.5 0 0 1 11 9.5H16M26.5 20V25A1.5 1.5 0 0 1 25 26.5H20M13.5 24.6L22.5 11.4"/>` },
+  { no: "35", name: "Binoculars", art: `<circle cx="11.2" cy="18" r="5.2"/><circle cx="24.8" cy="18" r="5.2"/>` },
+  { no: "36", name: "Area and cursor", art: `<rect x="7.5" y="9.5" width="14" height="10" rx="1.2" fill="${LIGHT}" stroke="none"/><path d="M25 19V27M21 23H29"/>` },
+  { no: "37", name: "Scan line", art: `<rect x="9.5" y="9.5" width="17" height="17" rx="2"/><path d="M-1 18H37"/>` },
+  { no: "38", name: "Blip on the ring", art: `<circle cx="18" cy="18" r="10.5"/><circle cx="18" cy="18" r="2.2" fill="${LIGHT}" stroke="none"/><circle cx="23.96" cy="9.36" r="5.4" fill="${BLUE}" stroke="none"/><circle cx="23.96" cy="9.36" r="3.3" fill="${LIGHT}" stroke="none"/>` },
+  { no: "39", name: "The wordmark's R", art: `<g transform="translate(18 18) scale(0.85) translate(-56.4 -18.2)" fill="${LIGHT}" stroke="none"><path d="M60.736 29.4L55.904 21.112H51.648V29.4H48V7H56.704C61.024 7 64.224 9.976 64.224 14.104C64.224 17.144 62.4 19.576 59.68 20.6L64.864 29.4H60.736ZM51.648 10.456V17.688H56.48C58.912 17.688 60.48 16.184 60.48 14.072C60.48 11.992 58.912 10.456 56.48 10.456H51.648Z"/></g>` },
+  { no: "40", name: "Guides and a blip", art: `<path d="M23 -1V37M-1 23H37"/><circle cx="13.2" cy="13.2" r="3.4" fill="${LIGHT}" stroke="none"/>` },
+];
+
+function mark(m, x = 0) {
+  return `<g transform="translate(${x} 0)">
+    <circle cx="18" cy="18" r="16.84" fill="${BLUE}"/>
+    <g clip-path="url(#disc)" fill="none" stroke="${LIGHT}" stroke-width="3.2">${m.art}</g>
+    <circle cx="18" cy="18" r="16.84" fill="none" stroke="${LIGHT}" stroke-width="2.32"/>
+  </g>`;
+}
+
+// The wordmark. R, e and o are Rogers' own outlines, moved; c and n are drawn on the
+// o's and the r's numbers: a 3.5 line on the o's middle ellipse, a 3.552 stem.
+const R = `<path d="M60.736 29.4L55.904 21.112H51.648V29.4H48V7H56.704C61.024 7 64.224 9.976 64.224 14.104C64.224 17.144 62.4 19.576 59.68 20.6L64.864 29.4H60.736ZM51.648 10.456V17.688H56.48C58.912 17.688 60.48 16.184 60.48 14.072C60.48 11.992 58.912 10.456 56.48 10.456H51.648Z"/>`;
+const E = `<path d="M127.096 20.824C127.096 21.208 127.064 21.592 127 21.976H112.984C113.432 24.792 115.448 26.52 118.264 26.52C120.344 26.52 122.008 25.56 122.936 23.96H126.68C125.304 27.608 122.136 29.848 118.264 29.848C113.208 29.848 109.4 25.944 109.4 20.76C109.4 15.608 113.208 11.704 118.264 11.704C123.576 11.704 127.096 15.8 127.096 20.824ZM118.264 14.936C115.608 14.936 113.656 16.536 113.08 19.096H123.512C122.872 16.472 120.92 14.936 118.264 14.936Z"/>`;
+const O = `<path d="M76.1168 29.848C70.8048 29.848 66.8687 25.976 66.8687 20.76C66.8687 15.544 70.8048 11.704 76.1168 11.704C81.3968 11.704 85.3328 15.576 85.3328 20.76C85.3328 25.976 81.3968 29.848 76.1168 29.848ZM76.1168 26.456C79.3808 26.456 81.7168 24.088 81.7168 20.76C81.7168 17.464 79.3808 15.096 76.1168 15.096C72.8208 15.096 70.4848 17.464 70.4848 20.76C70.4848 24.088 72.8208 26.456 76.1168 26.456Z"/>`;
+const ROGERS_REST = `<path d="M103.261 12.12H105.597V27.16C105.597 32.664 102.333 36.024 96.9888 36.024C92.5408 36.024 89.4047 33.72 88.5407 29.944H92.0607C92.7327 31.832 94.7807 32.888 96.9567 32.888C99.9327 32.888 102.141 30.904 102.141 27.64V26.84C100.637 28.152 98.6528 28.92 96.4128 28.92C91.5807 28.92 87.8688 25.176 87.8688 20.312C87.8688 15.48 91.5807 11.704 96.4128 11.704C98.9408 11.704 101.149 12.728 102.717 14.36L103.261 12.12ZM96.7967 25.624C99.8687 25.624 102.109 23.384 102.109 20.312C102.109 17.272 99.9007 15.032 96.7967 15.032C93.7247 15.032 91.4847 17.304 91.4847 20.312C91.4847 23.352 93.7247 25.624 96.7967 25.624Z"/><path d="M139.156 12.024H140.691V15.384H138.803C135.859 15.384 134.42 17.08 134.42 20.216V29.4H130.868V12.12H133.268L133.843 14.488C135.091 12.856 136.788 12.024 139.156 12.024Z"/><path d="M149.064 29.848C144.872 29.848 142.12 27.512 142.024 23.928H145.48C145.576 25.752 147.112 26.712 149.192 26.712C151.112 26.712 152.584 25.912 152.584 24.472C152.584 22.808 150.728 22.456 148.616 22.104C145.736 21.592 142.344 20.952 142.344 16.952C142.344 13.848 145 11.704 149.032 11.704C153.032 11.704 155.656 13.912 155.72 17.24H152.36C152.296 15.608 151.016 14.712 148.936 14.712C146.984 14.712 145.768 15.576 145.768 16.824C145.768 18.36 147.528 18.648 149.608 19C152.52 19.48 156.072 20.056 156.072 24.312C156.072 27.672 153.288 29.848 149.064 29.848Z"/>`;
+
+const RECON = `<g fill="${LIGHT}">
+    ${R}
+    <g transform="translate(-42.53 0)">${E}</g>
+    <g transform="translate(37.97 0)">${O}</g>
+  </g>
+  <g fill="none" stroke="${LIGHT}">
+    <path d="M101.588 15.56A7.424 7.376 0 1 0 101.588 25.992" stroke-width="3.5"/>
+    <path d="M128.88 29.4V12.12M128.88 19.34A5.85 5.86 0 0 1 140.58 19.34V29.4" stroke-width="3.552"/>
+  </g>`;
+const ROGERS = `<g fill="${LIGHT}">${R}${O}${E}${ROGERS_REST}</g>`;
+
+const grid = document.getElementById("grid");
+marks.forEach((m, i) => {
+  const solo = `<svg viewBox="0 0 36 36">${mark(m)}</svg>`;
+  const width = m.rogers ? 157 : 143;
+  const card = document.createElement("section");
+  card.className = "card";
+  card.innerHTML = `
+    <h2>${m.no}  ${m.name}</h2>
+    <svg class="big" viewBox="0 0 36 36">${mark(m)}</svg>
+    <svg class="lockup" viewBox="0 0 ${width} 37">${mark(m)}${m.rogers ? ROGERS : RECON}</svg>
+    <div class="sizes">${solo}${solo}${solo}</div>`;
+  grid.appendChild(card);
+});
+</script>
+</body>
+</html>
