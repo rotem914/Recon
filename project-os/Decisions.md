@@ -117,6 +117,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-18 · Settings changes a global shortcut by trying the new one first; the shortcut that opens Recon is none until picked; the two are let go while one is being pressed.
 - 2026-09-18 · A change made in Settings stays outside Ctrl+Z, Rotem's call.
 - 2026-09-18 · The Open Recon shortcut, pressed again, minimizes the window only when it is the one in front.
+- 2026-09-18 · A file opened by name sits in the timeline as a pointer to where it lives, in a list of its own beside the tabs, never in the store; Rotem's call over a kept copy.
 
 ---
 
@@ -1346,3 +1347,34 @@ needed every time. In the tray, minimized, or behind another window, the press s
 It minimizes to the taskbar, as the minimize button does, never hides to the tray: Rotem's
 word was minimize. The rule is one pure function, `settings::open_press`, under a unit
 test. The tray icon's click and a capture still only ever show the window.
+
+## 2026-09-18 · A file opened by name sits in the timeline as a pointer, in a list of its own, never in the store
+
+### Context
+Rotem asked that an opened file, an SVG or any other picture, join the timeline "as if it
+were a screenshot". A screenshot is there because Recon keeps its own copy, and rule 11
+says an external file is never copied into Recon's storage, so the ask and the invariant
+met head on.
+
+### Options
+1. A pointer: the thumbnail names the file where it lives, nothing is copied, and it leaves
+   the timeline when the file is moved or deleted.
+2. A kept copy like a capture's, which stays after the original is gone and lifts rule 11.
+3. For either: every file stepped onto in a folder joins, or only the file opened by name.
+
+### Decision
+Option 1, and only the file opened by name: Rotem's, on 2026-09-18. "If we update it, it
+saves the original" is read as what Annotate already does, the image preserved once a note
+is wanted. Built as a list of its own, `opened.json` beside `tabs.json`, rather than as a
+kind of record in the document store: the store's every path assumes a `source.png`, and
+its trash, restore and ledger are the project's most bitten code.
+
+### Consequences
+A pointer holds a path, a size and a number, never pixels; its thumbnail is made from the
+file when asked for and lives in memory only. It shares the documents' numbers, so tabs,
+done marks, the keys and Ctrl+Z treat it as any thumbnail, and Annotate turns it into the
+file's document under the same number. Its x takes it off the list and keeps nothing in the
+trash; Ctrl+Z puts it back within the session only. The picker, "Open with" and the command
+line join; previous and next in a folder never do. The storage figure does not count it.
+Every timeline refresh asks whether each pointed file is still there, which a dead network
+path could make slow: worth a cap or a lazy test if it ever bites.

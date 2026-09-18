@@ -220,6 +220,172 @@ pub struct Managed {
 
 static DOCUMENTS: Mutex<Vec<Managed>> = Mutex::new(Vec::new());
 
+// ---------------------------------------------------------------- the opened files
+
+/// A file the user opened, listed in the timeline beside the documents as a pointer to
+/// where it lives (Rotem, 2026-09-18). Nothing of the file is kept (rule 11): no pixels,
+/// and its thumbnail is made from the file when asked for and held in memory only. A file
+/// that is gone leaves the list; Annotate turns the pointer into a managed document, which
+/// preserves the image as it always did. Only a file opened by name joins, never one
+/// stepped onto in its folder.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct Link {
+    id: u64,
+    path: std::path::PathBuf,
+    width: u32,
+    height: u32,
+    created_ms: u64,
+}
+
+static LINKS: Mutex<Vec<Link>> = Mutex::new(Vec::new());
+/// Pointers removed from the timeline in this session, so Ctrl+Z can put one back.
+static REMOVED_LINKS: Mutex<Vec<Link>> = Mutex::new(Vec::new());
+static LINK_THUMBS: Mutex<Option<std::collections::HashMap<u64, Vec<u8>>>> = Mutex::new(None);
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct LinksFile {
+    schema: u32,
+    files: Vec<Link>,
+}
+
+/// Writes the list whole, through a temporary file and a rename (QA §5). Called with the
+/// list's lock held, so two writers never interleave.
+fn save_links(links: &[Link]) {
+    let result = crate::store::opened_path().and_then(|path| {
+        let text = serde_json::to_vec_pretty(&LinksFile {
+            schema: 1,
+            files: links.to_vec(),
+        })
+        .map_err(|err| err.to_string())?;
+        crate::store::write_atomic(&path, &text)
+    });
+    if let Err(err) = result {
+        crate::log(&format!("the opened files NOT saved: {err}"));
+    }
+}
+
+/// Reads the list at startup. A file that does not parse is set aside under a dated name,
+/// as the tabs are, and the list starts empty.
+fn load_links() {
+    let Ok(path) = crate::store::opened_path() else {
+        return;
+    };
+    let files = match std::fs::read(&path) {
+        Ok(text) => match serde_json::from_slice::<LinksFile>(&text) {
+            Ok(file) => file.files,
+            Err(err) => {
+                let aside = path.with_extension(format!(
+                    "broken-{}.json",
+                    crate::store::millis(std::time::SystemTime::now())
+                ));
+                let moved = std::fs::rename(&path, &aside).is_ok();
+                crate::log(&format!(
+                    "{}: {err}; set aside as {}: {}",
+                    path.display(),
+                    aside.display(),
+                    if moved { "moved" } else { "NOT moved" }
+                ));
+                Vec::new()
+            }
+        },
+        Err(_) => Vec::new(),
+    };
+    if let Ok(mut links) = LINKS.lock() {
+        *links = files;
+    }
+    if let Ok(mut removed) = REMOVED_LINKS.lock() {
+        removed.clear();
+    }
+    if let Ok(mut thumbs) = LINK_THUMBS.lock() {
+        *thumbs = None;
+    }
+}
+
+fn link(id: u64) -> Option<Link> {
+    LINKS
+        .lock()
+        .ok()
+        .and_then(|links| links.iter().find(|l| l.id == id).cloned())
+}
+
+/// Drops the pointers a managed document replaces: the one with its number, and any to
+/// the same file. Called when Annotate preserves the image.
+fn drop_links_for(id: u64, path: Option<&std::path::Path>) {
+    let Ok(mut links) = LINKS.lock() else {
+        return;
+    };
+    let before = links.len();
+    links.retain(|l| l.id != id && !path.is_some_and(|p| same_path(&l.path, p)));
+    if links.len() != before {
+        save_links(&links);
+    }
+}
+
+/// Puts a pointer on screen: the file is opened again from where it lives, under the
+/// pointer's own number, with history navigation as for any thumbnail chosen (§3.4). A
+/// file that is gone leaves the list.
+fn show_link(link: &Link) -> Result<(), String> {
+    let opened = source::open(&link.path).and_then(|mut opened| {
+        let decoded = opened.frame(0)?;
+        Ok((opened, decoded))
+    });
+    let (opened, decoded) = match opened {
+        Ok(pair) => pair,
+        Err(err) => {
+            if !link.path.is_file() {
+                if let Ok(mut links) = LINKS.lock() {
+                    links.retain(|l| l.id != link.id);
+                    save_links(&links);
+                }
+            }
+            return Err(format!("{}: {err}", link.path.display()));
+        }
+    };
+    let name = opened.format.name();
+    state().set_document(Some(Document { opened, index: 0 }));
+    if let Ok(mut slot) = state().folder.lock() {
+        *slot = None;
+    }
+    state().history_active.store(true, Ordering::SeqCst);
+    CURRENT_ID.store(link.id, Ordering::SeqCst);
+    state().set_frame(frame_of(decoded, name));
+    if let Ok(app) = app() {
+        if let Ok(info) = editor_image_info() {
+            set_title(app, &info);
+        }
+    }
+    Ok(())
+}
+
+/// A pointer's thumbnail: made from the file itself, held in memory, never written.
+fn link_thumbnail(link: &Link) -> Result<Vec<u8>, String> {
+    if let Ok(thumbs) = LINK_THUMBS.lock() {
+        if let Some(png) = thumbs.as_ref().and_then(|t| t.get(&link.id)) {
+            return Ok(png.clone());
+        }
+    }
+    let mut opened = source::open(&link.path).map_err(|err| err.to_string())?;
+    let frame = opened.frame(0).map_err(|err| err.to_string())?;
+    let (tw, th) = thumb_size(frame.width, frame.height);
+    let small = recon_pixels::resample(&frame.rgba, frame.width, frame.height, tw, th)
+        .ok_or_else(|| format!("{}: the thumbnail did not resample", link.path.display()))?;
+    let mut png = Vec::new();
+    image::codecs::png::PngEncoder::new(&mut png)
+        .write_image(&small, tw, th, image::ExtendedColorType::Rgba8)
+        .map_err(|err| {
+            format!(
+                "{}: the thumbnail did not encode: {err}",
+                link.path.display()
+            )
+        })?;
+    if let Ok(mut thumbs) = LINK_THUMBS.lock() {
+        thumbs
+            .get_or_insert_with(std::collections::HashMap::new)
+            .insert(link.id, png.clone());
+    }
+    Ok(png)
+}
+
 fn record_of(document: &Managed) -> crate::store::Record {
     crate::store::Record {
         schema: crate::store::SCHEMA,
@@ -257,6 +423,14 @@ fn write_record_of(document: &mut Managed) -> Result<(), String> {
 /// and swaps the PNG in, so the capture path and the Annotate key pay nothing for it.
 fn preserve(image: Arc<Image>, id: u64, source: Source) {
     let (width, height) = (image.frame.width(), image.frame.height());
+    // The document takes the place of the file's pointer in the timeline.
+    drop_links_for(
+        id,
+        match &source {
+            Source::File { path, .. } => Some(path.as_path()),
+            Source::Capture => None,
+        },
+    );
     if let Ok(mut documents) = DOCUMENTS.lock() {
         if documents.iter().any(|d| d.id == id) {
             return;
@@ -502,6 +676,7 @@ fn add_records(found: Vec<(crate::store::Record, std::path::PathBuf)>) -> usize 
 /// returns; every older record is read on a thread, newest first, and the page is told
 /// with `store-loaded` when the list is whole. The image is not decoded until it is shown.
 pub fn load_store() {
+    load_links();
     let generation = STORE_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
     let ids = crate::store::folder_ids();
     let count = ids.len();
@@ -659,6 +834,18 @@ pub fn editor_trash_rejoin(id: u64) -> Result<(), String> {
 const REJOIN_WAIT: std::time::Duration = std::time::Duration::from_millis(1500);
 
 fn trash_rejoin(id: u64) -> Result<(), String> {
+    // A pointer taken off the timeline in this session goes back as it was.
+    let removed = REMOVED_LINKS.lock().ok().and_then(|mut removed| {
+        let at = removed.iter().position(|l| l.id == id)?;
+        Some(removed.remove(at))
+    });
+    if let Some(link) = removed {
+        if let Ok(mut links) = LINKS.lock() {
+            links.push(link);
+            save_links(&links);
+        }
+        return Ok(());
+    }
     let dir = crate::store::restore(id)?;
     // A folder that cannot rejoin goes back into the trash before the error is returned,
     // so the trash entry survives and a Restore later still finds it (review 4, T2).
@@ -693,6 +880,9 @@ fn trash_rejoin(id: u64) -> Result<(), String> {
 /// Puts a managed document on screen from its own preserved image, as the resume of
 /// Annotate does, without a file behind it: the document stands on its own (§3.3).
 fn show_document(id: u64) -> Result<(), String> {
+    if let Some(link) = link(id) {
+        return show_link(&link);
+    }
     // The handle under the lock, the decode outside it (review T7): a large PNG takes a
     // tenth of a second to decode, and the timeline, a thumbnail and a save in flight
     // would all wait on it.
@@ -899,6 +1089,9 @@ mod thumbnail_tests {
 }
 
 fn thumbnail(id: u64) -> Result<Vec<u8>, String> {
+    if let Some(link) = link(id) {
+        return link_thumbnail(&link);
+    }
     let cached = crate::store::folder(id)
         .ok()
         .map(|dir| dir.join("thumb.png"))
@@ -955,32 +1148,62 @@ pub struct DocumentLine {
     pub file: String,
     pub created_ms: u64,
     pub current: bool,
+    /// A pointer to an opened file, not a document: removing it keeps nothing in the trash
+    /// and never touches the file.
+    pub linked: bool,
 }
 
-/// Every document, oldest first, the one on screen marked (S2.1).
+/// Every document and every opened file's pointer, oldest first, the one on screen marked
+/// (S2.1). A pointer whose file is gone leaves the list here.
 #[tauri::command]
 pub fn editor_documents() -> Vec<DocumentLine> {
     let current = current_document_id();
+    let links: Vec<Link> = match LINKS.lock() {
+        Ok(mut links) => {
+            let before = links.len();
+            links.retain(|l| l.path.is_file());
+            if links.len() != before {
+                save_links(&links);
+            }
+            links.clone()
+        }
+        Err(_) => Vec::new(),
+    };
     let ids = history_ids();
     let documents = match DOCUMENTS.lock() {
         Ok(documents) => documents,
         Err(_) => return Vec::new(),
     };
+    let name = |path: &std::path::Path| {
+        path.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default()
+    };
     ids.iter()
-        .filter_map(|id| documents.iter().find(|d| d.id == *id))
-        .map(|d| DocumentLine {
-            id: d.id,
-            width: d.width,
-            height: d.height,
-            file: match &d.source {
-                Source::File { path, .. } => path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_default(),
-                Source::Capture => String::new(),
-            },
-            created_ms: crate::store::millis(d.created),
-            current: d.id == current,
+        .filter_map(|id| {
+            if let Some(d) = documents.iter().find(|d| d.id == *id) {
+                return Some(DocumentLine {
+                    id: d.id,
+                    width: d.width,
+                    height: d.height,
+                    file: match &d.source {
+                        Source::File { path, .. } => name(path),
+                        Source::Capture => String::new(),
+                    },
+                    created_ms: crate::store::millis(d.created),
+                    current: d.id == current,
+                    linked: false,
+                });
+            }
+            links.iter().find(|l| l.id == *id).map(|l| DocumentLine {
+                id: l.id,
+                width: l.width,
+                height: l.height,
+                file: name(&l.path),
+                created_ms: l.created_ms,
+                current: l.id == current,
+                linked: true,
+            })
         })
         .collect()
 }
@@ -1010,7 +1233,24 @@ pub fn editor_delete_document(id: u64) -> Result<Option<ImageInfo>, String> {
     let ids = history_ids();
     let at = ids.iter().position(|d| *d == id);
     let was_current = id == current_document_id();
-    {
+    // A pointer to an opened file: off the list, kept for this session's Ctrl+Z, and the
+    // file itself is never touched (rule 11).
+    let pointer = LINKS.lock().ok().and_then(|mut links| {
+        let at = links.iter().position(|l| l.id == id)?;
+        let link = links.remove(at);
+        save_links(&links);
+        Some(link)
+    });
+    if let Some(link) = &pointer {
+        crate::log(&format!(
+            "{} taken off the timeline; the file is untouched",
+            link.path.display()
+        ));
+        if let Ok(mut removed) = REMOVED_LINKS.lock() {
+            removed.push(link.clone());
+        }
+    }
+    if pointer.is_none() {
         let mut documents = DOCUMENTS.lock().map_err(|_| "the documents are poisoned")?;
         if !documents.iter().any(|d| d.id == id) {
             return Err(format!("document {id} is not in the list"));
@@ -1337,7 +1577,7 @@ pub fn present(frame: Frame) -> Result<u128, String> {
     state().set_document(None);
     // Taking a capture activates history navigation (§3.4).
     state().history_active.store(true, Ordering::SeqCst);
-    present_frame(frame)
+    present_frame(frame, None)
 }
 
 /// Hides the editor and returns the focus to the application the capture began in (§3.1).
@@ -1370,10 +1610,16 @@ fn set_title(app: &AppHandle, info: &ImageInfo) {
     }
 }
 
-fn present_frame(frame: Frame) -> Result<u128, String> {
+fn present_frame(frame: Frame, reuse: Option<u64>) -> Result<u128, String> {
     let app = app()?;
     let is_capture = frame.source == "capture";
-    let id = next_document_id();
+    let id = match reuse {
+        Some(id) => {
+            CURRENT_ID.store(id, Ordering::SeqCst);
+            id
+        }
+        None => next_document_id(),
+    };
     state().set_frame(frame);
     // A capture is a document from its first moment (§3.8: new captures save
     // automatically), so the previous one is never overwritten by the next (§3.3).
@@ -1392,6 +1638,18 @@ fn present_frame(frame: Frame) -> Result<u128, String> {
 /// Opens a file through the one image source and shows its first frame or page on the
 /// same canvas a capture uses. The file is read once and never written (rule 11).
 pub fn open_path(path: &std::path::Path) -> Result<u128, String> {
+    open_path_as(path, false)
+}
+
+/// A file opened by name, from the picker, "Open with" or the command line: it joins the
+/// timeline as a pointer to where it lives (Rotem, 2026-09-18), unless a managed document
+/// for it is there already. A file stepped onto in its folder goes through `open_path` and
+/// joins nothing.
+pub fn open_file(path: &std::path::Path) -> Result<u128, String> {
+    open_path_as(path, true)
+}
+
+fn open_path_as(path: &std::path::Path, joins: bool) -> Result<u128, String> {
     let started = Instant::now();
     let mut opened = source::open(path).map_err(|err| err.to_string())?;
     let open_ms = started.elapsed().as_millis();
@@ -1425,7 +1683,28 @@ pub fn open_path(path: &std::path::Path) -> Result<u128, String> {
     }
     // Opening an external file activates folder navigation (§3.4).
     state().history_active.store(false, Ordering::SeqCst);
-    present_frame(frame_of(decoded, name))
+    let has_document = DOCUMENTS
+        .lock()
+        .map(|documents| documents.iter().any(|d| d.is_for(path, 0)))
+        .unwrap_or(true);
+    let reuse = (joins && !has_document).then(|| {
+        let (width, height) = (decoded.width, decoded.height);
+        let mut links = LINKS.lock().ok()?;
+        if let Some(known) = links.iter().find(|l| same_path(&l.path, path)) {
+            return Some(known.id);
+        }
+        let id = next_document_id();
+        links.push(Link {
+            id,
+            path: path.to_path_buf(),
+            width,
+            height,
+            created_ms: id,
+        });
+        save_links(&links);
+        Some(id)
+    });
+    present_frame(frame_of(decoded, name), reuse.flatten())
 }
 
 /// Previous, next, first or last in the folder (§3.4). A file gone since the listing is
@@ -1480,6 +1759,14 @@ fn history_ids() -> Vec<u64> {
         .lock()
         .map(|documents| documents.iter().map(|d| (d.id, d.created)).collect())
         .unwrap_or_default();
+    if let Ok(links) = LINKS.lock() {
+        ids.extend(links.iter().map(|l| {
+            (
+                l.id,
+                std::time::UNIX_EPOCH + std::time::Duration::from_millis(l.created_ms),
+            )
+        }));
+    }
     ids.sort_by_key(|(id, created)| (*created, *id));
     ids.into_iter().map(|(id, _)| id).collect()
 }
@@ -1609,6 +1896,9 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         checks::editor_replace_in_folder,
         checks::editor_make_folder,
         checks::editor_open_path,
+        checks::editor_open_file,
+        checks::editor_file_print,
+        checks::editor_opened_reload,
         checks::editor_remove_from_folder,
         checks::editor_history,
         checks::editor_dialog_outcome,
@@ -1969,6 +2259,8 @@ pub struct ImageInfo {
     /// Whether the image on screen is a managed document: a capture always, a file once
     /// Annotate created or resumed its document (§3.3). The page's mode follows it.
     pub managed: bool,
+    /// The image on screen is an opened file listed in the timeline as a pointer.
+    pub linked: bool,
     /// The route to a saved edit: seconds since a document that exists for this file and
     /// frame was last annotated, while the file itself is on screen; null otherwise.
     pub edited_ago_s: Option<u64>,
@@ -2059,6 +2351,7 @@ pub fn editor_image_info() -> Result<ImageInfo, String> {
         total,
         context,
         managed: standing.managed,
+        linked: link(current_document_id()).is_some(),
         edited_ago_s: standing.edited_ago_s,
         source_changed: standing.source_changed,
     })
@@ -2104,7 +2397,7 @@ pub fn editor_open_dialog(app: AppHandle) -> Result<(), String> {
     std::thread::spawn(move || {
         let owner = windows::Win32::Foundation::HWND(owner as *mut _);
         let outcome = match crate::dialog::pick_image(Some(owner)) {
-            Ok(Some(path)) => match open_path(&path) {
+            Ok(Some(path)) => match open_file(&path) {
                 Ok(_) => format!("opened {} (Ctrl+O)", path.display()),
                 Err(err) => format!("OPEN FAILED for {} (Ctrl+O): {err}", path.display()),
             },
@@ -3569,6 +3862,35 @@ mod checks {
         editor_image_info()
     }
 
+    /// A file opened by name, the way the picker and "Open with" open one: it joins the
+    /// timeline as a pointer.
+    #[tauri::command]
+    pub fn editor_open_file(path: String) -> Result<ImageInfo, String> {
+        open_file(std::path::Path::new(&path))?;
+        editor_image_info()
+    }
+
+    /// A file's length and a hash of its bytes, so a check can say the file was not
+    /// touched (rule 11).
+    #[tauri::command]
+    pub fn editor_file_print(path: String) -> Result<String, String> {
+        let bytes = std::fs::read(&path).map_err(|err| err.to_string())?;
+        let mut hash = 0xcbf29ce484222325u64;
+        for byte in &bytes {
+            hash = (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3);
+        }
+        Ok(format!("{} bytes, {hash:016x}", bytes.len()))
+    }
+
+    /// The list of opened files as it is on disk, and the startup read of it again.
+    #[tauri::command]
+    pub fn editor_opened_reload() -> Result<String, String> {
+        let path = crate::store::opened_path()?;
+        let text = std::fs::read_to_string(&path).map_err(|err| err.to_string())?;
+        load_links();
+        Ok(text)
+    }
+
     /// Removes one file of the check folder, so the walk meets a file that has gone.
     #[tauri::command]
     pub fn editor_remove_from_folder(name: String) -> Result<(), String> {
@@ -3609,6 +3931,11 @@ mod checks {
         if let Ok(mut documents) = DOCUMENTS.lock() {
             documents.clear();
         }
+        // The opened files' pointers start empty with the store.
+        if let Ok(path) = crate::store::opened_path() {
+            let _ = std::fs::remove_file(path);
+        }
+        load_links();
         set_store_loaded(true);
         Ok(dir.display().to_string())
     }

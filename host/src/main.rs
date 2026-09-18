@@ -327,7 +327,7 @@ fn file_argument(args: &[String]) -> Option<String> {
 fn open_file(path: String, how: &'static str) {
     std::thread::spawn(move || {
         let started = std::time::Instant::now();
-        match editor::open_path(std::path::Path::new(&path)) {
+        match editor::open_file(std::path::Path::new(&path)) {
             Ok(show_ms) => log(&format!(
                 "opened {path} ({how}): editor shown {} ms after the open began, the show itself {show_ms} ms",
                 started.elapsed().as_millis()

@@ -3816,6 +3816,99 @@ export async function runChecks(editor, invoke) {
     await invoke('editor_show');
   }
 
+  // ---------------------------------------------------------------- an opened file in the timeline
+  say('');
+  say('A file opened by name sits in the timeline as a pointer: nothing copied, the file untouched, gone with its file, a document once annotated');
+  {
+    const strip = editor.strip;
+    const hud = document.getElementById('hud');
+    await invoke('editor_store_reset');
+    const dir = await invoke('editor_make_folder');
+    const at = (name) => `${dir}\\${name}`;
+    const thumbs = () => strip.querySelectorAll('.thumb:not(.trashed)').length;
+    const press = (init) => { const e = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }); window.dispatchEvent(e); return e.defaultPrevented; };
+    const before = await invoke('editor_file_print', { path: at('img2.png') });
+
+    let info = await invoke('editor_open_file', { path: at('img2.png') });
+    await editor.loadImage(info);
+    await editor.refreshStrip();
+    for (let i = 0; i < 60 && thumbs() !== 1; i += 1) await sleep(50);
+    let docs = await invoke('editor_documents');
+    let store = await invoke('editor_store_list');
+    check('opened by name: one thumbnail, a pointer, current, the picture in viewing, and the store holds no document for it',
+      thumbs() === 1 && docs.length === 1 && docs[0].linked === true && docs[0].current === true && docs[0].file === 'img2.png' && info.linked === true && info.managed === false && model.mode === 'view' && store.length === 0,
+      `thumbnails ${thumbs()}, ${JSON.stringify(docs)}, store ${store.length}`);
+    for (let i = 0; i < 100 && !strip.querySelector('img'); i += 1) await sleep(50);
+    const img = strip.querySelector('img');
+    for (let i = 0; i < 100 && !(img && img.naturalWidth > 0); i += 1) await sleep(50);
+    store = await invoke('editor_store_list');
+    check('its thumbnail is drawn, and still nothing of it is in the store', !!img && img.naturalWidth > 0 && store.length === 0, `thumbnail ${img ? img.naturalWidth : 'none'}, store ${store.length}`);
+
+    // Stepping through the folder joins nothing; opening the same file again adds nothing.
+    await editor.loadImage(await invoke('editor_navigate', { step: 'next' }));
+    await editor.refreshStrip();
+    const again = await invoke('editor_open_file', { path: at('img2.png') });
+    await editor.loadImage(again);
+    await editor.refreshStrip();
+    docs = await invoke('editor_documents');
+    check('a file stepped onto joins nothing, and the same file opened again is the same pointer', docs.length === 1 && again.document_id === info.document_id, JSON.stringify(docs.map((d) => d.file)));
+
+    // A second file and a capture; then the pointer is chosen from the timeline.
+    const second = await invoke('editor_open_file', { path: at('b.jpg') });
+    await editor.loadImage(second);
+    const shot = await invoke('editor_capture_probe', { width: 320, height: 200 });
+    await editor.loadImage(shot);
+    await editor.refreshStrip();
+    for (let i = 0; i < 60 && thumbs() !== 3; i += 1) await sleep(50);
+    strip.children[2].click(); // the oldest, img2.png, at the right
+    for (let i = 0; i < 60 && model.image.document_id !== info.document_id; i += 1) await sleep(50);
+    check('chosen from the timeline, the file is opened from where it lives', model.image.document_id === info.document_id && model.image.file === 'img2.png' && model.mode === 'view', `${model.image.document_id} ${model.image.file}`);
+
+    // After a restart the pointers are back from the disk.
+    const onDisk = await invoke('editor_opened_reload');
+    docs = await invoke('editor_documents');
+    check('the pointers are saved and read back: two files and the capture', docs.length === 3 && docs.filter((d) => d.linked).length === 2 && onDisk.includes('img2.png') && onDisk.includes('b.jpg'), JSON.stringify(docs.map((d) => [d.file, d.linked])));
+
+    // Taken off the timeline: the file stays, nothing goes to the trash, Ctrl+Z puts it back.
+    await editor.loadImage(await invoke('editor_show_document', { id: shot.document_id }));
+    await editor.refreshStrip();
+    for (let i = 0; i < 60 && thumbs() !== 3; i += 1) await sleep(50);
+    strip.children[2].querySelector('.x').click();
+    for (let i = 0; i < 60 && thumbs() !== 2; i += 1) await sleep(50);
+    let trash = await invoke('editor_trash_list');
+    const after = await invoke('editor_file_print', { path: at('img2.png') });
+    check('its x takes the pointer off: two thumbnails, nothing in the trash, the file byte for byte as it was, and the notice says so',
+      thumbs() === 2 && trash.length === 0 && after === before && hud.textContent.includes('untouched'), `thumbnails ${thumbs()}, trash ${trash.length}, ${before} then ${after}, "${hud.textContent}"`);
+    press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    for (let i = 0; i < 60 && thumbs() !== 3; i += 1) await sleep(50);
+    docs = await invoke('editor_documents');
+    check('Ctrl+Z puts the pointer back where it was', thumbs() === 3 && docs[0].id === info.document_id && docs[0].linked === true, JSON.stringify(docs.map((d) => d.file)));
+    press({ key: 'Z', code: 'KeyZ', ctrlKey: true, shiftKey: true });
+    for (let i = 0; i < 60 && thumbs() !== 2; i += 1) await sleep(50);
+    check('and Ctrl+Shift+Z takes it off again', thumbs() === 2);
+    press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    for (let i = 0; i < 60 && thumbs() !== 3; i += 1) await sleep(50);
+
+    // Annotate turns the pointer into a document, under the same number.
+    await editor.loadImage(await invoke('editor_show_document', { id: info.document_id }));
+    await editor.setMode('annotate');
+    await editor.refreshStrip();
+    docs = await invoke('editor_documents');
+    const mine = docs.filter((d) => d.file === 'img2.png');
+    store = await invoke('editor_store_list');
+    check('annotated, the pointer becomes the file\'s document: one thumbnail for it, not a pointer, the same number, now in the store',
+      mine.length === 1 && mine[0].linked === false && mine[0].id === info.document_id && model.image.managed === true && store.some((line) => line.id === info.document_id),
+      `${JSON.stringify(mine)}, store ${JSON.stringify(store.map((line) => line.id))}`);
+    check('and the file is still byte for byte as it was', (await invoke('editor_file_print', { path: at('img2.png') })) === before);
+
+    // A file that is gone leaves the timeline.
+    await invoke('editor_remove_from_folder', { name: 'b.jpg' });
+    await editor.refreshStrip();
+    docs = await invoke('editor_documents');
+    check('a file removed from where it lived leaves the timeline', !docs.some((d) => d.file === 'b.jpg'), JSON.stringify(docs.map((d) => d.file)));
+    await editor.setMode('view');
+  }
+
   say('');
   const unrun = notRun ? `, ${notRun} not run` : '';
   if (failures === 0) {

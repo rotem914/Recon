@@ -2182,6 +2182,14 @@ Rotem's word on 2026-09-14. The rest of Stage 2 stays in part 10.
       walk. One behaviour differs, Rotem's to veto: "the latest reopens" is now the
       last-modified of the fifty newest by creation, so an old document annotated last,
       with more than fifty newer ones, would not be the one reopened.
+- [x] S2.10 An opened file in the timeline: a file opened by name, from the picker, "Open
+      with" or the command line, sits in the timeline like a capture, as a pointer to where
+      it lives. Nothing of it is copied (rule 11): its thumbnail is made from the file and
+      held in memory, it leaves the timeline when the file is gone, and its x takes the
+      pointer off and never touches the file, Ctrl+Z putting it back. A file stepped onto
+      in its folder joins nothing. Annotate turns the pointer into the file's document, as
+      §3.8 already says. Asked and decided by Rotem on 2026-09-18. Model: Fable 5.1, it
+      touches what Recon keeps.
 - [x] S2.9 Undo of a deletion: Ctrl+Z brings back the picture just deleted from the
       timeline. Asked by Rotem on 2026-09-16, his pick over undo buttons in the sidebar
       and over undo that survives a restart; a spec, nothing built. Model: Fable 5.1, it

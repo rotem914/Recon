@@ -161,6 +161,15 @@ pub fn tabs_path() -> Result<PathBuf, String> {
         .unwrap_or_else(|| root.join("tabs.json")))
 }
 
+/// Where the list of opened files lives, beside the tabs: pointers only, never pixels.
+pub fn opened_path() -> Result<PathBuf, String> {
+    let root = root()?;
+    Ok(root
+        .parent()
+        .map(|p| p.join("opened.json"))
+        .unwrap_or_else(|| root.join("opened.json")))
+}
+
 pub const TRASH_DAYS: u64 = 30;
 
 /// Moves a document's folder into the trash, whole, with the time it was trashed written

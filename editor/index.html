@@ -1630,7 +1630,11 @@
     el.textContent = `${doc.width}x${doc.height}`;
     if (cell.kind === 'doc') {
       el.addEventListener('click', () => {
-        invoke('editor_show_document', { id: doc.id }).then((info) => loadImage(info)).catch((err) => console.error('timeline', err));
+        invoke('editor_show_document', { id: doc.id }).then((info) => loadImage(info)).catch((err) => {
+          console.error('timeline', err);
+          // An opened file that is gone from where it lived: said, and its thumbnail leaves.
+          if (doc.linked) { notice(`NOT OPENED: ${err}`, 0); refreshStrip().catch(() => {}); }
+        });
       });
       // The delete (§3.8, S2.5): into Recon's trash for thirty days; one click, no dialog.
       const x = document.createElement('button');
@@ -2090,6 +2094,7 @@
   // dropped, so it comes back with its notes and their undo.
   const deleteDocument = async (id, again = false) => {
     const shown = id === model.image.document_id;
+    const linked = cells.some((c) => c.kind === 'doc' && c.doc.id === id && c.doc.linked);
     let info;
     try {
       info = await invoke('editor_delete_document', { id });
@@ -2109,7 +2114,7 @@
       stashCurrent(false); // the folder is in the trash already, so there is nothing to save into
       await showEmpty();
     }
-    notice('deleted; Recon keeps it in its trash for 30 days', 4000);
+    notice(linked ? 'taken off the timeline; the file itself is untouched' : 'deleted; Recon keeps it in its trash for 30 days', 4000);
   };
 
   const showEmpty = async () => {
@@ -3402,9 +3407,10 @@
     // editor the pixels, tells the page, and shows the window (S0.4b).
     await window.__TAURI__.event.listen('capture-ready', async (event) => {
       const arrived = performance.now();
-      // A capture taken on a tab after Main joins that tab's feed too (Rotem, 2026-09-16); a file
-      // opened or a frame stepped arrives by the same event and joins nothing.
-      if (event.payload.source === 'capture' && !event.payload.file) captureIntoTab(event.payload.document_id);
+      // A capture taken on a tab after Main joins that tab's feed too (Rotem, 2026-09-16), and so
+      // does a file opened by name, which sits in the timeline like a capture (Rotem, 2026-09-18);
+      // a frame stepped or a file stepped onto arrives by the same event and joins nothing.
+      if ((event.payload.source === 'capture' && !event.payload.file) || event.payload.linked) captureIntoTab(event.payload.document_id);
       await loadImage(event.payload);
       drawHud();
       console.log(`capture shown ${Math.round(performance.now() - arrived)} ms after the page heard of it`);
