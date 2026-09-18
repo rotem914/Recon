@@ -31,13 +31,13 @@ use windows::Win32::Graphics::Dwm::{
 };
 use windows::Win32::Graphics::Gdi::{
     AlphaBlend, BeginPaint, BitBlt, CreateCompatibleDC, CreateDIBSection, CreateFontW,
-    CreateRectRgn, CreateSolidBrush, DeleteDC, DeleteObject, EndPaint, FillRect, GdiFlush, GetDC,
-    GetRegionData, GetTextExtentPoint32W, GetUpdateRgn, InvalidateRect, ReleaseDC, SelectObject,
-    SetBkMode, SetStretchBltMode, SetTextColor, StretchBlt, TextOutW, AC_SRC_ALPHA, AC_SRC_OVER,
-    BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS,
-    COLORONCOLOR, DEFAULT_CHARSET, DEFAULT_PITCH, DIB_RGB_COLORS, FF_DONTCARE, FW_NORMAL, HBITMAP,
-    HBRUSH, HDC, HFONT, HGDIOBJ, OUT_DEFAULT_PRECIS, PAINTSTRUCT, RGNDATA, RGNDATAHEADER, SRCCOPY,
-    TRANSPARENT,
+    CreateRectRgn, CreateSolidBrush, DeleteDC, DeleteObject, EndPaint, ExcludeClipRect, FillRect,
+    GdiFlush, GetDC, GetRegionData, GetTextExtentPoint32W, GetUpdateRgn, InvalidateRect, ReleaseDC,
+    RestoreDC, SaveDC, SelectObject, SetBkMode, SetStretchBltMode, SetTextColor, SetViewportOrgEx,
+    StretchBlt, TextOutW, AC_SRC_ALPHA, AC_SRC_OVER, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
+    BLENDFUNCTION, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, COLORONCOLOR, DEFAULT_CHARSET,
+    DEFAULT_PITCH, DIB_RGB_COLORS, FF_DONTCARE, FW_NORMAL, HBITMAP, HBRUSH, HDC, HFONT, HGDIOBJ,
+    OUT_DEFAULT_PRECIS, PAINTSTRUCT, RGNDATA, RGNDATAHEADER, SRCCOPY, TRANSPARENT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, VK_ESCAPE};
@@ -1467,10 +1467,38 @@ unsafe fn paint(hwnd: HWND) {
     if pieces.is_empty() {
         pieces.push(ps.rcPaint);
     }
+    // The magnifier first, off the screen: the layers under it and the panel over them in
+    // one bitmap. Then the pieces, with the panel's place cut out of them, and the bitmap
+    // copied there in one call. Painted straight onto the window, a piece first put the
+    // screen back where the panel is and the panel came after, and the eye caught the
+    // moment in between as a flicker, at every move and at every tick of a frame through it.
+    let magnifier = unsafe { compose_magnifier(hwnd, hdc, &pieces) };
+    let saved = unsafe { SaveDC(hdc) };
+    if let Some((rect, _, _, _)) = magnifier.as_ref() {
+        unsafe { ExcludeClipRect(hdc, rect.left, rect.top, rect.right, rect.bottom) };
+    }
     for dirty in &pieces {
         unsafe { paint_piece(hwnd, hdc, *dirty) };
     }
-    unsafe { paint_magnifier(hwnd, hdc, &pieces) };
+    let _ = unsafe { RestoreDC(hdc, saved) };
+    if let Some((rect, dc, bitmap, previous)) = magnifier {
+        unsafe {
+            let _ = BitBlt(
+                hdc,
+                rect.left,
+                rect.top,
+                rect.right - rect.left,
+                rect.bottom - rect.top,
+                Some(dc),
+                rect.left,
+                rect.top,
+                SRCCOPY,
+            );
+            SelectObject(dc, previous);
+            let _ = DeleteObject(HGDIOBJ(bitmap.0));
+            let _ = DeleteDC(dc);
+        }
+    }
     let _ = unsafe { EndPaint(hwnd, &ps) };
 }
 
@@ -1605,10 +1633,51 @@ unsafe fn paint_piece(hwnd: HWND, hdc: HDC, dirty: RECT) {
     }
 }
 
-/// The last layer: the magnifier beside the pointer, the size above it, wherever a dirty piece touches
-/// it: a tick's strip through it redraws that strip of it, and a move redraws it whole.
-/// Built once a paint however many pieces touch it, and the window's clip cuts it to them.
-unsafe fn paint_magnifier(hwnd: HWND, hdc: HDC, pieces: &[RECT]) {
+/// The last layer, where a dirty piece touches it: the magnifier beside the pointer with
+/// the layers under it, in a bitmap of the panel's size whose coordinates are the
+/// window's, ready to be copied onto the window in one call. Every pixel's alpha is set
+/// full at the end: a brush clears it, and this window's pixels are shown by their alpha
+/// (see the dim's note). None when nothing dirty touches the panel, or it cannot be made.
+unsafe fn compose_magnifier(
+    hwnd: HWND,
+    hdc: HDC,
+    pieces: &[RECT],
+) -> Option<(RECT, HDC, HBITMAP, HGDIOBJ)> {
+    let rect = STATE.with(|cell| {
+        let borrowed = cell.borrow();
+        let rect = borrowed.as_ref()?.magnifier(hwnd, hdc)?.rect;
+        let touches = pieces.iter().any(|dirty| {
+            rect.right > dirty.left
+                && rect.left < dirty.right
+                && rect.bottom > dirty.top
+                && rect.top < dirty.bottom
+        });
+        touches.then_some(rect)
+    })?;
+    let (w, h) = (rect.right - rect.left, rect.bottom - rect.top);
+    if w <= 0 || h <= 0 {
+        return None;
+    }
+    let dc = unsafe { CreateCompatibleDC(Some(hdc)) };
+    if dc.is_invalid() {
+        return None;
+    }
+    let mut info = solid_header(w, h);
+    let mut bits: *mut c_void = std::ptr::null_mut();
+    let bitmap =
+        match unsafe { CreateDIBSection(Some(hdc), &info, DIB_RGB_COLORS, &mut bits, None, 0) } {
+            Ok(bitmap) if !bitmap.is_invalid() && !bits.is_null() => bitmap,
+            _ => {
+                let _ = unsafe { DeleteDC(dc) };
+                return None;
+            }
+        };
+    std::hint::black_box(&mut info);
+    let previous = unsafe { SelectObject(dc, HGDIOBJ(bitmap.0)) };
+    unsafe {
+        let _ = SetViewportOrgEx(dc, -rect.left, -rect.top, None);
+        paint_piece(hwnd, dc, rect);
+    }
     STATE.with(|cell| {
         let borrowed = cell.borrow();
         let Some(state) = borrowed.as_ref() else {
@@ -1618,17 +1687,17 @@ unsafe fn paint_magnifier(hwnd: HWND, hdc: HDC, pieces: &[RECT]) {
             return;
         };
         if let Some(panel) = state.magnifier(hwnd, hdc) {
-            let touches = pieces.iter().any(|dirty| {
-                panel.rect.right > dirty.left
-                    && panel.rect.left < dirty.right
-                    && panel.rect.bottom > dirty.top
-                    && panel.rect.top < dirty.bottom
-            });
-            if touches {
-                unsafe { draw_panel(hdc, surface, &panel) };
-            }
+            unsafe { draw_panel(dc, surface, &panel) };
         }
     });
+    unsafe {
+        let _ = GdiFlush();
+        let pixels = std::slice::from_raw_parts_mut(bits as *mut u8, (w * h * 4) as usize);
+        for alpha in pixels.iter_mut().skip(3).step_by(4) {
+            *alpha = 255;
+        }
+    }
+    Some((rect, dc, bitmap, previous))
 }
 
 /// The magnifier's panel as laid out on one window, at the display's scale.
