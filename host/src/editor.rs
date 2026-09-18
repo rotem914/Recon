@@ -1985,6 +1985,27 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
             });
             return;
         }
+        // The ruler's magnifier (Rotem, 2026-09-18) asks for the few pixels around the
+        // pointer on every move. Through the one region worker each ask would answer the
+        // view's own pending region as superseded, and the view would stay unpainted, so
+        // these are served on a thread of their own, as the thumbnails are.
+        if let Some(rest) = query.strip_prefix("mag&") {
+            let rest = rest.to_string();
+            std::thread::spawn(move || {
+                let response = match region_bytes_inner(&rest) {
+                    Ok((bytes, _, _)) => tauri::http::Response::builder()
+                        .header("Content-Type", "application/octet-stream")
+                        .header("Access-Control-Allow-Origin", APP_ORIGIN)
+                        .body(bytes),
+                    Err(err) => tauri::http::Response::builder()
+                        .status(400)
+                        .header("Access-Control-Allow-Origin", APP_ORIGIN)
+                        .body(err.into_bytes()),
+                };
+                responder.respond(response.expect("a magnifier response"));
+            });
+            return;
+        }
         serve_region(query, responder);
     })
 }

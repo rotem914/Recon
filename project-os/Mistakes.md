@@ -71,6 +71,7 @@ Mistakes in HOW you worked:
 | 2026-09-18 | Put the sidebar crowding to Rotem as a choice in four replies in a row, though he answered other things each time and never took it up | Ask once; a question he passes over is his answer for now, so it goes to one line in the History row, not back into every Next | `project-os/Conversations.md` | 1 |
 | 2026-09-18 | Committed the bar's title change from a copy cut before another session's commit landed, with the staging and the commit chained in one command, so `533447a` undid the tab menu's lines for one commit | HEAD read again right before staging, the staged diff read before the commit, and the commit never chained after the staging (`CLAUDE.md` rule 22) | `CLAUDE.md` rule 22 | 1 |
 | 2026-09-18 | Read "the lines are not on the pixel" as the lines being off the middle of the magnified square, built that, and only asked after Rotem said it was still wrong; he meant on the square's edge | The three readings put to him as scenes before the first build, as `CLAUDE.md` rule 1 already asks for a phrase that can mean two things on screen | `CLAUDE.md` rule 1 | 1 |
+| 2026-09-18 | Ran the editor's whole automated run seven times for the ruler's magnifier: once was the change's proof, the other six chased a run that stopped early over a leftover tab file of the checks' own, nothing of the change's, until Rotem stopped it | The whole run once; a stop that is not the change's is named in one line and left, never chased with more whole runs | `project-os/Workflow.md` step 8 | 1 |
 
 ## Promoted
 

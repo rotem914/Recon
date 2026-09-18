@@ -179,6 +179,7 @@ Stated by Rotem on 2026-09-16 for the annotation tools.
 | Use | a drag marks an area; its size in pixels, width and height, is written in a bubble beside the pointer the whole time the drag lasts |
 | After the release | the box and its size stay on the picture and in every copy (option 1 of two) |
 | Delete button | on hover over the ruler: a round 16 by 16 button with a 12 by 12 X, one press deletes the ruler |
+| Magnifier | the capture's zoom circle, below, beside the pointer the whole time the ruler tool is in hand, before the press too; while a ruler is dragged out its size sits above the circle as in a capture, and returns beside the ruler's corner at the release (Rotem, 2026-09-18, both of two choices). Every number is the Magnifier's own; it shows the picture's pixels at any zoom, and is never in a copy |
 
 The rest is not stated yet. Provisional in the page until it is: the box a 2 px line in the
 callout line's #7aa7ff; the size bubble beside the corner the drag ended at, 8 px right of
