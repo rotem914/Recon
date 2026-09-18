@@ -1518,8 +1518,8 @@ pub fn create_hidden(app: &AppHandle) -> tauri::Result<()> {
     // and the three window buttons (Rotem's call, 2026-09-14). The edges still resize.
     WebviewWindowBuilder::new(app, "editor", WebviewUrl::App("index.html".into()))
         .title("Recon")
-        // 1600 wide and 1160 tall when it opens (Rotem, 2026-09-15); it was 1280 by 800.
-        .inner_size(1600.0, 1160.0)
+        // 1800 wide and 1390 tall when it opens (Rotem, 2026-09-18); it was 1600 by 1160.
+        .inner_size(1800.0, 1390.0)
         // Centred in the main display's work area, across and in height (Rotem, 2026-09-15);
         // it opened at Windows' default place, near the left edge. On a display smaller than
         // the window, it is shrunk to the work area first, so the top bar is never above it.

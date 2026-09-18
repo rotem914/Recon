@@ -263,7 +263,7 @@ Stated by Rotem on 2026-09-15.
 
 | Part | Value |
 |---|---|
-| Size when it opens | 1600 wide by 1160 tall, centred in the main display's work area |
+| Size when it opens | 1800 wide by 1390 tall (Rotem, 2026-09-18, from 1600 by 1160), centred in the main display's work area |
 | Top bar | 64 px tall (Rotem, 2026-09-18, from 40), the window buttons still 48 by 40 at its top |
 | Logo | the Recon mark and word, 103 by 32, at the top bar's left with 16 px above it and to its left, and no title line beside it: the picture's name stays in the window's own title only (Rotem, 2026-09-18) |
 
