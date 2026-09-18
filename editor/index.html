@@ -103,7 +103,7 @@
   body.sized #tabbar { display: flex; }
   body.strip #tabbar { bottom: calc(min(var(--strip-h, 96px), calc(100vh - 112px)) + 8px); }
   body.fullscreen #tabbar { display: none; }
-  #tab-add { flex: none; width: 32px; height: 32px; padding: 0; border: none; border-radius: 0;
+  #tab-add { flex: none; width: 32px; height: 32px; padding: 0; border: none; border-radius: 10px; /* the tabs' own corners (Rotem, 2026-09-18) */
              background: transparent; color: #f2f2f2; cursor: pointer; display: grid; place-items: center;
              transition: background-color 144ms ease-out; /* A1 */ }
   #tab-add:hover { background: #21222C; }

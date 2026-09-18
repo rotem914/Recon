@@ -106,7 +106,7 @@ Stated by Rotem on 2026-09-16 for the timeline's tabs.
 
 | Part | Value |
 |---|---|
-| Plus button | an icon button at the left of the image size container: 32 by 32, no fill of its own, a plus icon, 20 by 20, with round ends, the hover fill by A1 |
+| Plus button | an icon button at the left of the image size container: 32 by 32, no fill of its own, a plus icon, 20 by 20, with round ends, the hover fill by A1, on the tabs' own 10 px corners (Rotem, 2026-09-18, from square) |
 | Tabs | beside the plus, once it was pressed: Main first, pinned and never deleted, then the tabs the plus made, in the order they are dragged into |
 | Tab text | 14 px |
 | Tab corners | 10 px radius |
