@@ -211,11 +211,12 @@ Stated by Rotem on 2026-09-18 for the left sidebar.
 |---|---|
 | Use | a click on the picture copies the HEX of the colour under it to the clipboard, by itself |
 | Where | a button in the controls sidebar, an icon button like the others |
+| Icon | Rotem's own drawing of a dropper, 21 by 21 at its true size in the middle of the 32 px icon box: a 2 px outline and a filled collar and head, in the icon line colour (Rotem, 2026-09-18, from a provisional eyedropper whose head sat off the tube's line) |
 | After the click | the tool is put down, like the other tools (Rotem, 2026-09-18, of two) |
 | Magnifier | the ruler's zoom circle follows the pointer the whole time the tool is in hand, the HEX of the pixel under the pointer above it, where the ruler's size sits (Rotem, 2026-09-18, of two) |
 
-The rest is not stated yet. Provisional in the page until it is: the button after Crop, an
-eyedropper drawn in the icon line; the key I; the HEX written as `#2D41D7`, upper case with
+The rest is not stated yet. Provisional in the page until it is: the button after Crop;
+the key I; the HEX written as `#2D41D7`, upper case with
 its hash; the picture's own pixel, whatever note lies over it; a see-through pixel as it
 shows, over the app background; a click off the picture copies nothing and keeps the tool;
 the line "copied #2D41D7 to the clipboard" where a copy of the picture says its own; it
