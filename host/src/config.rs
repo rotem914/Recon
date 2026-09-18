@@ -18,6 +18,9 @@ pub struct Config {
     /// Settings: a second global shortcut is a second thing to collide with, so it is never
     /// taken by default (the assistant's default, 2026-09-18, Rotem's to veto).
     pub open_hotkey: Option<String>,
+    /// A second shortcut that starts a capture, beside the first (Rotem, 2026-09-19). None
+    /// until one is picked in Settings, for the same reason as the open shortcut.
+    pub second_hotkey: Option<String>,
     /// Where the value came from, in words, for the log.
     pub source: String,
 }
@@ -30,6 +33,7 @@ pub fn load() -> Config {
             source: format!("--hotkey on the command line: {hotkey}"),
             hotkey,
             open_hotkey: file_value().as_ref().and_then(open_of),
+            second_hotkey: file_value().as_ref().and_then(second_of),
         };
     }
 
@@ -37,6 +41,7 @@ pub fn load() -> Config {
         return Config {
             hotkey: DEFAULT_HOTKEY.into(),
             open_hotkey: None,
+            second_hotkey: None,
             source: "no application data directory, so the built-in default".into(),
         };
     };
@@ -45,6 +50,7 @@ pub fn load() -> Config {
         return Config {
             hotkey: DEFAULT_HOTKEY.into(),
             open_hotkey: None,
+            second_hotkey: None,
             source: format!(
                 "{} does not exist yet, so the built-in default",
                 path.display()
@@ -58,6 +64,7 @@ pub fn load() -> Config {
             return Config {
                 hotkey: DEFAULT_HOTKEY.into(),
                 open_hotkey: None,
+                second_hotkey: None,
                 source: format!(
                     "{} could not be read ({err}), so the built-in default",
                     path.display()
@@ -71,11 +78,13 @@ pub fn load() -> Config {
             Some(hotkey) => Config {
                 hotkey: hotkey.to_string(),
                 open_hotkey: open_of(&value),
+                second_hotkey: second_of(&value),
                 source: format!("{}", path.display()),
             },
             None => Config {
                 hotkey: DEFAULT_HOTKEY.into(),
                 open_hotkey: open_of(&value),
+                second_hotkey: second_of(&value),
                 source: format!(
                     "{} has no \"hotkey\" key, so the built-in default",
                     path.display()
@@ -85,6 +94,7 @@ pub fn load() -> Config {
         Err(err) => Config {
             hotkey: DEFAULT_HOTKEY.into(),
             open_hotkey: None,
+            second_hotkey: None,
             source: format!(
                 "{} is not valid JSON ({err}), so the built-in default",
                 path.display()
@@ -125,28 +135,45 @@ fn file_value() -> Option<serde_json::Value> {
 }
 
 fn open_of(value: &serde_json::Value) -> Option<String> {
+    named(value, "open_hotkey")
+}
+
+fn second_of(value: &serde_json::Value) -> Option<String> {
+    named(value, "second_hotkey")
+}
+
+fn named(value: &serde_json::Value, key: &str) -> Option<String> {
     value
-        .get("open_hotkey")
+        .get(key)
         .and_then(serde_json::Value::as_str)
         .filter(|s| !s.trim().is_empty())
         .map(str::to_string)
 }
 
-/// Writes the two shortcuts Settings chose into the config file, keeping every other key
+/// Writes the three shortcuts Settings chose into the config file, keeping every other key
 /// the file already holds. A file that is not a JSON object is replaced, since nothing in
 /// it could be read anyway. Written beside itself and renamed, so a failure half way
 /// leaves the old file whole.
-pub fn save(hotkey: &str, open_hotkey: Option<&str>) -> Result<PathBuf, String> {
+pub fn save(
+    hotkey: &str,
+    second_hotkey: Option<&str>,
+    open_hotkey: Option<&str>,
+) -> Result<PathBuf, String> {
     let path = config_path().ok_or("there is no application data folder to save into")?;
     let mut object = match file_value() {
         Some(serde_json::Value::Object(map)) => map,
         _ => serde_json::Map::new(),
     };
     object.insert("hotkey".into(), hotkey.into());
-    match open_hotkey {
-        Some(open) => object.insert("open_hotkey".into(), open.into()),
-        None => object.remove("open_hotkey"),
-    };
+    for (key, value) in [
+        ("second_hotkey", second_hotkey),
+        ("open_hotkey", open_hotkey),
+    ] {
+        match value {
+            Some(value) => object.insert(key.into(), value.into()),
+            None => object.remove(key),
+        };
+    }
     let text = serde_json::to_string_pretty(&serde_json::Value::Object(object))
         .map_err(|err| err.to_string())?;
     if let Some(dir) = path.parent() {
@@ -187,7 +214,7 @@ mod tests {
     use super::*;
 
     /// One test, since the path override is one static: a save keeps the keys it does not
-    /// own, a load reads both shortcuts back, and clearing the second removes its key.
+    /// own, a load reads all three shortcuts back, and clearing one removes its key.
     #[test]
     fn save_keeps_other_keys_and_load_reads_both_back() {
         // Beside the test executable, inside the project, never the system temp folder.
@@ -200,19 +227,22 @@ mod tests {
         std::fs::write(&path, r#"{"hotkey":"Ctrl+Shift+4","kept":7}"#).unwrap();
         set_path(path.clone());
 
-        save("Ctrl+Alt+S", Some("Ctrl+Alt+R")).unwrap();
+        save("Ctrl+Alt+S", Some("PrintScreen"), Some("Ctrl+Alt+R")).unwrap();
         let cfg = load();
         assert_eq!(cfg.hotkey, "Ctrl+Alt+S");
+        assert_eq!(cfg.second_hotkey.as_deref(), Some("PrintScreen"));
         assert_eq!(cfg.open_hotkey.as_deref(), Some("Ctrl+Alt+R"));
         let value: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(value["kept"], 7);
 
-        save("Ctrl+Alt+S", None).unwrap();
+        save("Ctrl+Alt+S", None, None).unwrap();
         assert_eq!(load().open_hotkey, None);
+        assert_eq!(load().second_hotkey, None);
         let value: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert!(value.get("open_hotkey").is_none());
+        assert!(value.get("second_hotkey").is_none());
         assert_eq!(value["kept"], 7);
 
         let _ = std::fs::remove_dir_all(&dir);

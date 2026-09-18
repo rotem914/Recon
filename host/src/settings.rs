@@ -1,9 +1,10 @@
-//! Settings: the two global shortcuts, chosen in the editor's Settings and swapped live.
+//! Settings: the global shortcuts, chosen in the editor's Settings and swapped live.
 //!
-//! Capture has always had one (`config.rs`); the second shows Recon's window from
-//! anywhere and is empty until it is picked (Rotem, 2026-09-18). A change is tried before
-//! it is kept: the new shortcut is registered first, and only when Windows gives it to
-//! Recon is the old one let go and the file written. A shortcut another application holds
+//! Capture has always had one (`config.rs`); a second capture shortcut sits beside it
+//! (Rotem, 2026-09-19), and another shows Recon's window from anywhere; both are empty
+//! until they are picked (Rotem, 2026-09-18). A change is tried before it is kept: the
+//! new shortcut is registered first, and only when Windows gives it to Recon is the old
+//! one let go and the file written. A shortcut another application holds
 //! is refused in words and the old one keeps working, which is what §3.1 of the plan asks:
 //! explain the conflict, allow another, never take a shortcut over silently.
 
@@ -19,13 +20,18 @@ use crate::config;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Which {
     Capture,
+    /// The second capture shortcut, which starts the same capture as the first.
+    Capture2,
     Open,
 }
 
 impl Which {
+    const ALL: [Which; 3] = [Which::Capture, Which::Capture2, Which::Open];
+
     fn name(self) -> &'static str {
         match self {
             Which::Capture => "Capture",
+            Which::Capture2 => "Capture 2",
             Which::Open => "Open Recon",
         }
     }
@@ -43,6 +49,7 @@ pub struct Slot {
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct Keys {
     pub capture: Slot,
+    pub capture2: Slot,
     pub open: Slot,
 }
 
@@ -50,13 +57,15 @@ impl Keys {
     fn slot(&mut self, which: Which) -> &mut Slot {
         match which {
             Which::Capture => &mut self.capture,
+            Which::Capture2 => &mut self.capture2,
             Which::Open => &mut self.open,
         }
     }
-    fn other(&self, which: Which) -> &Slot {
+    fn get(&self, which: Which) -> &Slot {
         match which {
-            Which::Capture => &self.open,
-            Which::Open => &self.capture,
+            Which::Capture => &self.capture,
+            Which::Capture2 => &self.capture2,
+            Which::Open => &self.open,
         }
     }
 }
@@ -97,13 +106,11 @@ pub fn change(
     };
 
     let shortcut = parse(wanted)?;
-    let other = keys.other(which);
-    if !other.label.is_empty() && parse(&other.label).ok() == Some(shortcut) {
-        let taken_by = match which {
-            Which::Capture => Which::Open,
-            Which::Open => Which::Capture,
-        };
-        return Err(format!("{wanted} is already {}", taken_by.name()));
+    for taken_by in Which::ALL.into_iter().filter(|w| *w != which) {
+        let other = keys.get(taken_by);
+        if !other.label.is_empty() && parse(&other.label).ok() == Some(shortcut) {
+            return Err(format!("{wanted} is already {}", taken_by.name()));
+        }
     }
 
     let current = keys.slot(which).clone();
@@ -145,6 +152,10 @@ pub fn open_press(visible: bool, minimized: bool, focused: bool) -> OpenPress {
 
 static KEYS: Mutex<Keys> = Mutex::new(Keys {
     capture: Slot {
+        label: String::new(),
+        active: false,
+    },
+    capture2: Slot {
         label: String::new(),
         active: false,
     },
@@ -206,9 +217,25 @@ pub fn start(app: &tauri::AppHandle, cfg: &config::Config, live: bool) -> Keys {
     let mut keys = Keys::default();
     for (which, label) in [
         (Which::Capture, Some(cfg.hotkey.clone())),
+        (Which::Capture2, cfg.second_hotkey.clone()),
         (Which::Open, cfg.open_hotkey.clone()),
     ] {
         let Some(label) = label else { continue };
+        // A file edited by hand can name one shortcut twice; the later one is dropped, so
+        // Settings shows it empty rather than taken by another application.
+        let shortcut = parse(&label).ok();
+        let twice = Which::ALL
+            .into_iter()
+            .take_while(|&w| w != which)
+            .find(|&w| shortcut.is_some() && parse(&keys.get(w).label).ok() == shortcut);
+        if let Some(first) = twice {
+            crate::log(&format!(
+                "hotkey {label} for {} is already {}, so it is left empty",
+                which.name(),
+                first.name()
+            ));
+            continue;
+        }
         let active = match register_live(app, &label) {
             Ok(()) => {
                 crate::log(&format!("hotkey registered: {label} ({})", which.name()));
@@ -238,13 +265,14 @@ pub fn fired(shortcut: &Shortcut) -> Option<Which> {
         return None;
     }
     let keys = KEYS.lock().ok()?;
-    if keys.open.active && parse(&keys.open.label).ok().as_ref() == Some(shortcut) {
-        return Some(Which::Open);
-    }
-    if keys.capture.active && parse(&keys.capture.label).ok().as_ref() == Some(shortcut) {
-        return Some(Which::Capture);
-    }
-    None
+    purpose(&keys, shortcut)
+}
+
+fn purpose(keys: &Keys, shortcut: &Shortcut) -> Option<Which> {
+    Which::ALL.into_iter().find(|&which| {
+        let slot = keys.get(which);
+        slot.active && parse(&slot.label).ok().as_ref() == Some(shortcut)
+    })
 }
 
 fn held_keys() -> Result<Keys, String> {
@@ -263,6 +291,8 @@ fn store_keys(keys: Keys) {
 pub struct SettingsView {
     capture: String,
     capture_active: bool,
+    capture2: String,
+    capture2_active: bool,
     open: String,
     open_active: bool,
 }
@@ -271,6 +301,8 @@ fn view(keys: &Keys) -> SettingsView {
     SettingsView {
         capture: keys.capture.label.clone(),
         capture_active: keys.capture.active,
+        capture2: keys.capture2.label.clone(),
+        capture2_active: keys.capture2.active,
         open: keys.open.label.clone(),
         open_active: keys.open.active,
     }
@@ -283,7 +315,8 @@ pub fn editor_settings() -> Result<SettingsView, String> {
         .map_err(|_| "the settings are locked".to_string())
 }
 
-/// `which` is "capture" or "open"; an empty `shortcut` clears, which only Open allows.
+/// `which` is "capture", "capture2" or "open"; an empty `shortcut` clears, which the first
+/// capture shortcut never allows.
 #[tauri::command]
 pub fn editor_settings_set(
     app: tauri::AppHandle,
@@ -292,6 +325,7 @@ pub fn editor_settings_set(
 ) -> Result<SettingsView, String> {
     let which = match which.as_str() {
         "capture" => Which::Capture,
+        "capture2" => Which::Capture2,
         "open" => Which::Open,
         other => return Err(format!("{other} is not a setting")),
     };
@@ -309,9 +343,10 @@ pub fn editor_settings_set(
 
     // The file last: a shortcut that works and was not saved is said so, and put back.
     let open = (!keys.open.label.is_empty()).then_some(keys.open.label.as_str());
-    if let Err(err) = config::save(&keys.capture.label, open) {
+    let second = (!keys.capture2.label.is_empty()).then_some(keys.capture2.label.as_str());
+    if let Err(err) = config::save(&keys.capture.label, second, open) {
         let mut back = keys.clone();
-        let wanted = before.other_of(which);
+        let wanted = before.get(which).label.clone();
         let _ = change(
             &mut back,
             which,
@@ -344,17 +379,7 @@ pub fn editor_settings_set(
     Ok(view(&keys))
 }
 
-impl Keys {
-    /// The label `which` held, for putting a change back.
-    fn other_of(&self, which: Which) -> String {
-        match which {
-            Which::Capture => self.capture.label.clone(),
-            Which::Open => self.open.label.clone(),
-        }
-    }
-}
-
-/// On while the page waits for a shortcut to be pressed: the two global shortcuts are let
+/// On while the page waits for a shortcut to be pressed: the global shortcuts are let
 /// go, so the keys reach the page and pressing the current one picks it rather than firing
 /// it. Off puts them back.
 #[tauri::command]
@@ -363,7 +388,7 @@ pub fn editor_settings_recording(app: tauri::AppHandle, on: bool) -> Result<(), 
         return Ok(());
     }
     let mut keys = held_keys()?;
-    for which in [Which::Capture, Which::Open] {
+    for which in Which::ALL {
         let slot = keys.slot(which);
         if slot.label.is_empty() {
             continue;
@@ -407,10 +432,18 @@ mod tests {
     use super::*;
 
     fn keys(capture: &str, open: &str) -> Keys {
+        keys3(capture, "", open)
+    }
+
+    fn keys3(capture: &str, capture2: &str, open: &str) -> Keys {
         Keys {
             capture: Slot {
                 label: capture.into(),
                 active: !capture.is_empty(),
+            },
+            capture2: Slot {
+                label: capture2.into(),
+                active: !capture2.is_empty(),
             },
             open: Slot {
                 label: open.into(),
@@ -499,6 +532,39 @@ mod tests {
         assert_eq!(open_press(false, false, false), OpenPress::Show);
         assert_eq!(open_press(true, true, false), OpenPress::Show);
         assert_eq!(open_press(true, false, false), OpenPress::Show);
+    }
+
+    #[test]
+    fn the_second_capture_shortcut_is_picked_cleared_and_never_shared() {
+        let mut k = keys("Ctrl+Shift+4", "Ctrl+Alt+R");
+        let (result, log) = run(&mut k, Which::Capture2, Some("PrintScreen"), &[]);
+        assert_eq!(result, Ok(()));
+        assert_eq!(log, ["+PrintScreen"]);
+        assert_eq!(k, keys3("Ctrl+Shift+4", "PrintScreen", "Ctrl+Alt+R"));
+        for (which, wanted, taken_by) in [
+            (Which::Capture2, "Ctrl+Shift+4", "already Capture"),
+            (Which::Capture2, "Ctrl+Alt+R", "already Open Recon"),
+            (Which::Capture, "PrintScreen", "already Capture 2"),
+            (Which::Open, "PrintScreen", "already Capture 2"),
+        ] {
+            let (result, log) = run(&mut k, which, Some(wanted), &[]);
+            assert!(result.unwrap_err().contains(taken_by));
+            assert!(log.is_empty());
+        }
+        let (result, log) = run(&mut k, Which::Capture2, None, &[]);
+        assert_eq!(result, Ok(()));
+        assert_eq!(log, ["-PrintScreen"]);
+        assert_eq!(k, keys("Ctrl+Shift+4", "Ctrl+Alt+R"));
+    }
+
+    #[test]
+    fn either_capture_shortcut_starts_a_capture() {
+        let k = keys3("Ctrl+Shift+4", "PrintScreen", "Ctrl+Alt+R");
+        let of = |label: &str| purpose(&k, &parse(label).unwrap());
+        assert_eq!(of("Ctrl+Shift+4"), Some(Which::Capture));
+        assert_eq!(of("PrintScreen"), Some(Which::Capture2));
+        assert_eq!(of("Ctrl+Alt+R"), Some(Which::Open));
+        assert_eq!(of("Ctrl+Alt+Q"), None);
     }
 
     #[test]

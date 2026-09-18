@@ -2689,7 +2689,7 @@ export async function runChecks(editor, invoke) {
 
   // ---------------------------------------------------------------- settings: the two global shortcuts
   say('');
-  say('Settings: a chevron left of minimize opens a modal; a shortcut for opening Recon and one for the capture are picked by pressing them; a taken one is refused in words and the old one stays; the file keeps both');
+  say('Settings: a chevron left of minimize opens a modal; a shortcut for opening Recon and two for the capture are picked by pressing them; a taken one is refused in words and the old one stays; the file keeps all three');
   {
     const button = document.getElementById('win-settings');
     const veil = document.getElementById('settings-veil');
@@ -2720,6 +2720,10 @@ export async function runChecks(editor, invoke) {
       `the panel ${Math.round(panelBox.left)}-${Math.round(panelBox.right)} by ${Math.round(panelBox.top)}-${Math.round(panelBox.bottom)}`);
     check('it shows the capture shortcut as configured, and none for opening Recon', field('capture').textContent === 'Ctrl+Shift+4' && field('open').textContent === 'None'
       && !row('open').querySelector('.clear').classList.contains('shown'), `${field('open').textContent} / ${field('capture').textContent}`);
+    const rowTops = ['open', 'capture', 'capture2'].map((which) => Math.round(row(which).getBoundingClientRect().top));
+    check('a second capture row, Capture 2, sits under Capture, in the same size, showing none with no ×', row('capture2').querySelector('span').textContent === 'Capture 2' && field('capture2').textContent === 'None'
+      && rowTops[0] < rowTops[1] && rowTops[1] < rowTops[2] && field('capture2').getBoundingClientRect().width === field('capture').getBoundingClientRect().width
+      && !row('capture2').querySelector('.clear').classList.contains('shown'), `rows at ${rowTops.join(', ')}, ${field('capture2').textContent}`);
 
     const toolBefore = editor.model.tool;
     const modeBefore = editor.model.mode;
@@ -2768,6 +2772,29 @@ export async function runChecks(editor, invoke) {
     check('a new capture shortcut is kept, the file has it, and the host names it to the empty editor', field('capture').textContent === 'Ctrl+Shift+5' && (await file()).hotkey === 'Ctrl+Shift+5' && (await file()).open_hotkey === 'Ctrl+Alt+R'
       && (await invoke('editor_hotkey')) === 'Ctrl+Shift+5',
       `${field('capture').textContent}, the file ${JSON.stringify(await file())}, the host says ${await invoke('editor_hotkey')}`);
+
+    field('capture2').click();
+    await settled(() => field('capture2').classList.contains('recording'));
+    press({ code: 'KeyP', key: 'p', ctrlKey: true, altKey: true });
+    await settled(() => field('capture2').textContent === 'Ctrl+Alt+P');
+    check('a second capture shortcut is kept beside the first, and the file has both', field('capture2').textContent === 'Ctrl+Alt+P' && field('capture').textContent === 'Ctrl+Shift+5'
+      && row('capture2').querySelector('.clear').classList.contains('shown') && (await file()).second_hotkey === 'Ctrl+Alt+P' && (await file()).hotkey === 'Ctrl+Shift+5'
+      && (await invoke('editor_settings')).capture2 === 'Ctrl+Alt+P' && (await invoke('editor_hotkey')) === 'Ctrl+Shift+5',
+      `${field('capture2').textContent}, the file ${JSON.stringify(await file())}`);
+    field('capture2').click();
+    await settled(() => field('capture2').classList.contains('recording'));
+    press({ code: 'Digit5', key: '%', ctrlKey: true, shiftKey: true });
+    await settled(() => said('capture2').classList.contains('shown'));
+    check('the second capture shortcut never takes the first one', said('capture2').textContent.includes('already Capture') && field('capture2').textContent === 'Ctrl+Alt+P', said('capture2').textContent);
+    field('open').click();
+    await settled(() => field('open').classList.contains('recording'));
+    press({ code: 'KeyP', key: 'p', ctrlKey: true, altKey: true });
+    await settled(() => said('open').classList.contains('shown'));
+    check('nor does Open Recon take it', said('open').textContent.includes('already Capture 2') && field('open').textContent === 'Ctrl+Alt+R', said('open').textContent);
+    row('capture2').querySelector('.clear').click();
+    await settled(() => field('capture2').textContent === 'None');
+    check('the × beside Capture 2 clears it, in the file too, and the first stays', field('capture2').textContent === 'None' && !('second_hotkey' in (await file())) && (await file()).hotkey === 'Ctrl+Shift+5',
+      JSON.stringify(await file()));
 
     row('open').querySelector('.clear').click();
     await settled(() => field('open').textContent === 'None');

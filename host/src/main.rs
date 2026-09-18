@@ -534,7 +534,7 @@ fn main() {
             .with_handler(|app, shortcut, event| {
                 if event.state == ShortcutState::Pressed {
                     match settings::fired(shortcut) {
-                        Some(settings::Which::Capture) => {
+                        Some(settings::Which::Capture | settings::Which::Capture2) => {
                             let n = FIRES.fetch_add(1, Ordering::SeqCst) + 1;
                             log(&format!("HOTKEY FIRED: {shortcut} (fire {n})"));
                             begin_capture();

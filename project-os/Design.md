@@ -144,7 +144,7 @@ Stated by Rotem on 2026-09-18.
 |---|---|
 | Button | a chevron pointing down (Rotem, 2026-09-18, from three dots the same day), left of minimize in the top bar, in the window buttons' own box and icon size: 48 by 40 with a 10 by 10 icon |
 | Opens | a modal |
-| Content | a shortcut that opens Recon itself, and the shortcut that starts a capture, each picked by pressing it |
+| Content | a shortcut that opens Recon itself, and the shortcut that starts a capture, each picked by pressing it; under Capture a second row, Capture 2, for a second shortcut that starts the same capture (Rotem, 2026-09-19), empty until picked, with its own × |
 
 The modal's look is not stated yet. Provisional in the page until it is: a 50% black veil,
 a 420 px panel in the icon button hover colour on 13 px corners with 24 px of padding, the

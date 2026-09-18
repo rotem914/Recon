@@ -58,10 +58,10 @@ Recon/
 │       ├── folder.rs               # the folder context: listed once, logical order, previous and next, a gone file skipped
 │       ├── store.rs                # the document store: one folder per document, source.png once, document.json atomically
 │       ├── measure.rs              # --measure and --walk: the thirty-run measurement and memory sample, feature-gated
-│       ├── config.rs               # the two shortcuts: read at startup, saved by Settings, and where they were read from
+│       ├── config.rs               # the three shortcuts: read at startup, saved by Settings, and where they were read from
 │       ├── overlay.rs              # the Win32 selection overlay, one window per display
 │       ├── selftest.rs             # --selftest and --capture-demo: S0.2's evidence, feature-gated
-│       ├── settings.rs             # Settings: the two global shortcuts swapped live, a taken one refused, both let go while one is pressed
+│       ├── settings.rs             # Settings: the global shortcuts swapped live, two for the capture, a taken one refused, all let go while one is pressed
 │       ├── bench.rs                 # --bench: S0.3's boundary measurement, feature-gated
 │       ├── editor.rs                # the editor window, the image and its pyramid, the one region worker, copy, the managed documents in memory
 │       ├── compose.rs               # the composer: source exact at the margin offset, the layer over it

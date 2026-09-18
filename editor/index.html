@@ -415,6 +415,12 @@
       <span></span>
       <div class="said"></div>
     </div>
+    <div class="setting" data-which="capture2">
+      <span>Capture 2</span>
+      <button class="key" type="button"></button>
+      <button class="clear" type="button" title="Clear"><svg viewBox="0 0 10 10"><path d="M.5 .5l9 9M9.5 .5l-9 9"/></svg></button>
+      <div class="said"></div>
+    </div>
   </div>
 </div>
 <div id="stage">
@@ -2373,10 +2379,11 @@
 
   // ---------------------------------------------------------------- settings
   //
-  // The chevron left of minimize opens a modal with the two global shortcuts (Rotem,
+  // The chevron left of minimize opens a modal with the global shortcuts (Rotem,
   // 2026-09-18): one that shows Recon's window from anywhere, none until it is picked, and
-  // the capture's. A press on a field waits for a shortcut; while it waits the host lets
-  // both global shortcuts go, so pressing the current one picks it instead of firing it.
+  // the capture's, with a second capture shortcut under it, none until it is picked (Rotem,
+  // 2026-09-19). A press on a field waits for a shortcut; while it waits the host lets
+  // every global shortcut go, so pressing the current one picks it instead of firing it.
   // The host tries the new one before it drops the old: a shortcut another application
   // holds is refused in words under the field, and the old one keeps working (§3.1).
   // While the modal is open the keyboard is its own: nothing reaches the editor under it.
@@ -2405,7 +2412,7 @@
   };
   // A shortcut the host could not get at startup is said under its field, as a refusal is.
   const sayUnavailable = () => {
-    for (const which of ['open', 'capture']) {
+    for (const which of ['open', 'capture', 'capture2']) {
       const keys = settingsState.keys;
       const dead = keys && keys[which] && !keys[`${which}_active`];
       saySetting(which, dead ? `${keys[which]} is taken by another application. Pick another.` : '');
