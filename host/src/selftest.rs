@@ -367,6 +367,7 @@ fn drag_test(frame: &Frame) -> Result<(), String> {
     let (looked, seen) = std::sync::mpsc::channel();
     let mid_drag = (expected.x + 160, expected.y + 100);
     let around = pixels_around(frame, mid_drag).ok_or("the mid-drag point is off the frame")?;
+    let lines = line_probes(frame, mid_drag).ok_or("a line probe mid-drag is off the frame")?;
     let outcome = with_overlay(frame, move || {
         // Down at the anchor, a couple of intermediate moves so the paint path runs, then up.
         move_to(expected.x, expected.y);
@@ -376,7 +377,7 @@ fn drag_test(frame: &Frame) -> Result<(), String> {
         // The magnifier with the size under it (Rotem, 2026-09-17 and 18): a moment for
         // the paint, then the screen beside the pointer is written to be looked at, and read.
         std::thread::sleep(std::time::Duration::from_millis(200));
-        let _ = looked.send(magnifier_seen(mid_drag, around, "dragging"));
+        let _ = looked.send(magnifier_seen(mid_drag, around, lines, "dragging"));
         move_to(
             expected.x + expected.width as i32,
             expected.y + expected.height as i32,
@@ -474,6 +475,38 @@ fn pixels_around(frame: &Frame, pointer: (i32, i32)) -> Option<[(u8, u8, u8); 9]
     Some(out)
 }
 
+/// A desktop point on one of the pointer's lines, and the frozen pixel under it.
+type LineProbe = ((i32, i32), (u8, u8, u8));
+
+/// Where the pointer's lines are read, and the frozen pixel under each: on the row through
+/// the pointer just right of the magnifier's panel, and on the column through it 100 px
+/// down, left of the panel. Both fall inside the copy `magnifier_seen` takes.
+fn line_probes(frame: &Frame, pointer: (i32, i32)) -> Option<[LineProbe; 2]> {
+    let display = monitors().into_iter().find(|m| {
+        pointer.0 >= m.rect.x
+            && pointer.1 >= m.rect.y
+            && pointer.0 < m.rect.x + m.rect.width as i32
+            && pointer.1 < m.rect.y + m.rect.height as i32
+    })?;
+    let scaled = |px: i32| (px * display.scale_percent as i32 + 50) / 100;
+    let pixel = |point: (i32, i32)| {
+        let x = point.0 - frame.geometry.origin_x;
+        let y = point.1 - frame.geometry.origin_y;
+        if x < 0 || y < 0 || x >= frame.geometry.width as i32 || y >= frame.geometry.height as i32 {
+            return None;
+        }
+        let at = ((y as usize) * frame.geometry.width as usize + x as usize) * 4;
+        Some((
+            point,
+            (frame.rgba[at], frame.rgba[at + 1], frame.rgba[at + 2]),
+        ))
+    };
+    Some([
+        pixel((pointer.0 + scaled(130), pointer.1))?,
+        pixel((pointer.0, pointer.1 + scaled(100)))?,
+    ])
+}
+
 /// Looks at the magnifier beside the pointer: the screen below and right of the pointer is
 /// written beside the executable, and read for the panel's ground in the app's background
 /// colour, its ring, the pixels around the pointer shown large at its centre, and the light
@@ -483,6 +516,7 @@ fn pixels_around(frame: &Frame, pointer: (i32, i32)) -> Option<[(u8, u8, u8); 9]
 fn magnifier_seen(
     pointer: (i32, i32),
     around: [(u8, u8, u8); 9],
+    lines: [LineProbe; 2],
     name: &str,
 ) -> Result<(), String> {
     let display = monitors()
@@ -521,6 +555,36 @@ fn magnifier_seen(
                 Err(err) => println!("  the magnifier was not written: {err}"),
             },
             None => println!("  the magnifier was not written: size mismatch"),
+        }
+    }
+    // The pointer's lines (Rotem, 2026-09-18): the frame's blue at 72% over the frozen
+    // pixel, dimmed or lit, on the pointer's row and on its column. Against the frozen
+    // pixel alone, which is what a screen with no line shows; 3 a channel for the two
+    // blends' rounding.
+    for (which, (point, frozen)) in ["across", "down"].iter().zip(lines) {
+        let (x, y) = (point.0 - region.x, point.1 - region.y);
+        if x < 0 || y < 0 || x >= region.width as i32 || y >= region.height as i32 {
+            return Err(format!(
+                "while {name}, the line probe {which} is off the copy"
+            ));
+        }
+        let i = ((y * region.width as i32 + x) * 4) as usize;
+        let shown = [pixels[i], pixels[i + 1], pixels[i + 2]];
+        let near = |a: [u8; 3], b: [u8; 3]| (0..3).all(|c| a[c].abs_diff(b[c]) <= 3);
+        let lit = [frozen.0, frozen.1, frozen.2];
+        let dimmed = lit.map(|c| (c as u32 * (255 - 140) / 255) as u8);
+        let lined = |base: [u8; 3]| {
+            let blue = [0x00u32, 0xB9, 0xF7];
+            [0, 1, 2].map(|c| ((blue[c] * 184 + base[c] as u32 * (255 - 184)) / 255) as u8)
+        };
+        if near(lined(lit), lit) || near(lined(dimmed), dimmed) {
+            println!("  while {name}, the line {which} cannot be told from the pixel under it: inconclusive");
+        } else if !near(shown, lined(lit)) && !near(shown, lined(dimmed)) {
+            return Err(format!(
+                "while {name}, the pixel on the pointer's line {which} is {shown:?}, not the blue at 72% over {lit:?} lit {:?} or dimmed {:?}",
+                lined(lit),
+                lined(dimmed)
+            ));
         }
     }
     // Where the panel's top left lands in the copy.
@@ -817,6 +881,13 @@ fn window_pick_test(frame: &Frame) -> Result<(), String> {
             return Err("the part's centre is off the frame".into());
         }
     };
+    let lines = match line_probes(frame, part_centre) {
+        Some(lines) => lines,
+        None => {
+            let _ = child.kill();
+            return Err("a line probe at the part's centre is off the frame".into());
+        }
+    };
     let (glided, glide) = std::sync::mpsc::channel();
     let strip = glide_strip(frame, expected, part);
     let picked = with_overlay(frame, move || {
@@ -825,7 +896,7 @@ fn window_pick_test(frame: &Frame) -> Result<(), String> {
         // overlay up, written beside the executable to be looked at. And the magnifier
         // while hovering, the part's size under it, looked at the same way.
         std::thread::sleep(std::time::Duration::from_millis(250));
-        let _ = looked.send(magnifier_seen(part_centre, around, "hovering"));
+        let _ = looked.send(magnifier_seen(part_centre, around, lines, "hovering"));
         match copy_rect(display) {
             Ok(pixels) => {
                 if let Ok(exe) = std::env::current_exe() {

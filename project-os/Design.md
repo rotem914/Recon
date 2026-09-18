@@ -225,6 +225,7 @@ Stated by Rotem on 2026-09-18 for the capture overlay, with a picture of another
 | Circle | 112 px across, showing the pixels around the pointer large enough to tell apart |
 | Side | on the pointer's right (Rotem, 2026-09-18, from the picture's left) |
 | Size | above the circle (Rotem, 2026-09-18, from under it as the picture had) |
+| Guide lines | one across and one down through the pointer, 1 px each, the whole width and height of the screen whatever the capture area is, in the blue of the lines inside the circle, #00B9F7, at 72% (Rotem, 2026-09-18) |
 
 From the picture, not his words, so provisional in the overlay until he states it: the
 circle sits in a panel of the size bubble's fill and corners, 4 px around it, with the
@@ -235,7 +236,8 @@ other side where that would leave the display; 8 px to a source pixel, an odd co
 so the pointer's own is the middle one; a 1 px grid between them, the pixel darkened by
 half; the marching frame's #00B9F7 through the middle of the centre pixel; a 2 px ring in
 the text's white; every number at 100%, scaled by the display's own scale as the cursor is.
-The full-screen guide lines through the pointer in the picture are not built.
+Provisional for the guide lines: the screen is the display the pointer is on, they sit
+under the dashed frame and the panel, and the 1 px is not scaled with the display.
 
 ### Capture window glide
 

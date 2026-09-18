@@ -31,12 +31,13 @@ use windows::Win32::Graphics::Dwm::{
 };
 use windows::Win32::Graphics::Gdi::{
     AlphaBlend, BeginPaint, BitBlt, CreateCompatibleDC, CreateDIBSection, CreateFontW,
-    CreateSolidBrush, DeleteDC, DeleteObject, EndPaint, FillRect, GdiFlush, GetDC,
-    GetTextExtentPoint32W, InvalidateRect, ReleaseDC, SelectObject, SetBkMode, SetStretchBltMode,
-    SetTextColor, StretchBlt, TextOutW, AC_SRC_ALPHA, AC_SRC_OVER, BITMAPINFO, BITMAPINFOHEADER,
-    BI_RGB, BLENDFUNCTION, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, COLORONCOLOR, DEFAULT_CHARSET,
-    DEFAULT_PITCH, DIB_RGB_COLORS, FF_DONTCARE, FW_NORMAL, HBITMAP, HBRUSH, HDC, HFONT, HGDIOBJ,
-    OUT_DEFAULT_PRECIS, PAINTSTRUCT, SRCCOPY, TRANSPARENT,
+    CreateRectRgn, CreateSolidBrush, DeleteDC, DeleteObject, EndPaint, FillRect, GdiFlush, GetDC,
+    GetRegionData, GetTextExtentPoint32W, GetUpdateRgn, InvalidateRect, ReleaseDC, SelectObject,
+    SetBkMode, SetStretchBltMode, SetTextColor, StretchBlt, TextOutW, AC_SRC_ALPHA, AC_SRC_OVER,
+    BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS,
+    COLORONCOLOR, DEFAULT_CHARSET, DEFAULT_PITCH, DIB_RGB_COLORS, FF_DONTCARE, FW_NORMAL, HBITMAP,
+    HBRUSH, HDC, HFONT, HGDIOBJ, OUT_DEFAULT_PRECIS, PAINTSTRUCT, RGNDATA, RGNDATAHEADER, SRCCOPY,
+    TRANSPARENT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, VK_ESCAPE};
@@ -117,6 +118,12 @@ const MAG_INSET_PX: i32 = 4;
 const MAG_GAP_PX: i32 = 8;
 const MAG_RING_PX: i32 = 2;
 const MAG_RING_RGB: (u8, u8, u8) = (0xF2, 0xF2, 0xF2);
+
+/// The pointer's lines (Rotem, 2026-09-18): one across and one down through the pointer,
+/// 1 px each, the whole width and height of the display it is on whatever is selected, in
+/// the blue of the lines inside the magnifier's circle, at 72%.
+const CROSS_RGB: (u8, u8, u8) = ANTS_DASH_RGB;
+const CROSS_ALPHA: u8 = 184;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
@@ -210,6 +217,10 @@ struct State {
     dim_dc: HDC,
     dim_bitmap: HBITMAP,
     dim_previous: HGDIOBJ,
+    /// A 1x1 bitmap of the pointer's lines' blue, stretched by AlphaBlend along each line.
+    cross_dc: HDC,
+    cross_bitmap: HBITMAP,
+    cross_previous: HGDIOBJ,
     /// The two inks of the marching frame: the light dash and the dark gap.
     border: HBRUSH,
     ink: HBRUSH,
@@ -370,6 +381,28 @@ unsafe fn build_state(
     let dim_previous = unsafe { SelectObject(dim_dc, HGDIOBJ(dim_bitmap.0)) };
     std::hint::black_box(&mut info);
 
+    // The pointer's lines: one pixel of their blue, its alpha byte 255 for the dim's reason.
+    let cross_dc = unsafe { CreateCompatibleDC(Some(screen_dc)) };
+    let mut info = solid_header(1, 1);
+    let mut bits: *mut c_void = std::ptr::null_mut();
+    let cross_bitmap = match unsafe {
+        CreateDIBSection(Some(screen_dc), &info, DIB_RGB_COLORS, &mut bits, None, 0)
+    } {
+        Ok(bitmap) if !bitmap.is_invalid() && !bits.is_null() => bitmap,
+        _ => {
+            unsafe { SelectObject(dim_dc, dim_previous) };
+            let _ = unsafe { DeleteObject(HGDIOBJ(dim_bitmap.0)) };
+            let _ = unsafe { DeleteDC(dim_dc) };
+            let _ = unsafe { DeleteDC(cross_dc) };
+            unsafe { ReleaseDC(None, screen_dc) };
+            return None;
+        }
+    };
+    let (r, g, b) = CROSS_RGB;
+    unsafe { std::ptr::copy_nonoverlapping([b, g, r, 255].as_ptr(), bits as *mut u8, 4) };
+    let cross_previous = unsafe { SelectObject(cross_dc, HGDIOBJ(cross_bitmap.0)) };
+    std::hint::black_box(&mut info);
+
     unsafe { ReleaseDC(None, screen_dc) };
 
     Some(State {
@@ -391,6 +424,9 @@ unsafe fn build_state(
         dim_dc,
         dim_bitmap,
         dim_previous,
+        cross_dc,
+        cross_bitmap,
+        cross_previous,
         border: unsafe { CreateSolidBrush(colorref(ANTS_DASH_RGB)) },
         ink: unsafe { CreateSolidBrush(colorref(ANTS_GAP_RGB)) },
         started: Instant::now(),
@@ -544,6 +580,9 @@ unsafe fn teardown(state: State) {
     unsafe { SelectObject(state.dim_dc, state.dim_previous) };
     let _ = unsafe { DeleteObject(HGDIOBJ(state.dim_bitmap.0)) };
     let _ = unsafe { DeleteDC(state.dim_dc) };
+    unsafe { SelectObject(state.cross_dc, state.cross_previous) };
+    let _ = unsafe { DeleteObject(HGDIOBJ(state.cross_bitmap.0)) };
+    let _ = unsafe { DeleteDC(state.cross_dc) };
     let _ = unsafe { DeleteObject(HGDIOBJ(state.border.0)) };
     let _ = unsafe { DeleteObject(HGDIOBJ(state.ink.0)) };
 }
@@ -590,6 +629,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                     unsafe { invalidate_hover_change(changed) };
                     // And the magnifier, which shows the pointer from now on.
                     unsafe { invalidate_magnifier(HWND(surface as *mut _)) };
+                    unsafe { invalidate_cross() };
                 }
             }
             LRESULT(0)
@@ -626,6 +666,9 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 let borrowed = cell.borrow();
                 borrowed.as_ref()?.magnifier(hwnd, hdc).map(|p| p.rect)
             });
+            // The pointer's lines follow it too: where they were, on whichever display,
+            // and further down where they are now.
+            unsafe { invalidate_cross() };
             // With no button down, the move changes which window is lit, and the pointer.
             let hover_change = STATE.with(|cell| {
                 let mut borrowed = cell.borrow_mut();
@@ -651,6 +694,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             for panel in panel_before.into_iter().chain(panel_after) {
                 let _ = unsafe { InvalidateRect(Some(hwnd), Some(&panel), false) };
             }
+            unsafe { invalidate_cross() };
             LRESULT(0)
         }
         WM_LBUTTONUP => {
@@ -808,6 +852,16 @@ unsafe fn drag_move(hwnd: HWND, point: POINT) {
     }
 }
 
+/// Marks the pointer's lines for repainting, as they stand now, on the window they are on.
+unsafe fn invalidate_cross() {
+    let cross = STATE.with(|cell| cell.borrow().as_ref()?.cross());
+    if let Some((surface, strips)) = cross {
+        for strip in strips {
+            let _ = unsafe { InvalidateRect(Some(HWND(surface as *mut _)), Some(&strip), false) };
+        }
+    }
+}
+
 /// Marks the magnifier's place on a window for repainting, as it stands now.
 unsafe fn invalidate_magnifier(hwnd: HWND) {
     let hdc = unsafe { GetDC(Some(hwnd)) };
@@ -880,6 +934,39 @@ impl State {
             right: rect.x - origin.0 + rect.width as i32,
             bottom: rect.y - origin.1 + rect.height as i32,
         })
+    }
+
+    /// The pointer's lines, and the window they are on, in its client coordinates: the row
+    /// through the pointer, then the column above and below that row, so the crossing is
+    /// blended once. A drag that has moved has them at its clamped point, as the magnifier
+    /// has; otherwise they are at the pointer as last seen.
+    fn cross(&self) -> Option<(isize, [RECT; 3])> {
+        let (surface, desktop) = match self.drag.as_ref() {
+            Some(drag) if drag.moved => (drag.hwnd, drag.current),
+            _ => self.pointer?,
+        };
+        let display = self
+            .surfaces
+            .iter()
+            .find(|s| s.hwnd.0 as isize == surface)?
+            .monitor
+            .rect;
+        let (x, y) = (desktop.0 - display.x, desktop.1 - display.y);
+        let (width, height) = (display.width as i32, display.height as i32);
+        let strip = |left, top, right, bottom| RECT {
+            left,
+            top,
+            right,
+            bottom,
+        };
+        Some((
+            surface,
+            [
+                strip(0, y, width, y + 1),
+                strip(x, 0, x + 1, y),
+                strip(x, y + 1, x + 1, height),
+            ],
+        ))
     }
 
     /// The size written under the magnifier: the dragged area's once a drag on this window
@@ -1331,10 +1418,53 @@ unsafe fn invalidate_union(
     let _ = unsafe { InvalidateRect(Some(hwnd), Some(&union), false) };
 }
 
+/// The rectangles of a window's update region, read before BeginPaint empties it. The
+/// pointer's lines make that region a row and a column, whose bounding box is the whole
+/// display: painted piece by piece, a move repaints two strips and the magnifier, not
+/// every pixel. Empty when the region cannot be read, and the bounding box is painted.
+unsafe fn update_rects(hwnd: HWND) -> Vec<RECT> {
+    let region = unsafe { CreateRectRgn(0, 0, 0, 0) };
+    if region.is_invalid() {
+        return Vec::new();
+    }
+    let mut rects = Vec::new();
+    unsafe {
+        let _ = GetUpdateRgn(hwnd, region, false);
+        let size = GetRegionData(region, 0, None) as usize;
+        let header = std::mem::size_of::<RGNDATAHEADER>();
+        if size >= header {
+            // Four-byte words, so the header and the rectangles after it are aligned.
+            let mut data = vec![0u32; size.div_ceil(4)];
+            let at = data.as_mut_ptr() as *mut RGNDATA;
+            if GetRegionData(region, (data.len() * 4) as u32, Some(at)) != 0 {
+                let head = (*at).rdh;
+                let count =
+                    (head.nCount as usize).min((size - header) / std::mem::size_of::<RECT>());
+                let first = (at as *const u8).add(head.dwSize as usize) as *const RECT;
+                rects.extend((0..count).map(|n| *first.add(n)));
+            }
+        }
+        let _ = DeleteObject(HGDIOBJ(region.0));
+    }
+    rects
+}
+
 unsafe fn paint(hwnd: HWND) {
+    let mut pieces = unsafe { update_rects(hwnd) };
     let mut ps = PAINTSTRUCT::default();
     let hdc = unsafe { BeginPaint(hwnd, &mut ps) };
-    let dirty = ps.rcPaint;
+    if pieces.is_empty() {
+        pieces.push(ps.rcPaint);
+    }
+    for dirty in &pieces {
+        unsafe { paint_piece(hwnd, hdc, *dirty) };
+    }
+    unsafe { paint_magnifier(hwnd, hdc, &pieces) };
+    let _ = unsafe { EndPaint(hwnd, &ps) };
+}
+
+/// Paints one rectangle of the window: every layer under the magnifier, cut to it.
+unsafe fn paint_piece(hwnd: HWND, hdc: HDC, dirty: RECT) {
     let width = dirty.right - dirty.left;
     let height = dirty.bottom - dirty.top;
 
@@ -1393,6 +1523,40 @@ unsafe fn paint(hwnd: HWND) {
                 }
             }
 
+            // The pointer's lines, over the dim and the lit area alike and under the frame:
+            // the pieces of them inside the dirty region.
+            if let Some((_, strips)) = state.cross().filter(|(s, _)| *s == hwnd.0 as isize) {
+                let blend = BLENDFUNCTION {
+                    BlendOp: AC_SRC_OVER as u8,
+                    BlendFlags: 0,
+                    SourceConstantAlpha: CROSS_ALPHA,
+                    AlphaFormat: 0,
+                };
+                for strip in strips {
+                    let left = strip.left.max(dirty.left);
+                    let top = strip.top.max(dirty.top);
+                    let right = strip.right.min(dirty.right);
+                    let bottom = strip.bottom.min(dirty.bottom);
+                    if right > left && bottom > top {
+                        let _ = unsafe {
+                            AlphaBlend(
+                                hdc,
+                                left,
+                                top,
+                                right - left,
+                                bottom - top,
+                                state.cross_dc,
+                                0,
+                                0,
+                                1,
+                                1,
+                                blend,
+                            )
+                        };
+                    }
+                }
+            }
+
             // 3. the marching frame: light dashes and dark gaps, one pixel wide, walking
             // along the frame with the phase. Only the runs inside the dirty region are
             // drawn, which on a tick is the frame's four strips.
@@ -1426,23 +1590,34 @@ unsafe fn paint(hwnd: HWND) {
                 let _ = unsafe { DeleteObject(HGDIOBJ(to_gap.0)) };
                 let _ = unsafe { DeleteObject(HGDIOBJ(to_dash.0)) };
             }
-
-            // 4. the magnifier beside the pointer, the size above it, wherever the dirty
-            // region touches it: a tick's strip through it redraws that strip of it, and a
-            // move redraws it whole.
-            if let Some(panel) = state.magnifier(hwnd, hdc) {
-                let touches = panel.rect.right > dirty.left
-                    && panel.rect.left < dirty.right
-                    && panel.rect.bottom > dirty.top
-                    && panel.rect.top < dirty.bottom;
-                if touches {
-                    unsafe { draw_panel(hdc, surface, &panel) };
-                }
-            }
         });
     }
+}
 
-    let _ = unsafe { EndPaint(hwnd, &ps) };
+/// The last layer: the magnifier beside the pointer, the size above it, wherever a dirty piece touches
+/// it: a tick's strip through it redraws that strip of it, and a move redraws it whole.
+/// Built once a paint however many pieces touch it, and the window's clip cuts it to them.
+unsafe fn paint_magnifier(hwnd: HWND, hdc: HDC, pieces: &[RECT]) {
+    STATE.with(|cell| {
+        let borrowed = cell.borrow();
+        let Some(state) = borrowed.as_ref() else {
+            return;
+        };
+        let Some(surface) = state.surface_of(hwnd) else {
+            return;
+        };
+        if let Some(panel) = state.magnifier(hwnd, hdc) {
+            let touches = pieces.iter().any(|dirty| {
+                panel.rect.right > dirty.left
+                    && panel.rect.left < dirty.right
+                    && panel.rect.bottom > dirty.top
+                    && panel.rect.top < dirty.bottom
+            });
+            if touches {
+                unsafe { draw_panel(hdc, surface, &panel) };
+            }
+        }
+    });
 }
 
 /// The magnifier's panel as laid out on one window, at the display's scale.
