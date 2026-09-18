@@ -226,7 +226,7 @@ Stated by Rotem on 2026-09-18 for the capture overlay.
 | Part | Value |
 |---|---|
 | Use | when the pointer moves from one window to the next, the lit area and its dashed frame glide from the one to the other instead of jumping |
-| Motion | 256 ms, ease-in (Rotem, 2026-09-18, the same night, from A1's 144 ms and ease-out, which stood provisionally) |
+| Motion | 164 ms, ease-out (Rotem, 2026-09-18, the same night, after 256 ms and ease-in, and A1's 144 ms and ease-out, which stood provisionally) |
 
 The rest is not stated yet. Provisional in the overlay until it is: each edge of the area on
 its own; a pointer that moves on mid-glide sets it out again from where it is; it stays

@@ -1260,3 +1260,6 @@ one-display rule if a glide between displays is ever wanted.
 Later the same night, Rotem's values: 256 ms and ease-in, cubic, slow to set out and quick
 to arrive, in place of A1's 144 ms and ease-out. The self test's looks moved to 200 and 450
 ms after the move to suit them.
+
+Then again, the same night: 164 ms and ease-out, cubic, quick to set out and slow to
+arrive; the looks at 80 and 300 ms after the move.
