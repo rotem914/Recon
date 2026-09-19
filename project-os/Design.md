@@ -300,7 +300,9 @@ Stated by Rotem on 2026-09-16.
 
 | Part | Value |
 |---|---|
-| Thumbnail height by default | 112 px, 12 px clear above it below the timeline's 1 px top line, and the scroller's 12 px band under it (4 px clear, the 4 px thumb, 4 px clear), so the timeline is 137 px tall until it is dragged (Rotem, 2026-09-17: the band, option 1 of three, from 128 with 8 px below, which sat 4 px of every thumbnail under the scroller; the 12 above, from 8, later that day) |
+| Ground | no colour and no top line of its own: the thumbnails sit on the app background (Rotem, 2026-09-19, from a #14171b fill under a 1 px #2a3037 line) |
+| Tabs to thumbnails | 16 px: the 8 px the tabs keep above the timeline, and 8 px clear above the thumbnails (Rotem, 2026-09-19) |
+| Thumbnail height by default | 112 px, 8 px clear above it, and the scroller's 12 px band under it (4 px clear, the 4 px thumb, 4 px clear), so the timeline is 132 px tall until it is dragged (Rotem, 2026-09-17: the band, option 1 of three, from 128 with 8 px below, which sat 4 px of every thumbnail under the scroller; 2026-09-19: the 8 above, from a 1 px line and 12) |
 | Air around the thumbnails | 12 px left of the first, 12 px right of the last, 12 px between them (Rotem, 2026-09-17, from 8) |
 | Thumbnail corners | 8 px radius, on the picture and on its cell (Rotem, 2026-09-17, from 13 the same evening, 4 before) |
 | Thumbnail delete | a right press on a thumbnail opens the tabs' dropdown with Delete, which deletes it; no × on the thumbnail (Rotem, 2026-09-19, from a × shown on hover) |
