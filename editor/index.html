@@ -154,7 +154,8 @@
            border: 2px solid transparent; background: #1b1f24; cursor: pointer;
            display: grid; place-items: center; color: #6b7480; font-size: 11px; }
   .thumb img { max-width: 100%; max-height: 100%; display: block; border-radius: 8px; /* the picture's own corners, 8 px (Rotem, 2026-09-17, from 13) */ }
-  .thumb:not(.current):hover { border-color: #536070; } /* the hover of one not selected, his colour (Rotem, 2026-09-19) */
+  .thumb:not(.current):hover { border-color: #414C58; transition: border-color 144ms ease-out; } /* the hover of one not selected, his colour, fading in by A1 (Rotem, 2026-09-19) */
+  @media (prefers-reduced-motion: reduce) { .thumb:not(.current):hover { transition: none; } }
   .thumb.current { border-color: #7aa7ff; }
   /* The done mark (Rotem, 2026-09-16): in a tab after Main, a round 24 by 24 button at the
      thumbnail's top left, a 1 px white border, a 20 by 20 tick inside it,
