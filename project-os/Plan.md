@@ -420,6 +420,7 @@ is a contract broken on day one.
 | `Esc` during capture | Cancel the capture | 1, built at S0.2: while a window is lit and in the middle of a drag alike, nothing captured; the self test's section D presses it mid-drag. Read back on 2026-09-18, when Rotem asked for it |
 | `Esc` during text editing | Leave text editing, keep the text | 1, built |
 | `Esc` with an annotation selected | Clear the selection | 1, built |
+| `Esc` with a tool in hand | Put the tool down, the window stays | 1, built on 2026-09-19, Rotem's ask: it hid the editor before |
 | `Esc` in fullscreen | Leave fullscreen | 1, built at S1.3 |
 | `Esc` in the otherwise idle editor | Save pending changes and hide the editor | 1, the hide and the focus return built at S1.1, the save at S1.8 |
 | Delete outside text editing | Delete the selected annotation | 1, built; Backspace does the same |

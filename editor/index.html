@@ -3009,6 +3009,8 @@
       if (model.placing) { cancelPlacing(); event.preventDefault(); return; }
       if (model.editing) { commitEditing(); event.preventDefault(); return; }
       if (model.selected || model.selectedShape) { model.selected = null; model.selectedShape = null; layoutScene(); event.preventDefault(); return; }
+      // A tool in hand is put down, and the window stays (Rotem, 2026-09-19).
+      if (model.tool) { setTool(null); event.preventDefault(); return; }
       // Fullscreen leaves first (§3.6); the hide is the Escape after it.
       if (model.fullscreen) { setFullscreen(false).catch((err) => console.error('fullscreen', err)); event.preventDefault(); return; }
       // The idle editor: pending changes are saved, then hide, and the focus goes back to

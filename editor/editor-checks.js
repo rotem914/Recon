@@ -3857,6 +3857,11 @@ export async function runChecks(editor, invoke) {
     button.click();
     await sleep(0);
     check('and one more click takes it up again', model.tool === 'crop' && button.classList.contains('active'), `tool ${model.tool}`);
+    // Escape with a tool in hand puts it down and the window stays (Rotem, 2026-09-19).
+    press({ key: 'Escape', code: 'Escape' });
+    await sleep(400);
+    check('Escape with the crop in hand puts it down, and the editor is not hidden', model.tool === null && !button.classList.contains('active') && getComputedStyle(frame).display === 'none' && (await invoke('editor_window_visible')) === true, `tool ${model.tool}; visible ${await invoke('editor_window_visible')}`);
+    press({ key: 'k', code: 'KeyK' });
     check('with the tool in hand a frame sits on the picture\'s edges, with a handle at each corner and the middle of each side', getComputedStyle(frame).display === 'block' && frameAt() === '0px 0px 400px 300px' && frame.querySelectorAll('.h').length === 8
       && ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se'].every((e) => !!handle(e)), `${getComputedStyle(frame).display}; ${frameAt()}; ${frame.querySelectorAll('.h').length} handles`);
     const h1 = handle('e').getBoundingClientRect();
