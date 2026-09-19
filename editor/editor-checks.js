@@ -3876,6 +3876,7 @@ export async function runChecks(editor, invoke) {
     pointer('pointermove', stage, 380, 150);
     check('while a handle is dragged the frame follows it and darkens what it will cut away, and nothing is cut yet', !!model.cropping && model.cropping.w === 380 && model.cropping.h === 300 && frameAt() === '0px 0px 380px 300px' && frame.classList.contains('dragging') && getComputedStyle(frame).boxShadow !== 'none' && model.crop === null,
       `${JSON.stringify(model.cropping)}; ${frameAt()}; ${getComputedStyle(frame).boxShadow}`);
+    check('and the size band follows the frame while the drag lasts (Rotem, 2026-09-19)', sizeBand() === '380x300', `band ${sizeBand()}`);
     pointer('pointerup', stage, 380, 150);
     await editor.paintRegion();
     const steps1 = model.history.index;

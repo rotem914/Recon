@@ -1550,8 +1550,9 @@
   let emptyText = '';
   // The picture's size in its container above the timeline (Rotem, 2026-09-16), as the HUD writes it.
   const drawImageSize = () => {
-    // The picture as it is now: the crop's size once one is set.
-    const pic = pictureRect();
+    // The picture as it is now: the crop's size once one is set, and the frame's while a
+    // crop handle is dragged (Rotem, 2026-09-19).
+    const pic = model.cropping || pictureRect();
     const text = model.image.width ? `${pic.w}x${pic.h}` : '';
     if (imageSize.textContent !== text) imageSize.textContent = text;
   };
@@ -2818,6 +2819,7 @@
     if (drag.kind === 'crop') {
       model.cropping = cropFrom(drag.from, drag.edge, point);
       layoutScene();
+      drawImageSize();
       return;
     }
     if (drag.kind === 'draw') {
