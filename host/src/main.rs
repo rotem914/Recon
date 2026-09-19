@@ -23,6 +23,7 @@ mod editor;
 mod export;
 mod focus;
 mod folder;
+mod magnifier;
 mod marks;
 #[cfg(feature = "stage0-checks")]
 mod measure;

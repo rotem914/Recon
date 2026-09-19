@@ -25,19 +25,16 @@ use std::ffi::c_void;
 use std::time::Instant;
 
 use windows::core::{w, BOOL, PCWSTR};
-use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM};
+use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Dwm::{
     DwmGetWindowAttribute, DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS,
 };
 use windows::Win32::Graphics::Gdi::{
-    AlphaBlend, BeginPaint, BitBlt, CreateCompatibleDC, CreateDIBSection, CreateFontW,
-    CreateRectRgn, CreateSolidBrush, DeleteDC, DeleteObject, EndPaint, ExcludeClipRect, FillRect,
-    GdiFlush, GetDC, GetRegionData, GetTextExtentPoint32W, GetUpdateRgn, InvalidateRect, ReleaseDC,
-    RestoreDC, SaveDC, SelectObject, SetBkMode, SetStretchBltMode, SetTextColor, SetViewportOrgEx,
-    StretchBlt, TextOutW, AC_SRC_ALPHA, AC_SRC_OVER, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
-    BLENDFUNCTION, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, COLORONCOLOR, DEFAULT_CHARSET,
-    DEFAULT_PITCH, DIB_RGB_COLORS, FF_DONTCARE, FW_NORMAL, HBITMAP, HBRUSH, HDC, HFONT, HGDIOBJ,
-    OUT_DEFAULT_PRECIS, PAINTSTRUCT, RGNDATA, RGNDATAHEADER, SRCCOPY, TRANSPARENT,
+    AlphaBlend, BeginPaint, BitBlt, CreateCompatibleDC, CreateDIBSection, CreateRectRgn,
+    CreateSolidBrush, DeleteDC, DeleteObject, EndPaint, ExcludeClipRect, FillRect, GdiFlush, GetDC,
+    GetRegionData, GetUpdateRgn, InvalidateRect, ReleaseDC, RestoreDC, SaveDC, SelectObject,
+    SetViewportOrgEx, AC_SRC_ALPHA, AC_SRC_OVER, BLENDFUNCTION, DIB_RGB_COLORS, HBITMAP, HBRUSH,
+    HDC, HFONT, HGDIOBJ, PAINTSTRUCT, RGNDATA, RGNDATAHEADER, SRCCOPY,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, VK_ESCAPE};
@@ -55,6 +52,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use crate::capture::coords::DesktopRect;
 use crate::capture::display::{monitors, MonitorInfo};
 use crate::capture::Frame;
+use crate::magnifier::{place_panel, scaled, solid_header, Cells, LINE_RGB, LINE_SIDE};
 
 /// How dark the unselected area gets. 0 is untouched, 255 is black.
 const DIM_ALPHA: u8 = 140;
@@ -87,45 +85,8 @@ const ANTS_GAP_RGB: (u8, u8, u8) = (0x20, 0x20, 0x20);
 /// and ease-out before that. Off when Windows' own animations are off.
 const GLIDE_MS: f64 = 192.0;
 
-/// The size label (Rotem, 2026-09-17): while a drag lasts, the dragged area's width and
-/// height in pixels, 14 px text on the app's background colour, 8 px corners, 8 px of
-/// padding at the sides and 4 above and below. Since 2026-09-18 that bubble is the
-/// magnifier's panel and the text sits under the circle, as the picture Rotem sent shows.
-/// These are the numbers at 100%; each display's overlay scales them by its own scale, as
-/// the cursor scales. The text's colour and face are not stated: the ruler's white, in the
-/// page's UI font, until they are.
-const SIZE_TEXT_PX: i32 = 14;
-const SIZE_RADIUS_PX: i32 = 8;
-const SIZE_PAD_X_PX: i32 = 8;
-const SIZE_PAD_Y_PX: i32 = 4;
-/// The app background, `project-os/Design.md`; the page carries the same value as `--paper`.
-const SIZE_FILL_RGB: (u8, u8, u8) = (0x0D, 0x0E, 0x12);
-const SIZE_TEXT_RGB: (u8, u8, u8) = (0xF2, 0xF2, 0xF2);
-
-/// The magnifier (Rotem, 2026-09-18, with a picture): a 112 px circle showing the frozen
-/// pixels around the pointer large enough to tell apart, the whole time the overlay is
-/// up, with the selection's size written above it. What the picture shows and his words
-/// do not, provisional until he states it: the circle in a panel of the label's fill and
-/// corners, 4 px around it; the panel below the pointer with its left edge 8 px right of
-/// it (the pointer's right is Rotem's word, from the picture's left), and on the
-/// pointer's other side where that would leave the display; 8 px to a
-/// source pixel; a 1 px grid between them, the pixel darkened by half; #2554FB lines
-/// on the centre pixel's top and left edges (his, the same day); a 2 px ring in the text's white.
-const MAG_DIAMETER_PX: i32 = 112;
-const MAG_CELL_PX: i32 = 8;
-const MAG_INSET_PX: i32 = 4;
-const MAG_GAP_PX: i32 = 8;
-const MAG_RING_PX: i32 = 2;
-const MAG_RING_RGB: (u8, u8, u8) = (0xF2, 0xF2, 0xF2);
-/// The two lines inside the circle, Rotem's #2554FB (2026-09-18, from the frame's blue).
-const MAG_LINE_RGB: (u8, u8, u8) = (0x25, 0x54, 0xFB);
-/// How much of the lines' colour the pixel on each side of them takes: 1.64 px wide (after 1.44), less
-/// the whole pixel in the middle, halved.
-const MAG_LINE_SIDE: f64 = 0.32;
-/// The grid between the pixels, Rotem's #808080 (2026-09-18, after #A8A8A8, #8C8C8C and #707070, from the pixel darkened by half).
-const MAG_GRID_RGB: (u8, u8, u8) = (0x80, 0x80, 0x80);
-/// How much of the grid's colour lies over the pixel under it: his 48%, the same day, after 64%.
-const MAG_GRID_STRENGTH: f64 = 0.48;
+// The size label and the magnifier it became are `crate::magnifier`, one unit for the
+// capture, the Ruler and the Color picker (Rotem, 2026-09-19).
 
 /// The pointer's lines (Rotem, 2026-09-18): one across and one down through the pointer,
 /// 1 px each, the whole width and height of the display it is on whatever is selected, in
@@ -134,8 +95,8 @@ const MAG_GRID_STRENGTH: f64 = 0.48;
 /// it is drawn as the inverse of what is under it, which over the blue made it red where
 /// Rotem wants it white. The 12 px is the cross's arm at 100%, by eye, provisional.
 /// Since later that day they carry the circle's lines' settings, his word: their #2554FB,
-/// and their 1.64 px, the pixel on each side of the line taking `MAG_LINE_SIDE` of it.
-const CROSS_RGB: (u8, u8, u8) = MAG_LINE_RGB;
+/// and their 1.64 px, the pixel on each side of the line taking `LINE_SIDE` of it.
+const CROSS_RGB: (u8, u8, u8) = LINE_RGB;
 const CROSS_ALPHA: u8 = 122;
 const CROSS_GAP_PX: i32 = 12;
 
@@ -529,26 +490,8 @@ unsafe fn build_surface(frame: &Frame, monitor: &MonitorInfo, screen_dc: HDC) ->
     // The frame's clock. It dies with the window; a tick with nothing lit does nothing.
     unsafe { SetTimer(Some(hwnd), ANTS_TIMER, ANTS_FRAME_MS, None) };
 
-    // The size bubble's face: a negative height is the em size, so 14 px here is the 14 px
-    // the page means. A face that cannot be made leaves the bubble unmeasured and undrawn.
-    let font = unsafe {
-        CreateFontW(
-            -scaled(SIZE_TEXT_PX, monitor.scale_percent),
-            0,
-            0,
-            0,
-            FW_NORMAL.0 as i32,
-            0,
-            0,
-            0,
-            DEFAULT_CHARSET,
-            OUT_DEFAULT_PRECIS,
-            CLIP_DEFAULT_PRECIS,
-            CLEARTYPE_QUALITY,
-            (DEFAULT_PITCH.0 | FF_DONTCARE.0) as u32,
-            w!("Segoe UI"),
-        )
-    };
+    // The magnifier's face, at this display's scale.
+    let font = crate::magnifier::font(monitor.scale_percent);
 
     Some(Surface {
         hwnd,
@@ -559,26 +502,6 @@ unsafe fn build_surface(frame: &Frame, monitor: &MonitorInfo, screen_dc: HDC) ->
         painted: false,
         font,
     })
-}
-
-/// A size at 100%, as it is on a display at this scale.
-fn scaled(px: i32, scale_percent: u32) -> i32 {
-    (px * scale_percent as i32 + 50) / 100
-}
-
-fn solid_header(width: i32, height: i32) -> BITMAPINFO {
-    BITMAPINFO {
-        bmiHeader: BITMAPINFOHEADER {
-            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-            biWidth: width,
-            biHeight: -height,
-            biPlanes: 1,
-            biBitCount: 32,
-            biCompression: BI_RGB.0,
-            ..Default::default()
-        },
-        ..Default::default()
-    }
 }
 
 unsafe fn teardown(state: State) {
@@ -1032,53 +955,25 @@ impl State {
             None => self.pointer.filter(|(s, _)| *s == hwnd.0 as isize)?.1,
         };
         let source = (desktop.0 - display.x, desktop.1 - display.y);
-        let diameter = scaled(MAG_DIAMETER_PX, scale);
-        let cell = scaled(MAG_CELL_PX, scale).max(1);
-        let inset = scaled(MAG_INSET_PX, scale);
-        let text = self.selection_size(hwnd).and_then(|(width, height)| {
-            if surface.font.is_invalid() {
-                return None;
-            }
-            let text: Vec<u16> = format!("{width}x{height}").encode_utf16().collect();
-            let mut extent = SIZE::default();
-            let measured = unsafe {
-                let previous = SelectObject(hdc, HGDIOBJ(surface.font.0));
-                let ok = GetTextExtentPoint32W(hdc, &text, &mut extent).as_bool();
-                SelectObject(hdc, previous);
-                ok
-            };
-            if !measured || extent.cx <= 0 || extent.cy <= 0 {
-                return None;
-            }
-            Some((text, extent))
-        });
-        let pad = (scaled(SIZE_PAD_X_PX, scale), scaled(SIZE_PAD_Y_PX, scale));
-        let width = (diameter + 2 * inset).max(text.as_ref().map_or(0, |(_, e)| e.cx + 2 * pad.0));
-        // The size above the circle (Rotem, 2026-09-18, from under it): the text row first,
-        // with its padding, then the circle with its inset.
-        let above = text.as_ref().map_or(inset, |(_, e)| pad.1 + e.cy + pad.1);
-        let height = above + diameter + inset;
-        let text = text.map(|(t, e)| (t, ((width - e.cx) / 2, pad.1)));
+        let text = self
+            .selection_size(hwnd)
+            .map(|(width, height)| crate::magnifier::size_text(width, height));
+        let layout = crate::magnifier::layout(hdc, surface.font, scale, text.as_deref());
         let (left, top) = place_panel(
             source,
-            (width, height),
+            (layout.width, layout.height),
             (display.width as i32, display.height as i32),
-            scaled(MAG_GAP_PX, scale),
+            crate::magnifier::gap(scale),
         );
         Some(Panel {
             rect: RECT {
                 left,
                 top,
-                right: left + width,
-                bottom: top + height,
+                right: left + layout.width,
+                bottom: top + layout.height,
             },
-            radius: scaled(SIZE_RADIUS_PX, scale),
-            circle: (width / 2, above + diameter / 2, diameter / 2),
-            ring: scaled(MAG_RING_PX, scale),
-            cell,
-            cells: cell_count(diameter, cell),
+            layout,
             source,
-            text,
         })
     }
 
@@ -1588,7 +1483,7 @@ unsafe fn paint_piece(hwnd: HWND, hdc: HDC, dirty: RECT) {
             if let Some((_, strips)) = state.cross().filter(|(s, _)| *s == hwnd.0 as isize) {
                 for (strip, side) in strips {
                     let strength = if side {
-                        (CROSS_ALPHA as f64 * MAG_LINE_SIDE).round() as u8
+                        (CROSS_ALPHA as f64 * LINE_SIDE).round() as u8
                     } else {
                         CROSS_ALPHA
                     };
@@ -1726,65 +1621,36 @@ unsafe fn compose_magnifier(
     Some((rect, dc, bitmap, previous))
 }
 
-/// The magnifier's panel as laid out on one window, at the display's scale.
+/// The magnifier's panel as placed on one window, at the display's scale.
 struct Panel {
     /// Its place, in client coordinates.
     rect: RECT,
-    /// Its corners.
-    radius: i32,
-    /// The circle's centre inside the panel, and its radius.
-    circle: (i32, i32, i32),
-    ring: i32,
-    /// One source pixel's width on the circle, and how many across, an odd count so the
-    /// pointer's own pixel sits in the middle.
-    cell: i32,
-    cells: i32,
+    layout: crate::magnifier::Layout,
     /// The source pixel at the circle's centre: the pointer, in client coordinates.
     source: (i32, i32),
-    /// The selection's size above the circle, and where its text sits inside the panel.
-    text: Option<(Vec<u16>, (i32, i32))>,
 }
 
-/// Where the panel goes: below the pointer by the gap, its left edge the gap right of the
-/// pointer, and on the pointer's other side where that would leave the display, so it is
-/// never cut off at an edge.
-fn place_panel(pointer: (i32, i32), size: (i32, i32), display: (i32, i32), gap: i32) -> (i32, i32) {
-    let mut left = pointer.0 + gap;
-    if left + size.0 > display.0 {
-        left = pointer.0 - gap - size.0;
+/// The frozen pixels around the pointer, one per cell, cut to the display: past its edge
+/// a cell stays empty and the panel's own fill shows.
+unsafe fn cells_around(hdc: HDC, surface: &Surface, panel: &Panel) -> Option<Cells> {
+    let count = panel.layout.cells;
+    let mut cells = Cells::empty(count);
+    let half = count / 2;
+    let (sx, sy) = (panel.source.0 - half, panel.source.1 - half);
+    let display = (
+        surface.monitor.rect.width as i32,
+        surface.monitor.rect.height as i32,
+    );
+    let (left, top) = (sx.max(0), sy.max(0));
+    let (right, bottom) = ((sx + count).min(display.0), (sy + count).min(display.1));
+    if right <= left || bottom <= top {
+        return Some(cells);
     }
-    let mut top = pointer.1 + gap;
-    if top + size.1 > display.1 {
-        top = pointer.1 - gap - size.1;
-    }
-    (left.max(0), top.max(0))
-}
-
-/// How many source pixels the circle shows across: enough cells to cover its diameter,
-/// and an odd count so the pointer's own pixel is the middle one.
-fn cell_count(diameter: i32, cell: i32) -> i32 {
-    let n = (diameter + cell - 1) / cell.max(1);
-    if n % 2 == 0 {
-        n + 1
-    } else {
-        n
-    }
-}
-
-/// The pixels around the pointer, each one a cell wide, BGRA: the frozen slice stretched
-/// with no smoothing, the grid's line on the last pixel of every cell across and down,
-/// darkened by half, and the #2554FB lines on the centre cell's top and left edges. Past the
-/// display's edge the panel's own fill shows, since a stretch reads nothing beyond the
-/// bitmap.
-unsafe fn magnified(hdc: HDC, surface: &Surface, panel: &Panel) -> Option<Vec<u8>> {
-    let cell = panel.cell;
-    let count = panel.cells;
-    let side = count * cell;
     let dc = unsafe { CreateCompatibleDC(Some(hdc)) };
     if dc.is_invalid() {
         return None;
     }
-    let mut info = solid_header(side, side);
+    let mut info = solid_header(count, count);
     let mut bits: *mut c_void = std::ptr::null_mut();
     let bitmap =
         match unsafe { CreateDIBSection(Some(hdc), &info, DIB_RGB_COLORS, &mut bits, None, 0) } {
@@ -1795,227 +1661,49 @@ unsafe fn magnified(hdc: HDC, surface: &Surface, panel: &Panel) -> Option<Vec<u8
             }
         };
     std::hint::black_box(&mut info);
-    let len = (side * side * 4) as usize;
-    {
-        let pixels = unsafe { std::slice::from_raw_parts_mut(bits as *mut u8, len) };
-        let (r, g, b) = SIZE_FILL_RGB;
-        for at in (0..len).step_by(4) {
-            pixels[at] = b;
-            pixels[at + 1] = g;
-            pixels[at + 2] = r;
-            pixels[at + 3] = 255;
-        }
-    }
     let previous = unsafe { SelectObject(dc, HGDIOBJ(bitmap.0)) };
-    // The square of source pixels around the pointer, cut to the display, and the same
-    // cut on the destination so each source pixel lands on its own cell.
-    let half = count / 2;
-    let (sx, sy) = (panel.source.0 - half, panel.source.1 - half);
-    let display = (
-        surface.monitor.rect.width as i32,
-        surface.monitor.rect.height as i32,
-    );
-    let (left, top) = (sx.max(0), sy.max(0));
-    let (right, bottom) = ((sx + count).min(display.0), (sy + count).min(display.1));
-    if right > left && bottom > top {
-        unsafe {
-            SetStretchBltMode(dc, COLORONCOLOR);
-            let _ = StretchBlt(
-                dc,
-                (left - sx) * cell,
-                (top - sy) * cell,
-                (right - left) * cell,
-                (bottom - top) * cell,
-                Some(surface.dc),
-                left,
-                top,
-                right - left,
-                bottom - top,
-                SRCCOPY,
-            );
-            let _ = GdiFlush();
-        }
+    unsafe {
+        let _ = BitBlt(
+            dc,
+            left - sx,
+            top - sy,
+            right - left,
+            bottom - top,
+            Some(surface.dc),
+            left,
+            top,
+            SRCCOPY,
+        );
+        let _ = GdiFlush();
     }
-    let mut bytes = vec![0u8; len];
     {
-        let pixels = unsafe { std::slice::from_raw_parts(bits as *const u8, len) };
-        bytes.copy_from_slice(pixels);
+        let pixels =
+            unsafe { std::slice::from_raw_parts(bits as *const u8, (count * count * 4) as usize) };
+        for y in (top - sy)..(bottom - sy) {
+            for x in (left - sx)..(right - sx) {
+                let at = ((y * count + x) * 4) as usize;
+                cells.bgra[at..at + 3].copy_from_slice(&pixels[at..at + 3]);
+                cells.bgra[at + 3] = 255;
+            }
+        }
     }
     unsafe { SelectObject(dc, previous) };
     let _ = unsafe { DeleteObject(HGDIOBJ(bitmap.0)) };
     let _ = unsafe { DeleteDC(dc) };
-
-    // The blue lines run on the centre cell's top and left edges, the grid's line there, so
-    // they cross at the pointer's pixel's top left corner and the pixel itself is whole
-    // (Rotem, 2026-09-18, from another tool's picture, after the middle of the cell).
-    let centre = half * cell - 1;
-    for y in 0..side {
-        for x in 0..side {
-            let at = ((y * side + x) * 4) as usize;
-            if x == centre || y == centre {
-                bytes[at] = MAG_LINE_RGB.2;
-                bytes[at + 1] = MAG_LINE_RGB.1;
-                bytes[at + 2] = MAG_LINE_RGB.0;
-            } else if x % cell == cell - 1 || y % cell == cell - 1 {
-                let over = |under: u8, grid: u8| {
-                    (under as f64 * (1.0 - MAG_GRID_STRENGTH) + grid as f64 * MAG_GRID_STRENGTH)
-                        .round() as u8
-                };
-                bytes[at] = over(bytes[at], MAG_GRID_RGB.2);
-                bytes[at + 1] = over(bytes[at + 1], MAG_GRID_RGB.1);
-                bytes[at + 2] = over(bytes[at + 2], MAG_GRID_RGB.0);
-            }
-            // The lines are 1.64 px wide, centred on the grid's line (Rotem, 2026-09-18, so
-            // the eye finds them sooner): the pixel on each side takes 0.32 of their colour.
-            if x != centre && y != centre && ((x - centre).abs() == 1 || (y - centre).abs() == 1) {
-                let side_of = |under: u8, line: u8| {
-                    (under as f64 * (1.0 - MAG_LINE_SIDE) + line as f64 * MAG_LINE_SIDE).round()
-                        as u8
-                };
-                bytes[at] = side_of(bytes[at], MAG_LINE_RGB.2);
-                bytes[at + 1] = side_of(bytes[at + 1], MAG_LINE_RGB.1);
-                bytes[at + 2] = side_of(bytes[at + 2], MAG_LINE_RGB.0);
-            }
-            bytes[at + 3] = 255;
-        }
-    }
-    Some(bytes)
+    Some(cells)
 }
 
-/// How much of a pixel a rounded rectangle of this size covers: 1 inside, 0 outside, and
-/// the fraction of it inside the arc at the corners, so the corners are smooth. The radius
-/// is cut down to half the shorter side, as a page's corners are.
-fn corner_coverage(w: i32, h: i32, radius: i32, x: i32, y: i32) -> f64 {
-    let r = radius.min(w / 2).min(h / 2).max(0) as f64;
-    let px = x as f64 + 0.5;
-    let py = y as f64 + 0.5;
-    let cx = if px < r {
-        r
-    } else if px > w as f64 - r {
-        w as f64 - r
-    } else {
-        return 1.0;
-    };
-    let cy = if py < r {
-        r
-    } else if py > h as f64 - r {
-        h as f64 - r
-    } else {
-        return 1.0;
-    };
-    let d = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt();
-    (r + 0.5 - d).clamp(0.0, 1.0)
-}
-
-/// Draws the magnifier's panel: the rounded fill built pixel by pixel, the pixels around
-/// the pointer inside the circle with the ring around them, the corners' and the circle's
-/// edge pixels covered by the fraction of them inside the arc so both are smooth, the
-/// size text under the circle, and the whole blended onto the window in one call. Every
-/// pixel it leaves on the window keeps a full alpha: a GDI text call clears the alpha of
-/// the pixels it touches, and this window's pixels are shown by their alpha (see the
-/// dim's note).
+/// Draws the magnifier's panel, `crate::magnifier`'s picture of the frozen pixels around
+/// the pointer, blended onto the window in one call.
 unsafe fn draw_panel(hdc: HDC, surface: &Surface, panel: &Panel) {
-    let w = panel.rect.right - panel.rect.left;
-    let h = panel.rect.bottom - panel.rect.top;
-    if w <= 0 || h <= 0 {
-        return;
-    }
-    let Some(pixels_around) = (unsafe { magnified(hdc, surface, panel) }) else {
+    let Some(cells) = (unsafe { cells_around(hdc, surface, panel) }) else {
         return;
     };
-    let dc = unsafe { CreateCompatibleDC(Some(hdc)) };
-    if dc.is_invalid() {
+    let Some(drawn) =
+        (unsafe { crate::magnifier::render(Some(hdc), surface.font, &panel.layout, &cells) })
+    else {
         return;
-    }
-    let mut info = solid_header(w, h);
-    let mut bits: *mut c_void = std::ptr::null_mut();
-    let bitmap =
-        match unsafe { CreateDIBSection(Some(hdc), &info, DIB_RGB_COLORS, &mut bits, None, 0) } {
-            Ok(bitmap) if !bitmap.is_invalid() && !bits.is_null() => bitmap,
-            _ => {
-                let _ = unsafe { DeleteDC(dc) };
-                return;
-            }
-        };
-    std::hint::black_box(&mut info);
-    let len = (w * h * 4) as usize;
-
-    // The fill, premultiplied by each pixel's coverage, BGRA as GDI wants it; then the
-    // circle over it: the ring between its radius and the picture's, the pixels around
-    // the pointer inside, each edge blended by its coverage.
-    {
-        let pixels = unsafe { std::slice::from_raw_parts_mut(bits as *mut u8, len) };
-        let (r, g, b) = SIZE_FILL_RGB;
-        let (cx, cy, radius) = panel.circle;
-        let side = panel.cells * panel.cell;
-        let centre = (panel.cells / 2) * panel.cell - 1;
-        let ring = (MAG_RING_RGB.2, MAG_RING_RGB.1, MAG_RING_RGB.0);
-        for y in 0..h {
-            for x in 0..w {
-                let coverage = corner_coverage(w, h, panel.radius, x, y);
-                let at = ((y * w + x) * 4) as usize;
-                let over = |c: u8| (c as f64 * coverage).round() as u8;
-                pixels[at] = over(b);
-                pixels[at + 1] = over(g);
-                pixels[at + 2] = over(r);
-                pixels[at + 3] = (255.0 * coverage).round() as u8;
-
-                let dx = x as f64 + 0.5 - cx as f64;
-                let dy = y as f64 + 0.5 - cy as f64;
-                let distance = (dx * dx + dy * dy).sqrt();
-                let outer = (radius as f64 + 0.5 - distance).clamp(0.0, 1.0);
-                if outer <= 0.0 {
-                    continue;
-                }
-                let inner = ((radius - panel.ring) as f64 + 0.5 - distance).clamp(0.0, 1.0);
-                let (mx, my) = (x - cx + centre, y - cy + centre);
-                let around = if mx >= 0 && my >= 0 && mx < side && my < side {
-                    let from = ((my * side + mx) * 4) as usize;
-                    (
-                        pixels_around[from],
-                        pixels_around[from + 1],
-                        pixels_around[from + 2],
-                    )
-                } else {
-                    (b, g, r)
-                };
-                let blend = |fill: u8, ring: u8, inside: u8| {
-                    (fill as f64 * (1.0 - outer)
-                        + ring as f64 * (outer - inner)
-                        + inside as f64 * inner)
-                        .round() as u8
-                };
-                pixels[at] = blend(b, ring.0, around.0);
-                pixels[at + 1] = blend(g, ring.1, around.1);
-                pixels[at + 2] = blend(r, ring.2, around.2);
-                pixels[at + 3] = 255;
-            }
-        }
-    }
-
-    let previous_bitmap = unsafe { SelectObject(dc, HGDIOBJ(bitmap.0)) };
-    if let Some((text, at)) = &panel.text {
-        let previous_font = unsafe { SelectObject(dc, HGDIOBJ(surface.font.0)) };
-        unsafe {
-            SetBkMode(dc, TRANSPARENT);
-            SetTextColor(dc, colorref(SIZE_TEXT_RGB));
-            let _ = TextOutW(dc, at.0, at.1, text);
-            let _ = GdiFlush();
-            SelectObject(dc, previous_font);
-        }
-        // The text sits in the flat part of the panel, where every pixel is wholly
-        // covered; the text call cleared the alpha of the pixels it touched, and this
-        // puts it back.
-        let pixels = unsafe { std::slice::from_raw_parts_mut(bits as *mut u8, len) };
-        for y in 0..h {
-            for x in 0..w {
-                if corner_coverage(w, h, panel.radius, x, y) >= 1.0 {
-                    pixels[((y * w + x) * 4 + 3) as usize] = 255;
-                }
-            }
-        }
-    }
-
+    };
     let blend = BLENDFUNCTION {
         BlendOp: AC_SRC_OVER as u8,
         BlendFlags: 0,
@@ -2027,19 +1715,16 @@ unsafe fn draw_panel(hdc: HDC, surface: &Surface, panel: &Panel) {
             hdc,
             panel.rect.left,
             panel.rect.top,
-            w,
-            h,
-            dc,
+            drawn.width,
+            drawn.height,
+            drawn.dc,
             0,
             0,
-            w,
-            h,
+            drawn.width,
+            drawn.height,
             blend,
         )
     };
-    unsafe { SelectObject(dc, previous_bitmap) };
-    let _ = unsafe { DeleteObject(HGDIOBJ(bitmap.0)) };
-    let _ = unsafe { DeleteDC(dc) };
 }
 
 /// The frame's thickness inside a selection: the set width, or less when the selection
@@ -2233,6 +1918,7 @@ fn dim_parts(dirty: RECT, selection: Option<RECT>) -> Vec<RECT> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::magnifier::{cell_count, corner_coverage};
 
     fn rect(l: i32, t: i32, r: i32, b: i32) -> RECT {
         RECT {

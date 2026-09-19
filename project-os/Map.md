@@ -60,6 +60,7 @@ Recon/
 │       ├── measure.rs              # --measure and --walk: the thirty-run measurement and memory sample, feature-gated
 │       ├── config.rs               # the three shortcuts: read at startup, saved by Settings, and where they were read from
 │       ├── overlay.rs              # the Win32 selection overlay, one window per display
+│       ├── magnifier.rs            # the zoom circle's panel, one unit: drawn here for the capture, the Ruler and the Color picker
 │       ├── selftest.rs             # --selftest and --capture-demo: S0.2's evidence, feature-gated
 │       ├── settings.rs             # Settings: the global shortcuts swapped live, two for the capture, a taken one refused, all let go while one is pressed
 │       ├── bench.rs                 # --bench: S0.3's boundary measurement, feature-gated
@@ -81,7 +82,7 @@ Recon/
 ├── editor/                         # the web view surface, a placeholder until S0.4
 │   ├── index.html                  # the editor: the scene, the callout, the text layer
 │   ├── editor-checks.js            # --editor-check: S0.4's evidence, not product code
-│   ├── fonts/                      # Google Sans, medium, Latin, from Google Fonts, with its OFL.txt
+│   ├── fonts/                      # Google Sans, medium, Latin, from Google Fonts, with its OFL.txt; the .woff2 for the page, the same face as .ttf for the host's magnifier
 │   └── bench.html                  # the web view half of S0.3, not product code
 └── project-os/                     # the process docs and their enforcement
     ├── Plan.md                     # the whole plan, read at task pickup

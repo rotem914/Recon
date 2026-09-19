@@ -326,13 +326,9 @@
      background on 8 px corners, 4 px around it, 8 px to a picture pixel, a 2 px ring in the
      text's white, the size 14 px in Segoe UI with 8 px at its sides and 4 above and below.
      Screen pixels at every zoom, outside the scene, so never in a copy. */
-  #mag { position: absolute; left: 0; top: 0; z-index: 3; display: none; flex-direction: column; align-items: center;
-         min-width: 120px; padding: 4px 0; border-radius: 8px; background: #0D0E12; pointer-events: none; }
-  #mag.on { display: flex; }
-  #mag.sized { padding-top: 0; }
-  #mag .size { display: none; padding: 4px 8px; color: #f2f2f2; font: 400 14px/19px "Segoe UI", system-ui, sans-serif; white-space: nowrap; }
-  #mag.sized .size { display: block; }
-  #mag canvas { display: block; width: 112px; height: 112px; }
+  #mag { position: absolute; left: 0; top: 0; z-index: 3; display: none; pointer-events: none; }
+  #mag.on.drawn { display: block; }
+  #mag canvas { display: block; }
   .ruler.drawing .size { display: none; }
   /* The crop (Rotem, 2026-09-17): with the crop tool in hand a frame sits on the picture's edges
      with a handle at each corner and at the middle of each side; a handle dragged inward cuts the
@@ -437,7 +433,7 @@
     <svg id="handles"></svg>
     <div id="crop"><div class="h" data-edge="nw"></div><div class="h" data-edge="n"></div><div class="h" data-edge="ne"></div><div class="h" data-edge="w"></div><div class="h" data-edge="e"></div><div class="h" data-edge="sw"></div><div class="h" data-edge="s"></div><div class="h" data-edge="se"></div></div>
   </div>
-  <div id="mag"><div class="size"></div><canvas></canvas></div>
+  <div id="mag"><canvas width="0" height="0"></canvas></div>
 </div>
 <div id="hud"></div>
 <div id="image-size"></div>
@@ -1205,131 +1201,77 @@
   // pointer are asked of the host 1:1, one ask at a time, the newest place as soon as the
   // last one lands. The middle cell is the pixel right of and below the point a ruler's
   // corner lands on, so the blue lines cross on that corner.
+  // Since 2026-09-19 the panel is ONE unit with the capture's (Rotem): the host draws it
+  // whole, circle, grid, lines, ring and the text above, in `host/src/magnifier.rs`, and
+  // this page only asks for it and paints the bytes, so a change there shows here too.
   const mag = document.getElementById('mag');
-  const magSize = mag.firstElementChild;
-  const magCanvas = mag.lastElementChild;
+  const magCanvas = mag.firstElementChild;
   const magContext = magCanvas.getContext('2d');
-  const magPatch = document.createElement('canvas');
-  const MAG_DIAMETER = 112;
-  const MAG_CELL = 8;
-  const MAG_GAP = 8;
-  const MAG_RING = 2;
-  const MAG_FILL = [0x0D, 0x0E, 0x12];
-  const MAG_GRID = [0x80, 0x80, 0x80]; // Rotem's #808080, 2026-09-18, after #A8A8A8, #8C8C8C and #707070, from the pixel darkened by half
-  const MAG_BLUE = [0x25, 0x54, 0xFB]; // Rotem's #2554FB, 2026-09-18, as the capture's circle
   let magPointer = null; // where the pointer last was over the stage, in client pixels
+  let magGap = 0; // the panel's distance from the pointer, in device pixels, as the host says
   // The circle's middle pixel. The ruler's is the one right of and below the corner a drag
   // lands on; the colour picker's is the one under the pointer, the one a click copies.
   const magAt = (point) => (model.tool === 'picker'
     ? { x: Math.floor(point.x), y: Math.floor(point.y) }
     : { x: Math.round(point.x), y: Math.round(point.y) });
-  const hexOf = (r, g, b) => `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase()}`;
   let magKey = '';
   let magAsking = false;
   let magAgain = false;
-
-  // The pixels around one point, as the capture paints them: each a cell wide, the grid's
-  // line on the last pixel of every cell, darkened by half, the blue on the middle cell's
-  // top and left edges, and the panel's fill where the picture ends.
-  const paintMag = (at, count, got) => {
-    const diameter = Math.round(MAG_DIAMETER * dpr());
-    const cell = Math.max(1, Math.round(MAG_CELL * dpr()));
-    const side = count * cell;
-    const half = (count - 1) / 2;
-    const image = new ImageData(side, side);
-    const out = image.data;
-    const centre = half * cell - 1;
-    for (let y = 0; y < side; y += 1) {
-      for (let x = 0; x < side; x += 1) {
-        const o = (y * side + x) * 4;
-        let rgb = MAG_FILL;
-        let line = false;
-        if (x === centre || y === centre) {
-          rgb = MAG_BLUE;
-        } else {
-          const sx = at.x - half + Math.floor(x / cell) - got.x;
-          const sy = at.y - half + Math.floor(y / cell) - got.y;
-          if (sx >= 0 && sy >= 0 && sx < got.w && sy < got.h) {
-            const i = (sy * got.w + sx) * 4;
-            rgb = [got.pixels[i], got.pixels[i + 1], got.pixels[i + 2]];
-          }
-          line = x % cell === cell - 1 || y % cell === cell - 1;
-        }
-        if (line) rgb = rgb.map((c, n) => Math.round(c * 0.52 + MAG_GRID[n] * 0.48)); // the grid at 48% over the pixel, Rotem's, after 64%
-        // The lines are 1.64 px wide, centred on the grid's line (Rotem, 2026-09-18): the
-        // pixel on each side takes 0.32 of their colour, as in the capture's circle.
-        if (x !== centre && y !== centre && (Math.abs(x - centre) === 1 || Math.abs(y - centre) === 1)) {
-          rgb = rgb.map((c, n) => Math.round(c * 0.68 + MAG_BLUE[n] * 0.32));
-        }
-        out[o] = rgb[0];
-        out[o + 1] = rgb[1];
-        out[o + 2] = rgb[2];
-        out[o + 3] = 255;
-      }
-    }
-    magPatch.width = side;
-    magPatch.height = side;
-    magPatch.getContext('2d').putImageData(image, 0, 0);
-    if (magCanvas.width !== diameter) { magCanvas.width = diameter; magCanvas.height = diameter; }
-    const ring = Math.max(1, Math.round(MAG_RING * dpr()));
-    // The blue lines' crossing sits on the circle's centre, as the capture's does.
-    const shift = Math.floor(diameter / 2) - centre;
-    magContext.clearRect(0, 0, diameter, diameter);
-    magContext.save();
-    magContext.beginPath();
-    magContext.arc(diameter / 2, diameter / 2, diameter / 2, 0, Math.PI * 2);
-    magContext.clip();
-    magContext.drawImage(magPatch, shift, shift);
-    magContext.restore();
-    magContext.beginPath();
-    magContext.arc(diameter / 2, diameter / 2, (diameter - ring) / 2, 0, Math.PI * 2);
-    magContext.lineWidth = ring;
-    magContext.strokeStyle = '#f2f2f2';
-    magContext.stroke();
-  };
+  let magLabel = null; // the size a ruler being dragged out has, above the circle
 
   const askMag = async () => {
     if (magAsking) { magAgain = true; return; }
     magAsking = true;
     try {
       const at = magAt(toImage(magPointer));
-      const diameter = Math.round(MAG_DIAMETER * dpr());
-      const cell = Math.max(1, Math.round(MAG_CELL * dpr()));
-      let count = Math.ceil(diameter / cell);
-      if (count % 2 === 0) count += 1;
-      const half = (count - 1) / 2;
       // Cut to the picture, which is the crop's when one is set; all margin is all fill.
       const pic = pictureRect();
-      const x = Math.max(pic.x, at.x - half);
-      const y = Math.max(pic.y, at.y - half);
-      const w = Math.min(pic.x + pic.w, at.x - half + count) - x;
-      const h = Math.min(pic.y + pic.h, at.y - half + count) - y;
-      let got = { x, y, w: 0, h: 0, pixels: new Uint8ClampedArray(0) };
-      if (w >= 1 && h >= 1) {
-        const response = await fetch(`http://region.localhost/?mag&x=${x}&y=${y}&w=${w}&h=${h}&ow=${w}&oh=${h}`, { cache: 'no-store' });
-        if (!response.ok) throw new Error(`the magnifier's pixels were refused: ${response.status}`);
-        const whole = new Uint8Array(await response.arrayBuffer());
-        const header = new DataView(whole.buffer, 0, 8);
-        const pixels = new Uint8ClampedArray(whole.subarray(8));
-        got = { x, y, w: header.getUint32(0, true), h: header.getUint32(4, true), pixels };
-        if (pixels.length !== got.w * got.h * 4) throw new Error(`the magnifier got ${pixels.length} bytes for ${got.w}x${got.h}`);
-        if (model.image.file) flattenOntoPaper(pixels, got.w * got.h);
+      let query = `ax=${at.x}&ay=${at.y}&px=${pic.x}&py=${pic.y}&pw=${pic.w}&ph=${pic.h}&scale=${Math.round(dpr() * 100)}`;
+      if (model.tool === 'picker') query += '&hex=1';
+      else if (magLabel) query += `&lw=${magLabel.w}&lh=${magLabel.h}`;
+      if (model.image.file) {
+        const paper = (getComputedStyle(document.body).backgroundColor.match(/\d+/g) || [0, 0, 0]).map(Number);
+        query += `&paper=${paper.slice(0, 3).map((v) => v.toString(16).padStart(2, '0')).join('')}`;
       }
-      paintMag(at, count, got);
-      // The colour picker's HEX above the circle, where the ruler's size sits: the middle
-      // pixel's, and nothing where the pointer is off the picture.
-      if (model.tool === 'picker') {
-        const sx = at.x - got.x;
-        const sy = at.y - got.y;
-        const inside = sx >= 0 && sy >= 0 && sx < got.w && sy < got.h;
-        const i = (sy * got.w + sx) * 4;
-        mag.classList.toggle('sized', inside);
-        if (inside) magSize.textContent = hexOf(got.pixels[i], got.pixels[i + 1], got.pixels[i + 2]);
-      }
+      const response = await fetch(`http://region.localhost/?panel&${query}`, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`the magnifier was refused: ${response.status}`);
+      const whole = new Uint8Array(await response.arrayBuffer());
+      const head = new DataView(whole.buffer, 0, 36);
+      const [w, h, gap, cx, cy, radius, cell, cells, labelLength] = [...Array(9).keys()].map((n) => head.getUint32(n * 4, true));
+      const from = 36 + Math.ceil(labelLength / 4) * 4;
+      const pixels = new Uint8ClampedArray(whole.buffer, from);
+      if (pixels.length !== w * h * 4) throw new Error(`the magnifier got ${pixels.length} bytes for ${w}x${h}`);
+      if (magCanvas.width !== w || magCanvas.height !== h) { magCanvas.width = w; magCanvas.height = h; }
+      magCanvas.style.width = `${w / dpr()}px`;
+      magCanvas.style.height = `${h / dpr()}px`;
+      magContext.putImageData(new ImageData(pixels, w, h), 0, 0);
+      magGap = gap;
+      // What the host drew, for whoever reads the panel: the checks.
+      Object.assign(mag.dataset, { label: new TextDecoder().decode(whole.subarray(36, 36 + labelLength)), cx, cy, radius, cell, cells });
+      placeMag();
     } finally {
       magAsking = false;
       if (magAgain) { magAgain = false; magKey = ''; drawMag(); }
     }
+  };
+
+  // Below the pointer and right of it by the gap, and on its other side where that would
+  // leave the stage, as the capture's does at a display's edge. Nothing to place before
+  // the first panel has come.
+  const placeMag = () => {
+    mag.classList.toggle('drawn', magCanvas.width > 0 && magGap > 0);
+    if (!magPointer) return;
+    const box = stage.getBoundingClientRect();
+    const px = magPointer.clientX - box.left;
+    const py = magPointer.clientY - box.top;
+    const w = mag.offsetWidth;
+    const h = mag.offsetHeight;
+    const gap = magGap / dpr();
+    let left = px + gap;
+    if (left + w > box.width) left = px - gap - w;
+    let top = py + gap;
+    if (top + h > box.height) top = py - gap - h;
+    mag.style.transform = `translate(${Math.max(0, Math.round(left))}px, ${Math.max(0, Math.round(top))}px)`;
   };
 
   const drawMag = () => {
@@ -1339,26 +1281,12 @@
     if (!on) { magKey = ''; return; }
     // The size above the circle while a ruler is dragged out, as in a capture.
     const drawing = drag && drag.kind === 'draw' && drag.shape.kind === 'ruler' ? rectOfShape(drag.shape) : null;
-    if (!picking) mag.classList.toggle('sized', !!drawing);
-    if (drawing) {
-      const text = `${drawing.w}x${drawing.h}`;
-      if (magSize.textContent !== text) magSize.textContent = text;
-    }
-    // Below the pointer and right of it by the gap, and on its other side where that would
-    // leave the stage, as the capture's does at a display's edge.
-    const box = stage.getBoundingClientRect();
-    const px = magPointer.clientX - box.left;
-    const py = magPointer.clientY - box.top;
-    const w = mag.offsetWidth;
-    const h = mag.offsetHeight;
-    let left = px + MAG_GAP;
-    if (left + w > box.width) left = px - MAG_GAP - w;
-    let top = py + MAG_GAP;
-    if (top + h > box.height) top = py - MAG_GAP - h;
-    mag.style.transform = `translate(${Math.max(0, Math.round(left))}px, ${Math.max(0, Math.round(top))}px)`;
+    magLabel = drawing ? { w: drawing.w, h: drawing.h } : null;
+    placeMag();
     const at = magAt(toImage(magPointer));
     const crop = model.crop ? `${model.crop.x},${model.crop.y},${model.crop.w},${model.crop.h}` : '';
-    const key = `${model.tool}|${model.image.document_id}|${at.x}|${at.y}|${crop}|${dpr()}`;
+    const label = magLabel ? `${magLabel.w}x${magLabel.h}` : '';
+    const key = `${model.tool}|${model.image.document_id}|${at.x}|${at.y}|${crop}|${dpr()}|${label}`;
     if (key === magKey) return;
     magKey = key;
     askMag().catch((err) => console.error('magnifier', err && err.stack ? err.stack : String(err)));

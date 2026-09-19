@@ -249,6 +249,10 @@ Stated by Rotem on 2026-09-18 for the capture overlay, with a picture of another
 | Circle | 112 px across, showing the pixels around the pointer large enough to tell apart |
 | Side | on the pointer's right (Rotem, 2026-09-18, from the picture's left) |
 | Size | above the circle (Rotem, 2026-09-18, from under it as the picture had) |
+| One unit | the panel, circle and text, is drawn by one piece of code for the capture, the Ruler and the Color picker: `host/src/magnifier.rs`; a value changed there changes in all three (Rotem, 2026-09-19) |
+| Panel padding | 8 px around the circle on every side (Rotem, 2026-09-19, from 4) |
+| Text | Google Sans, medium, 14 px (Rotem, 2026-09-19, from Segoe UI; semibold was his word a moment earlier, and medium is the one weight bundled) |
+| Text spacing | 10 px from the panel's top edge to the top of the digits, and 10 px from the line the digits stand on to the circle, measured from the digits themselves and not the font's taller line (Rotem, 2026-09-19, after 8 and 8, from 4 and 4) |
 | Guide lines | one across and one down through the pointer, the whole width and height of the screen whatever the capture area is, at 48% (Rotem, 2026-09-18, after 72%), with the circle's lines' settings (Rotem, 2026-09-18, later that day): #2554FB and 1.64 px, centred; the plus at the pointer stays white |
 
 From the picture, not his words, so provisional in the overlay until he states it: the

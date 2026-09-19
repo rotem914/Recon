@@ -4,6 +4,80 @@ NOT read by default - consult only when digging into an old entry.
 Moved here verbatim by project-os/rotate.ps1. Movement only: nothing is rewritten, compressed, or deleted.
 
 ## Archived decisions
+## 2026-09-15 · Zooming out stops at the whole picture as the space is now, and a whole view follows the space
+
+### Context
+
+Rotem asked that zooming out stop at the picture's original size. A picture opens at the
+fit view, capped at actual size: a picture that fits the window opens at its actual size, a
+larger one opens whole. Until then the wheel and the - key went down to a quarter of the
+fit. The review found that the space a picture has changes after it opens: the window is
+maximized or restored, full screen comes and goes, the timeline appears, hides or is
+dragged. The page kept the fit measured at opening, did not refresh it when the timeline
+appeared, and moved no zoom when the space changed.
+
+### Options
+
+1. The floor is the size the picture opened at; when the space grows, the picture stays that
+   size.
+2. The floor is the whole picture as the space is now, capped at actual size; when the space
+   changes, a picture shown whole, or smaller than whole, takes the new whole view.
+3. The floor is actual size for every picture.
+
+### Decision
+
+Option 2, Rotem's call on 2026-09-15 between the first two. Option 1 was built first, and
+its review found a zoom that could not be zoomed back out after the window shrank and grew
+again. Option 3 puts a large capture's opening view below the floor.
+
+### Consequences
+
+The wheel and the - key stop at the whole picture, read from the stage at each zoom, and
+never enlarge a picture that is below it for the moment the page takes to measure a new
+space. The kept fit is measured again, and a view at it or below it follows, when the
+timeline refreshes, the trash shows, the window resizes, full screen changes, or the margin
+changes, so 0, the HUD's "fit" and the zoom-out stop are one number. A zoomed-in view keeps
+its zoom, unless the whole picture grows past it while the space changes, when it is a whole
+view from then on. A stage with no area, a timeline dragged to the top of a short window,
+moves nothing, and zooming out there stops at the fit kept from before. Side effect: a picture that opens just as the timeline first appears fits above it
+now, where it used to open with its bottom under the timeline. Revisit if a large capture
+should open at actual size.
+
+## 2026-09-16 · A deleted document is undone by the same Ctrl+Z as a note, the last thing done first
+
+### Context
+
+Undo (S1.7) walked one picture's notes; a picture deleted from the timeline could only come
+back through the Trash chip. Rotem asked for Ctrl+Z to bring it back. A deletion is an
+action across pictures, the notes' undo is per picture, and one key has to serve both.
+
+### Options
+
+1. One order across both: every note step and every deletion takes a number from one
+   counter, and Ctrl+Z takes whichever is newest.
+2. Notes first: Ctrl+Z walks the picture's notes to their start, and only then reaches a
+   deletion.
+3. A separate key or button for undoing a deletion.
+
+### Decision
+
+Option 1, Rotem's on 2026-09-16 when the two were put to him as scenes ("A"). Redo is
+Ctrl+Shift+Z alone and deletes the picture again, no Ctrl+Y named for it; nothing is said
+on screen when the picture comes back. Redo takes the most recently undone thing first,
+and a step of a picture no longer on screen is passed over, since redoing it would change a
+picture the user is not looking at.
+
+### Consequences
+
+Ctrl+Z after a delete always brings the picture back, whatever the picture on screen holds.
+The deletion list and the counter live in the page's memory, like the notes' undo, so a
+quit ends them and the Trash chip is the way back after one. A picture's own note history
+keeps its per-picture redo tail, reachable when the global list has nothing newer. A refused
+restore leaves the undo path rather than blocking it. Revisit if undo ever persists across
+a restart, or if a second cross-picture action joins the history.
+
+---
+
 ## 2026-09-15 · Under a pan drag lies a small copy of the whole picture, taken whenever the whole picture is painted
 
 ### Context

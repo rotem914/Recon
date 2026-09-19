@@ -3696,13 +3696,13 @@ export async function runChecks(editor, invoke) {
     const magCanvas = magEl.querySelector('canvas');
     const magPlace = () => { const m = magEl.getBoundingClientRect(); return `${Math.round(m.left)},${Math.round(m.top)} ${Math.round(m.width)}x${Math.round(m.height)}`; };
     // A cell's middle on the circle against the picture's own pixel, asked of the host 1:1.
+    // The panel is the host's drawing (host/src/magnifier.rs), which says where its circle
+    // is: the blue lines cross on its centre, and the middle cell starts one pixel past them.
+    const magNumber = (name) => Number(magEl.dataset[name]);
     const magCell = (dx, dy) => {
-      const cell = Math.max(1, Math.round(8 * editor.ratioOf()));
-      let count = Math.ceil(magCanvas.width / cell);
-      if (count % 2 === 0) count += 1;
-      const shift = Math.floor(magCanvas.width / 2) - (((count - 1) / 2) * cell - 1);
-      const at = (d) => shift + ((count - 1) / 2 + d) * cell + Math.floor(cell / 2);
-      return [...magCanvas.getContext('2d').getImageData(at(dx), at(dy), 1, 1).data].slice(0, 3).join(',');
+      const cell = magNumber('cell');
+      const at = (c, d) => c + 1 + d * cell + Math.floor(cell / 2);
+      return [...magCanvas.getContext('2d').getImageData(at(magNumber('cx'), dx), at(magNumber('cy'), dy), 1, 1).data].slice(0, 3).join(',');
     };
     const sourcePixel = async (ix, iy) => {
       const whole = new Uint8Array(await (await fetch(`http://region.localhost/?x=${ix}&y=${iy}&w=1&h=1&ow=1&oh=1`, { cache: 'no-store' })).arrayBuffer());
@@ -3712,19 +3712,21 @@ export async function runChecks(editor, invoke) {
     check('with the pointer off the stage there is no magnifier', getComputedStyle(magEl).display === 'none');
     stage.dispatchEvent(new PointerEvent('pointermove', { pointerId: 13, clientX: css(200, 150).x, clientY: css(200, 150).y, bubbles: true }));
     const hoverAt = css(200, 150);
+    await sleep(200); // the panel is the host's drawing now, and shows once it has come
     const hoverBox = magEl.getBoundingClientRect();
-    check('with the ruler in hand the magnifier sits below the pointer, 8 px right of it: a 112 px circle with 4 px around it and no size yet', getComputedStyle(magEl).display === 'flex' && !magEl.classList.contains('sized') && Math.round(hoverBox.left - hoverAt.x) === 8 && Math.round(hoverBox.top - hoverAt.y) === 8 && Math.round(hoverBox.width) === 120 && Math.round(hoverBox.height) === 120 && getComputedStyle(magCanvas).width === '112px', `${magPlace()} against the pointer at ${Math.round(hoverAt.x)},${Math.round(hoverAt.y)}`);
+    check('with the ruler in hand the magnifier sits below the pointer, 8 px right of it: a 112 px circle with 8 px around it and no size yet', getComputedStyle(magEl).display === 'block' && magEl.dataset.label === '' && Math.round(hoverBox.left - hoverAt.x) === 8 && Math.round(hoverBox.top - hoverAt.y) === 8 && Math.round(hoverBox.width) === 128 && Math.round(hoverBox.height) === 128 && Math.round((2 * magNumber('radius')) / editor.ratioOf()) === 112, `${magPlace()} against the pointer at ${Math.round(hoverAt.x)},${Math.round(hoverAt.y)}`);
     await sleep(200);
     const seen = [magCell(0, 0), magCell(-1, 0), magCell(1, 1)];
     const wanted = [await sourcePixel(200, 150), await sourcePixel(199, 150), await sourcePixel(201, 151)];
     check('the circle shows the picture\'s own pixels, one to a cell: the pointer\'s in the middle, its neighbours beside it', seen.join(' ') === wanted.join(' '), `circle ${seen.join(' ')}; picture ${wanted.join(' ')}`);
-    const blueAt = (() => { const cell = Math.max(1, Math.round(8 * editor.ratioOf())); let count = Math.ceil(magCanvas.width / cell); if (count % 2 === 0) count += 1; const shift = Math.floor(magCanvas.width / 2) - (((count - 1) / 2) * cell - 1); const edge = shift + ((count - 1) / 2) * cell - 1; return [...magCanvas.getContext('2d').getImageData(edge, edge + 3 * cell, 1, 1).data].slice(0, 3).join(','); })();
+    const blueAt = [...magCanvas.getContext('2d').getImageData(magNumber('cx'), magNumber('cy') + 3 * magNumber('cell'), 1, 1).data].slice(0, 3).join(',');
     check('the blue line runs down the left edge of the pointer\'s pixel', blueAt === '37,84,251', blueAt);
 
     // The drag: the size above the circle while it lasts, the x hidden meanwhile.
     pointer('pointerdown', stage, 100, 80);
     pointer('pointermove', stage, 200, 150);
-    check('while a ruler is dragged out its size sits above the circle, and the ruler\'s own label waits for the release', magEl.classList.contains('sized') && magEl.querySelector('.size').textContent === '100x70' && getComputedStyle(magEl.querySelector('.size')).fontSize === '14px' && magEl.querySelector('.size').getBoundingClientRect().bottom <= magCanvas.getBoundingClientRect().top && getComputedStyle(document.querySelector('#scene .ruler .size')).display === 'none', `${magPlace()} "${magEl.querySelector('.size').textContent}"`);
+    await sleep(200);
+    check('while a ruler is dragged out its size sits above the circle, and the ruler\'s own label waits for the release', magEl.dataset.label === '100x70' && magNumber('cy') - magNumber('radius') > 8 * editor.ratioOf() && getComputedStyle(document.querySelector('#scene .ruler .size')).display === 'none', `${magPlace()} "${magEl.dataset.label}", the circle's top at ${magNumber('cy') - magNumber('radius')}`);
     let ruler = model.shapes[0];
     check('a drag makes a ruler, a box in the scene over the area crossed so far', !!ruler && ruler.kind === 'ruler' && !!rulerEl() && rulerEl().style.left === '100px' && rulerEl().style.top === '80px' && rulerEl().style.width === '100px' && rulerEl().style.height === '70px', geometry());
     check('while the drag lasts the size is written beside the pointer, 8 px right of and below it, in image pixels', !!sizeEl() && sizeEl().textContent === '100x70' && sizeEl().style.left === '108px' && sizeEl().style.top === '78px', geometry());
@@ -3962,7 +3964,7 @@ export async function runChecks(editor, invoke) {
       return `#${[...whole.subarray(8, 11)].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase()}`;
     };
     const magEl = document.getElementById('mag');
-    const magText = () => magEl.querySelector('.size').textContent;
+    const magText = () => magEl.dataset.label;
 
     press({ key: 'i', code: 'KeyI' });
     const button = document.querySelector('#tools [data-tool="picker"]');
@@ -3971,7 +3973,7 @@ export async function runChecks(editor, invoke) {
     pointer('pointermove', 200.5, 150.5);
     await sleep(250);
     const want = await sourceHex(200, 150);
-    check('with the picker in hand the zoom circle is up with the HEX of the pixel under the pointer above it', getComputedStyle(magEl).display === 'flex' && magEl.classList.contains('sized') && magText() === want && magEl.querySelector('.size').getBoundingClientRect().bottom <= magEl.querySelector('canvas').getBoundingClientRect().top, `circle "${magText()}", picture ${want}`);
+    check('with the picker in hand the zoom circle is up with the HEX of the pixel under the pointer above it', getComputedStyle(magEl).display === 'block' && magText() === want && Number(magEl.dataset.cy) - Number(magEl.dataset.radius) > 8 * editor.ratioOf(), `circle "${magText()}", picture ${want}`);
     const stepsBefore = model.history.index;
     pointer('pointerdown', 200.5, 150.5);
     pointer('pointerup', 200.5, 150.5);

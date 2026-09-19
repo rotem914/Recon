@@ -502,7 +502,7 @@ fn line_probes(frame: &Frame, pointer: (i32, i32)) -> Option<[LineProbe; 2]> {
         ))
     };
     Some([
-        pixel((pointer.0 + scaled(130), pointer.1))?,
+        pixel((pointer.0 + scaled(138), pointer.1))?,
         pixel((pointer.0, pointer.1 + scaled(100)))?,
     ])
 }
@@ -529,13 +529,13 @@ fn magnifier_seen(
         })
         .ok_or("the pointer is on no display")?;
     let scaled = |px: i32| (px * display.scale_percent as i32 + 50) / 100;
-    // The panel: 120 wide, 8 px right of the pointer and 8 below it; the copy takes 4 px
+    // The panel: 128 wide, 8 px right of the pointer and 8 below it; the copy takes 4 px
     // more on each side and enough height for the text row.
     let region = DesktopRect::from_points(
         (pointer.0 - scaled(4)).max(display.rect.x),
         pointer.1,
-        (pointer.0 + scaled(132)).min(display.rect.x + display.rect.width as i32),
-        (pointer.1 + scaled(168)).min(display.rect.y + display.rect.height as i32),
+        (pointer.0 + scaled(140)).min(display.rect.x + display.rect.width as i32),
+        (pointer.1 + scaled(176)).min(display.rect.y + display.rect.height as i32),
     );
     let pixels = copy_rect(region).map_err(|e| e.to_string())?;
     // Where the pointer really is at the copy, against where the script put it: a
@@ -614,7 +614,7 @@ fn magnifier_seen(
             "while {name}, no blue line through a circle's centre below and right of the pointer: no magnifier there"
         ))?;
     // The ground: 2 px in from the panel's left edge on the circle's centre row, inside
-    // the 4 px around the circle.
+    // the 8 px around the circle.
     let ground = at(scaled(2), centre_row).ok_or("the ground probe is off the copy")?;
     if ground != (0x0D, 0x0E, 0x12) {
         return Err(format!(
@@ -622,19 +622,19 @@ fn magnifier_seen(
         ));
     }
     // The ring: the circle's leftmost 2 px on its centre row.
-    let ring = at(scaled(5), centre_row).ok_or("the ring probe is off the copy")?;
+    let ring = at(scaled(9), centre_row).ok_or("the ring probe is off the copy")?;
     if ring != (0xF2, 0xF2, 0xF2) {
         return Err(format!(
-            "while {name}, the pixel 5,{centre_row} into the panel is {ring:?}, not the ring's (242, 242, 242)"
+            "while {name}, the pixel 9,{centre_row} into the panel is {ring:?}, not the ring's (242, 242, 242)"
         ));
     }
     // The pointer's pixel and its eight neighbours, each an 8 px cell around the circle's
-    // centre at 60 across and the row found, the pointer's own cell starting 1 px past the
+    // centre at 64 across and the row found, the pointer's own cell starting 1 px past the
     // blue lines on its top and left edges: read 2 px past each cell's start, off the grid
     // and off those lines.
     for (n, expected) in around.iter().enumerate() {
         let (i, j) = (n as i32 % 3 - 1, n as i32 / 3 - 1);
-        let probe = (scaled(63 + 8 * i), centre_row + scaled(3) + scaled(8 * j));
+        let probe = (scaled(67 + 8 * i), centre_row + scaled(3) + scaled(8 * j));
         let shown = at(probe.0, probe.1).ok_or("a cell probe is off the copy")?;
         if shown != *expected {
             return Err(format!(
@@ -646,7 +646,7 @@ fn magnifier_seen(
     // light pixels.
     let mut light = 0;
     for y in scaled(2)..(centre_row - scaled(57)) {
-        for x in 0..scaled(120) {
+        for x in 0..scaled(128) {
             if let Some((r, g, b)) = at(x, y) {
                 if r > 0x80 && g > 0x80 && b > 0x80 {
                     light += 1;

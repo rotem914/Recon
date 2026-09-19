@@ -2020,8 +2020,157 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
             });
             return;
         }
+        // The magnifier's whole panel (Rotem, 2026-09-19): the capture's own drawing, asked
+        // for by the Ruler and the Color picker, on a thread of its own like the pixels.
+        if let Some(rest) = query.strip_prefix("panel&") {
+            let rest = rest.to_string();
+            std::thread::spawn(move || {
+                let response = match magnifier_panel(&rest) {
+                    Ok(bytes) => tauri::http::Response::builder()
+                        .header("Content-Type", "application/octet-stream")
+                        .header("Access-Control-Allow-Origin", APP_ORIGIN)
+                        .body(bytes),
+                    Err(err) => tauri::http::Response::builder()
+                        .status(400)
+                        .header("Access-Control-Allow-Origin", APP_ORIGIN)
+                        .body(err.into_bytes()),
+                };
+                responder.respond(response.expect("a magnifier panel response"));
+            });
+            return;
+        }
         serve_region(query, responder);
     })
+}
+
+/// The magnifier's panel for the page, drawn by `crate::magnifier` as the capture's is.
+/// The page names the picture's pixel at the circle's centre (`ax`, `ay`), the part of the
+/// picture that may show (`px`, `py`, `pw`, `ph`, the crop's when one is set), its scale
+/// in percent, the colour a see-through pixel lies over (`paper`, six digits, absent for a
+/// picture with none), and what stands above the circle: a size (`lw`, `lh`), the centre
+/// pixel's HEX (`hex=1`), or nothing. The answer is nine little-endian numbers, the
+/// panel's width and height, the gap to the pointer, the circle's centre and radius, a
+/// cell's width, the cells across and the label's length in bytes; then the label, padded
+/// to four bytes; then the panel, RGBA, straight alpha.
+fn magnifier_panel(query: &str) -> Result<Vec<u8>, String> {
+    let mut numbers = std::collections::HashMap::new();
+    let mut paper: Option<(u8, u8, u8)> = None;
+    for pair in query.split('&') {
+        let mut parts = pair.splitn(2, '=');
+        let key = parts.next().unwrap_or_default();
+        let value = parts.next().unwrap_or_default();
+        if key == "paper" {
+            let n = u32::from_str_radix(value, 16).map_err(|_| "the paper is not a colour")?;
+            paper = Some(((n >> 16) as u8, (n >> 8) as u8, n as u8));
+        } else {
+            numbers.insert(key.to_string(), value.parse::<i64>().unwrap_or(0));
+        }
+    }
+    let number = |key: &str| numbers.get(key).copied().unwrap_or(0);
+    let scale = number("scale").clamp(25, 1000) as u32;
+    let image = state().image().ok_or("no image is loaded")?;
+    let (iw, ih) = (image.frame.width() as i64, image.frame.height() as i64);
+    let left = number("px").max(0);
+    let top = number("py").max(0);
+    let right = (number("px") + number("pw")).min(iw);
+    let bottom = (number("py") + number("ph")).min(ih);
+    let (ax, ay) = (number("ax"), number("ay"));
+
+    let (count, _) = crate::magnifier::cells_at(scale);
+    let mut cells = crate::magnifier::Cells::empty(count);
+    let half = (count / 2) as i64;
+    let mut centre: Option<(u8, u8, u8)> = None;
+    for cy in 0..count as i64 {
+        for cx in 0..count as i64 {
+            let (x, y) = (ax - half + cx, ay - half + cy);
+            if x < left || y < top || x >= right || y >= bottom {
+                continue;
+            }
+            let from = ((y * iw + x) * 4) as usize;
+            let mut rgb = [
+                image.frame.rgba[from],
+                image.frame.rgba[from + 1],
+                image.frame.rgba[from + 2],
+            ];
+            let alpha = image.frame.rgba[from + 3] as u32;
+            if let (Some(paper), true) = (paper, alpha < 255) {
+                let over = |c: u8, p: u8| {
+                    ((c as u32 * alpha + p as u32 * (255 - alpha) + 127) / 255) as u8
+                };
+                rgb = [
+                    over(rgb[0], paper.0),
+                    over(rgb[1], paper.1),
+                    over(rgb[2], paper.2),
+                ];
+            }
+            let at = ((cy * count as i64 + cx) * 4) as usize;
+            cells.bgra[at] = rgb[2];
+            cells.bgra[at + 1] = rgb[1];
+            cells.bgra[at + 2] = rgb[0];
+            cells.bgra[at + 3] = 255;
+            if x == ax && y == ay {
+                centre = Some((rgb[0], rgb[1], rgb[2]));
+            }
+        }
+    }
+    let label = if number("hex") == 1 {
+        centre.map(|(r, g, b)| color_hex(r, g, b))
+    } else if number("lw") > 0 && number("lh") > 0 {
+        Some(crate::magnifier::size_text(
+            number("lw") as u32,
+            number("lh") as u32,
+        ))
+    } else {
+        None
+    };
+
+    let face = crate::magnifier::font(scale);
+    let drawn = unsafe {
+        let dc = windows::Win32::Graphics::Gdi::CreateCompatibleDC(None);
+        let layout = crate::magnifier::layout(dc, face, scale, label.as_deref());
+        let _ = windows::Win32::Graphics::Gdi::DeleteDC(dc);
+        let drawn = crate::magnifier::render(None, face, &layout, &cells);
+        let _ = windows::Win32::Graphics::Gdi::DeleteObject(
+            windows::Win32::Graphics::Gdi::HGDIOBJ(face.0),
+        );
+        drawn.map(|d| (layout, d))
+    };
+    let (layout, drawn) = drawn.ok_or("the magnifier could not be drawn")?;
+
+    let label = label.unwrap_or_default().into_bytes();
+    let mut out =
+        Vec::with_capacity(36 + label.len() + 4 + (drawn.width * drawn.height * 4) as usize);
+    for n in [
+        layout.width,
+        layout.height,
+        crate::magnifier::gap(scale),
+        layout.circle.0,
+        layout.circle.1,
+        layout.circle.2,
+        layout.cell,
+        layout.cells,
+        label.len() as i32,
+    ] {
+        out.extend_from_slice(&(n as u32).to_le_bytes());
+    }
+    out.extend_from_slice(&label);
+    out.resize(out.len().div_ceil(4) * 4, 0);
+    for pixel in drawn.pixels().as_chunks::<4>().0 {
+        // Premultiplied BGRA to straight RGBA, as a page's ImageData wants it.
+        let a = pixel[3] as u32;
+        let straight = |c: u8| {
+            (c as u32 * 255 + a / 2)
+                .checked_div(a)
+                .map_or(0, |v| v.min(255) as u8)
+        };
+        out.extend_from_slice(&[
+            straight(pixel[2]),
+            straight(pixel[1]),
+            straight(pixel[0]),
+            pixel[3],
+        ]);
+    }
+    Ok(out)
 }
 
 // ---------------------------------------------------------------- the product's commands

@@ -124,80 +124,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-18 · The colour picker's HEX is put on the clipboard by the host from a colour the page names, never a text; the picker starts no annotation.
 - 2026-09-19 · A capture can pick Recon's own editor window like any other; only the capture overlay itself is left out, Rotem's call.
 - 2026-09-19 · The wheel stretches the picture already painted and asks for one region at a time; the host says once whether a picture has a see-through pixel.
-
----
-
-## 2026-09-15 · Zooming out stops at the whole picture as the space is now, and a whole view follows the space
-
-### Context
-
-Rotem asked that zooming out stop at the picture's original size. A picture opens at the
-fit view, capped at actual size: a picture that fits the window opens at its actual size, a
-larger one opens whole. Until then the wheel and the - key went down to a quarter of the
-fit. The review found that the space a picture has changes after it opens: the window is
-maximized or restored, full screen comes and goes, the timeline appears, hides or is
-dragged. The page kept the fit measured at opening, did not refresh it when the timeline
-appeared, and moved no zoom when the space changed.
-
-### Options
-
-1. The floor is the size the picture opened at; when the space grows, the picture stays that
-   size.
-2. The floor is the whole picture as the space is now, capped at actual size; when the space
-   changes, a picture shown whole, or smaller than whole, takes the new whole view.
-3. The floor is actual size for every picture.
-
-### Decision
-
-Option 2, Rotem's call on 2026-09-15 between the first two. Option 1 was built first, and
-its review found a zoom that could not be zoomed back out after the window shrank and grew
-again. Option 3 puts a large capture's opening view below the floor.
-
-### Consequences
-
-The wheel and the - key stop at the whole picture, read from the stage at each zoom, and
-never enlarge a picture that is below it for the moment the page takes to measure a new
-space. The kept fit is measured again, and a view at it or below it follows, when the
-timeline refreshes, the trash shows, the window resizes, full screen changes, or the margin
-changes, so 0, the HUD's "fit" and the zoom-out stop are one number. A zoomed-in view keeps
-its zoom, unless the whole picture grows past it while the space changes, when it is a whole
-view from then on. A stage with no area, a timeline dragged to the top of a short window,
-moves nothing, and zooming out there stops at the fit kept from before. Side effect: a picture that opens just as the timeline first appears fits above it
-now, where it used to open with its bottom under the timeline. Revisit if a large capture
-should open at actual size.
-
-## 2026-09-16 · A deleted document is undone by the same Ctrl+Z as a note, the last thing done first
-
-### Context
-
-Undo (S1.7) walked one picture's notes; a picture deleted from the timeline could only come
-back through the Trash chip. Rotem asked for Ctrl+Z to bring it back. A deletion is an
-action across pictures, the notes' undo is per picture, and one key has to serve both.
-
-### Options
-
-1. One order across both: every note step and every deletion takes a number from one
-   counter, and Ctrl+Z takes whichever is newest.
-2. Notes first: Ctrl+Z walks the picture's notes to their start, and only then reaches a
-   deletion.
-3. A separate key or button for undoing a deletion.
-
-### Decision
-
-Option 1, Rotem's on 2026-09-16 when the two were put to him as scenes ("A"). Redo is
-Ctrl+Shift+Z alone and deletes the picture again, no Ctrl+Y named for it; nothing is said
-on screen when the picture comes back. Redo takes the most recently undone thing first,
-and a step of a picture no longer on screen is passed over, since redoing it would change a
-picture the user is not looking at.
-
-### Consequences
-
-Ctrl+Z after a delete always brings the picture back, whatever the picture on screen holds.
-The deletion list and the counter live in the page's memory, like the notes' undo, so a
-quit ends them and the Trash chip is the way back after one. A picture's own note history
-keeps its per-picture redo tail, reachable when the global list has nothing newer. A refused
-restore leaves the undo path rather than blocking it. Revisit if undo ever persists across
-a restart, or if a second cross-picture action joins the history.
+- 2026-09-19 · The magnifier is one unit in the host: the page asks for the finished panel and paints it, Rotem's choice of two.
 
 ---
 
@@ -1011,3 +938,19 @@ lands; at rest the view is the ordinary paint, placed as F74 asks. The keys' zoo
 `setZoomAround` still paint the direct way. The first info of a picture costs one pass over its
 pixels in the host, not measured here. Revisit if the soft moment reads as a fault, or if Rotem
 wants a glide between notches, which was offered and left for after this.
+
+## 2026-09-19 · The magnifier is one unit in the host: the page asks for the finished panel and paints it, Rotem's choice of two
+
+### Context
+The zoom circle with the text above it stood in three places, the capture overlay, the Ruler and the Color picker, drawn by two pieces of code: the overlay's in Rust and a copy of it in the page's JavaScript. Every value Rotem tuned had to be changed twice, and the two had already drifted in their comments. He asked for one unit, updated in one place.
+
+### Options
+1. One drawing: the host draws the whole panel for all three, and the page shows the picture.
+2. One list of values handed to the page, the circle still drawn twice.
+
+### Decision
+Option 1, Rotem's, of the two put to him. `host/src/magnifier.rs` holds every number, the layout, the text and the drawing. The overlay hands it the frozen pixels around the pointer and blends the panel onto its window; the page asks `region://?panel&...` with the picture's pixel, the part that may show, its scale and what stands above the circle, and paints the bytes. The answer carries the panel's size, the gap to the pointer and where the circle is, so the page places it and the checks read it without a number of their own. The text is drawn by Windows' text drawing in both, so the bundled Google Sans is unpacked to a .ttf and given to the process alone from memory; its spacing is measured from a digit's own top and the line it stands on, because this face's line is more than twice as tall as its digits.
+
+### Consequences
+A value changes once. In the editor the panel arrives with the host's answer, so it shows a moment after the pointer enters the picture, and a change of its text lands with the next answer. The placing rule, below and right by the gap and flipped at an edge, is still written twice, in `place_panel` and in the page's `placeMag`, since the page must move the panel with every pointer move without waiting; the gap itself comes from the host. The page's own colour picker click still reads its pixel by the older `mag&` request. Revisit if the moment's wait is seen, or if the placing rule ever changes.
+
