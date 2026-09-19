@@ -263,7 +263,9 @@ on 2026-09-14, after a stop at the S1.6 to S1.7 boundary asked him to switch.
 2026-09-15: build straight away, never ask each time. So the task's commit is followed in
 the same turn by the release build, and a reply never offers BUILD as a next step. The
 build is made from the commit alone: the commit archived into `.tmp/release-<commit>/`,
-built with `cargo build --release` into the private target folder `.tmp/release-target/`,
+built with `cargo build --release --features own-extensions` (the switch keeps Rotem's
+inspector in the Recon he runs, `project-os/Decisions.md` 2026-09-19; a public release is
+built without it) into the private target folder `.tmp/release-target/`,
 so another session's uncommitted work stays out and a running Recon's hold on its file
 does not stop the build. It is copied over `host/target/release/recon-host.exe` at once
 when no Recon from that path is running; otherwise a waiting job copies it the moment that

@@ -13,6 +13,10 @@ members = ["pixels"]
 # --editor-demo, --capture-demo, --measure, --platform-report. A product build has none of them, so no command lets the
 # page freeze the screen or write a file (part 5's boundary, review T7).
 stage0-checks = ["dep:tiff"]
+# Rotem's own builds only, never the public release: the editor window loads the unpacked
+# browser extensions in the folder `RECON_PRODUCT_EXTENSIONS` names, his inspector. A way to
+# run outside code in the page, so it is not in a build anyone else gets.
+own-extensions = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -1527,7 +1527,7 @@ fn app() -> Result<&'static AppHandle, String> {
 pub fn create_hidden(app: &AppHandle) -> tauri::Result<()> {
     // No frame of Windows' own: the page draws the top bar, with the title, the controls
     // and the three window buttons (Rotem's call, 2026-09-14). The edges still resize.
-    WebviewWindowBuilder::new(app, "editor", WebviewUrl::App("index.html".into()))
+    let window = WebviewWindowBuilder::new(app, "editor", WebviewUrl::App("index.html".into()))
         .title("Recon")
         // 1800 wide and 1390 tall when it opens (Rotem, 2026-09-18); it was 1600 by 1160.
         .inner_size(1800.0, 1390.0)
@@ -1537,9 +1537,41 @@ pub fn create_hidden(app: &AppHandle) -> tauri::Result<()> {
         .prevent_overflow()
         .center()
         .decorations(false)
-        .visible(false)
-        .build()?;
+        .visible(false);
+    #[cfg(feature = "own-extensions")]
+    let window = with_own_extensions(window);
+    window.build()?;
     Ok(())
+}
+
+/// Unpacked extensions in the editor window, where `RECON_PRODUCT_EXTENSIONS` names their
+/// folder (Rotem, 2026-09-19, for his inspector). Only in a build with `own-extensions`,
+/// which the public release never is. In a profile of its own,
+/// `%LOCALAPPDATA%\Recon\webview-ext`: WebView2 refuses a second process on one profile with
+/// other options, and the check runs share the default one while this Recon is open.
+#[cfg(feature = "own-extensions")]
+fn with_own_extensions<'a>(
+    window: WebviewWindowBuilder<'a, tauri::Wry, AppHandle>,
+) -> WebviewWindowBuilder<'a, tauri::Wry, AppHandle> {
+    let profile = std::env::var_os("LOCALAPPDATA").map(|dir| {
+        std::path::PathBuf::from(dir)
+            .join("Recon")
+            .join("webview-ext")
+    });
+    match (std::env::var_os("RECON_PRODUCT_EXTENSIONS"), profile) {
+        (Some(extensions), Some(profile)) => {
+            crate::log(&format!(
+                "extensions from {} in the profile {}",
+                std::path::Path::new(&extensions).display(),
+                profile.display()
+            ));
+            window
+                .browser_extensions_enabled(true)
+                .extensions_path(extensions)
+                .data_directory(profile)
+        }
+        _ => window,
+    }
 }
 
 /// Shows the editor and reports how long the show call itself took.

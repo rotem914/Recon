@@ -125,6 +125,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-19 · A capture can pick Recon's own editor window like any other; only the capture overlay itself is left out, Rotem's call.
 - 2026-09-19 · The wheel stretches the picture already painted and asks for one region at a time; the host says once whether a picture has a see-through pixel.
 - 2026-09-19 · The magnifier is one unit in the host: the page asks for the finished panel and paints it, Rotem's choice of two.
+- 2026-09-19 · Rotem's inspector is in his own builds of Recon only, behind a build switch, never in the public release.
 
 ---
 
@@ -954,3 +955,19 @@ Option 1, Rotem's, of the two put to him. `host/src/magnifier.rs` holds every nu
 ### Consequences
 A value changes once. In the editor the panel arrives with the host's answer, so it shows a moment after the pointer enters the picture, and a change of its text lands with the next answer. The placing rule, below and right by the gap and flipped at an edge, is still written twice, in `place_panel` and in the page's `placeMag`, since the page must move the panel with every pointer move without waiting; the gap itself comes from the host. The page's own colour picker click still reads its pixel by the older `mag&` request. Revisit if the moment's wait is seen, or if the placing rule ever changes.
 
+
+## 2026-09-19 · Rotem's inspector is in his own builds of Recon only, behind a build switch, never in the public release
+
+### Context
+Rotem wanted his Rocket Inspector extension in his everyday Recon, not only in the demo window of the check build (`f1e3cbf`). A browser extension runs with full reach into the editor's page, and Recon is meant for a public release.
+
+### Options
+1. The product loads whatever folder an environment variable names, in every build. Anyone who can set that variable makes every copy of Recon load their code.
+2. A build switch, `own-extensions`, off by default: only a build made with it has the code at all, and it still needs `RECON_PRODUCT_EXTENSIONS` to name the folder.
+3. The demo window only, as landed.
+
+### Decision
+Option 2, Rotem's GO after the costs were put to him. The variable has a name of its own, not the demo's `RECON_EXTENSIONS`, so setting it for the whole user never keeps a session's demo run open. The window gets a profile of its own, `%LOCALAPPDATA%\Recon\webview-ext`: WebView2 refuses a second process on one profile whose options differ (documented, not measured here), and the check runs use the default profile while his Recon is open.
+
+### Consequences
+The release Rotem runs is built with `--features own-extensions` (`project-os/Workflow.md` step 16); a public release is built without it. With the extension loaded, the key left of 1 belongs to the inspector, so it types nothing in a note, and in Hebrew that key is the semicolon. The height of the timeline, which the page keeps in the browser's storage, starts over once in the new profile.
