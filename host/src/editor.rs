@@ -1321,7 +1321,7 @@ fn show_nothing() {
     CURRENT_ID.store(0, Ordering::SeqCst);
     if let Ok(app) = app() {
         if let Some(window) = app.get_webview_window("editor") {
-            let _ = window.set_title("Recon");
+            let _ = window.set_title("Recon Editor");
         }
     }
 }
@@ -1528,7 +1528,7 @@ pub fn create_hidden(app: &AppHandle) -> tauri::Result<()> {
     // No frame of Windows' own: the page draws the top bar, with the title, the controls
     // and the three window buttons (Rotem's call, 2026-09-14). The edges still resize.
     let window = WebviewWindowBuilder::new(app, "editor", WebviewUrl::App("index.html".into()))
-        .title("Recon")
+        .title("Recon Editor")
         // 1800 wide and 1390 tall when it opens (Rotem, 2026-09-18); it was 1600 by 1160.
         .inner_size(1800.0, 1390.0)
         // Centred in the main display's work area, across and in height (Rotem, 2026-09-15);
@@ -1641,13 +1641,13 @@ pub fn hide(app: &AppHandle) -> Result<&'static str, String> {
 static LAST_RETURN: Mutex<&'static str> = Mutex::new("");
 
 /// The file's name in the title, so it is visible without hunting (§3.4); a capture is
-/// plain "Recon".
+/// plain "Recon Editor".
 fn set_title(app: &AppHandle, info: &ImageInfo) {
     if let Some(window) = app.get_webview_window("editor") {
         let title = if info.file.is_empty() {
-            "Recon".to_string()
+            "Recon Editor".to_string()
         } else {
-            format!("{} - Recon", info.file)
+            format!("{} - Recon Editor", info.file)
         };
         let _ = window.set_title(&title);
     }

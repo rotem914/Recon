@@ -812,7 +812,7 @@ export async function runChecks(editor, invoke) {
     const info = await invoke('editor_open_fixture', { name: 'reference-scene.png' });
     await editor.loadImage(info);
     const title = await invoke('editor_window_title');
-    check('the file name is in the window title', title === 'reference-scene.png - Recon', JSON.stringify(title));
+    check('the file name is in the window title', title === 'reference-scene.png - Recon Editor', JSON.stringify(title));
 
     // Larger than the window, so the view can pan: a picture that fits is always centred,
     // and a zoom around the pointer has nothing to hold then.
@@ -2679,7 +2679,7 @@ export async function runChecks(editor, invoke) {
       && getComputedStyle(document.getElementById('logo')).pointerEvents === 'none' && document.getElementById('title').getBoundingClientRect().left >= logoBox.right,
       `the logo ${Math.round(logoBox.left)},${Math.round(logoBox.top)} ${Math.round(logoBox.width)} by ${Math.round(logoBox.height)}, the title from ${document.getElementById('title').getBoundingClientRect().left}`);
     check('the bar is the drag region, its empty middle included', bar.hasAttribute('data-tauri-drag-region') && document.getElementById('title').hasAttribute('data-tauri-drag-region'));
-    check('the bar carries no title line, and the window\'s own title still names the file', document.getElementById('title').textContent === '' && (await invoke('editor_window_title')) === 'reference-scene.png - Recon',
+    check('the bar carries no title line, and the window\'s own title still names the file', document.getElementById('title').textContent === '' && (await invoke('editor_window_title')) === 'reference-scene.png - Recon Editor',
       document.getElementById('title').textContent);
     const boxes = buttons.map((b) => b.getBoundingClientRect());
     // 48 wide by 40 tall, at the top of the 64 px bar: the bar grew, the buttons did not (Rotem, 2026-09-18).
