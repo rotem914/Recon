@@ -12,7 +12,7 @@ is looked up here, not guessed from a neighbour.
 
 | Token | Name | Duration | Easing | Where it is used |
 |---|---|---|---|---|
-| A1 | Fade in | 144 ms | ease-out | The hover fill of an icon button (`editor/index.html`, `#controls button`); the tick of a done mark as it is pressed (Rotem, 2026-09-16); the icon's line turning the icon line hover colour (Rotem, 2026-09-19). |
+| A1 | Fade in | 144 ms | ease-out | The hover fill of an icon button (`editor/index.html`, `#controls button`); the tick of a done mark as it is pressed (Rotem, 2026-09-16); the icon's line turning the icon line hover colour (Rotem, 2026-09-19); the hover border of a timeline thumbnail (Rotem, 2026-09-19). |
 
 A motion respects the reduced-motion preference: gated at its own surface, the final
 state reachable with no animation at all (`project-os/QA.md` §7).
@@ -304,3 +304,4 @@ Stated by Rotem on 2026-09-16.
 | Air around the thumbnails | 12 px left of the first, 12 px right of the last, 12 px between them (Rotem, 2026-09-17, from 8) |
 | Thumbnail corners | 8 px radius, on the picture and on its cell (Rotem, 2026-09-17, from 13 the same evening, 4 before) |
 | Thumbnail delete | a right press on a thumbnail opens the tabs' dropdown with Delete, which deletes it; no × on the thumbnail (Rotem, 2026-09-19, from a × shown on hover) |
+| Thumbnail hover | a thumbnail that is not the selected one takes the selected one's 2 px border under the pointer, in `#323A43`, fading in by A1 (Rotem, 2026-09-19, after #414C58 and #536070 the same evening) |
