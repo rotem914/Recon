@@ -134,7 +134,7 @@ Stated by Rotem on 2026-09-16 for the thumbnails in a tab after Main.
 | Marking | the tick fades in by A1 |
 | Effect | none beyond the mark itself |
 
-The fills are not stated yet. Provisional in the page: the thumbnail ×'s dark fill, and the
+The fills are not stated yet. Provisional in the page: the dark fill the thumbnail's × had, rgba(10,12,14,.75), and the
 restore button's green once ticked.
 
 ### Settings
@@ -187,7 +187,7 @@ The rest is not stated yet. Provisional in the page until it is: the box a 2 px 
 callout line's #7aa7ff; the size bubble beside the corner the drag ended at, 8 px right of
 and below it, dark #1b1f24 with a 1 px #3a4149 border, 4 px corners, white 14 px medium
 text, all in image pixels like a note; the × centred on the box's top right corner, the
-thumbnail ×'s dark fill and its red on hover, a 1.5 px line, 16 screen pixels at every zoom.
+dark fill the thumbnail's × had, rgba(10,12,14,.75), and its red on hover, #c0392b, a 1.5 px line, 16 screen pixels at every zoom.
 
 ### Crop
 
@@ -303,3 +303,4 @@ Stated by Rotem on 2026-09-16.
 | Thumbnail height by default | 112 px, 12 px clear above it below the timeline's 1 px top line, and the scroller's 12 px band under it (4 px clear, the 4 px thumb, 4 px clear), so the timeline is 137 px tall until it is dragged (Rotem, 2026-09-17: the band, option 1 of three, from 128 with 8 px below, which sat 4 px of every thumbnail under the scroller; the 12 above, from 8, later that day) |
 | Air around the thumbnails | 12 px left of the first, 12 px right of the last, 12 px between them (Rotem, 2026-09-17, from 8) |
 | Thumbnail corners | 8 px radius, on the picture and on its cell (Rotem, 2026-09-17, from 13 the same evening, 4 before) |
+| Thumbnail delete | a right press on a thumbnail opens the tabs' dropdown with Delete, which deletes it; no × on the thumbnail (Rotem, 2026-09-19, from a × shown on hover) |

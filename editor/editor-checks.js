@@ -2139,7 +2139,17 @@ export async function runChecks(editor, invoke) {
     // Since S2.7 the strip ends with a Trash chip once something is in the trash, so the
     // documents are counted by their thumbnails.
     const thumbs = () => strip.querySelectorAll('.thumb:not(.trashed)').length;
-    strip.children[2].querySelector('.x').click(); // the oldest, the file's document, at the right
+    // A right press on the thumbnail opens the menu with Delete; no × on it (Rotem, 2026-09-19).
+    const oldest = strip.children[2]; // the file's document, at the right
+    const thumbMenu = document.getElementById('tab-menu');
+    const oldestBox = oldest.getBoundingClientRect();
+    const thumbTook = !oldest.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: oldestBox.left + 12, clientY: oldestBox.top + 16 }));
+    check('a thumbnail carries no ×, and a right press on it opens the menu with Delete alone, deleting nothing, and not the system menu', !strip.querySelector('.thumb .x') && thumbTook && getComputedStyle(thumbMenu).display === 'block' && thumbMenu.textContent.trim() === 'Delete' && thumbs() === 3,
+      `× ${!!strip.querySelector('.thumb .x')}, took ${thumbTook}, ${getComputedStyle(thumbMenu).display}, thumbnails ${thumbs()}`);
+    document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 7, button: 0 }));
+    check('a press elsewhere closes the thumbnail\'s menu and deletes nothing', getComputedStyle(thumbMenu).display === 'none' && thumbs() === 3);
+    oldest.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: oldestBox.left + 12, clientY: oldestBox.top + 16 }));
+    thumbMenu.querySelector('button').click();
     for (let i = 0; i < 60 && thumbs() !== 2; i += 1) await sleep(50);
     let trash = await invoke('editor_trash_list');
     check('deleted from its thumbnail: off the timeline, into the trash, the one on screen unchanged', thumbs() === 2 && trash.some(([id]) => id === fileDoc) && model.image.document_id === shots[1].document_id && hud.textContent.includes('trash for 30 days'),
@@ -4083,11 +4093,12 @@ export async function runChecks(editor, invoke) {
     await editor.loadImage(await invoke('editor_show_document', { id: shot.document_id }));
     await editor.refreshStrip();
     for (let i = 0; i < 60 && thumbs() !== 3; i += 1) await sleep(50);
-    strip.children[2].querySelector('.x').click();
+    strip.children[2].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: 20, clientY: 400 }));
+    document.getElementById('tab-menu').querySelector('button').click();
     for (let i = 0; i < 60 && thumbs() !== 2; i += 1) await sleep(50);
     let trash = await invoke('editor_trash_list');
     const after = await invoke('editor_file_print', { path: at('img2.png') });
-    check('its x takes the pointer off: two thumbnails, nothing in the trash, the file byte for byte as it was, and the notice says so',
+    check('Delete in its menu takes the pointer off: two thumbnails, nothing in the trash, the file byte for byte as it was, and the notice says so',
       thumbs() === 2 && trash.length === 0 && after === before && hud.textContent.includes('untouched'), `thumbnails ${thumbs()}, trash ${trash.length}, ${before} then ${after}, "${hud.textContent}"`);
     press({ key: 'z', code: 'KeyZ', ctrlKey: true });
     for (let i = 0; i < 60 && thumbs() !== 3; i += 1) await sleep(50);

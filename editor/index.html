@@ -155,11 +155,6 @@
            display: grid; place-items: center; color: #6b7480; font-size: 11px; }
   .thumb img { max-width: 100%; max-height: 100%; display: block; border-radius: 8px; /* the picture's own corners, 8 px (Rotem, 2026-09-17, from 13) */ }
   .thumb.current { border-color: #7aa7ff; }
-  .thumb .x { position: absolute; right: 2px; top: 2px; width: 18px; height: 18px; border-radius: 9px;
-              border: none; background: rgba(10,12,14,.75); color: #f2f2f2; font: 13px/18px system-ui, sans-serif;
-              cursor: pointer; display: none; padding: 0; }
-  .thumb:hover .x { display: block; }
-  .thumb .x:hover { background: #c0392b; }
   /* The done mark (Rotem, 2026-09-16): in a tab after Main, a round 24 by 24 button at the
      thumbnail's top left, a 1 px white border, a 20 by 20 tick inside it,
      shown on hover; once pressed it stays shown and the tick fades in by A1, to say this
@@ -311,7 +306,7 @@
   /* The ruler's x (Rotem, 2026-09-16): a round 16 px button with a 12 px X, shown on hover over the
      ruler, centred on its top right corner. Counter-scaled by the scene's own scale (--k), so it is
      16 screen pixels at every zoom; never in a copy, the export takes it out. Its fill is
-     provisional: the thumbnail x's. Hidden while the ruler is being drawn. */
+     provisional: the ones the thumbnail's x had. Hidden while the ruler is being drawn. */
   .ruler .x { position: absolute; left: calc(100% + 2px); top: -2px; width: 16px; /* on the outer corner, past the 2 px border */ height: 16px; border-radius: 8px; border: none; padding: 0;
               background: rgba(10,12,14,.75); color: #f2f2f2; cursor: pointer; display: none; place-items: center;
               transform-origin: 0 0; transform: scale(calc(1 / var(--k, 1))) translate(-50%, -50%); }
@@ -1789,17 +1784,12 @@
           if (doc.linked) { notice(`NOT OPENED: ${err}`, 0); refreshStrip().catch(() => {}); }
         });
       });
-      // The delete (§3.8, S2.5): into Recon's trash for thirty days; one click, no dialog.
-      const x = document.createElement('button');
-      x.className = 'x';
-      x.type = 'button';
-      x.textContent = '×';
-      x.title = 'Delete this document (Recon keeps it in its trash for 30 days)';
-      x.addEventListener('click', (event) => {
-        event.stopPropagation();
-        deleteDocument(doc.id).catch((err) => console.error('delete', err));
+      // The delete (§3.8, S2.5): into Recon's trash for thirty days; no dialog. A right press
+      // on the thumbnail opens the tabs' menu with Delete; no × on it (Rotem, 2026-09-19).
+      el.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        openTabMenu(doc.id, event.clientX, event.clientY, (id) => deleteDocument(id).catch((err) => console.error('delete', err)));
       });
-      el.appendChild(x);
       if (cell.tab) {
         // The done mark, in a tab after Main only (Rotem, 2026-09-16).
         const done = document.createElement('button');
@@ -1996,11 +1986,14 @@
   };
   // The tab's menu: Delete, which deletes the tab at once, its captures staying in Main and
   // Ctrl+Z bringing it back. A press anywhere else, Escape, or the window losing focus closes it.
+  // A thumbnail opens the same menu, and Delete then deletes its document instead.
   const tabMenu = document.getElementById('tab-menu');
   let tabMenuFor = null;
+  let tabMenuAct = null;
   const closeTabMenu = () => { tabMenuFor = null; tabMenu.classList.remove('open'); };
-  const openTabMenu = (id, x, y) => {
+  const openTabMenu = (id, x, y, act = deleteTab) => {
     tabMenuFor = id;
+    tabMenuAct = act;
     tabMenu.classList.add('open');
     const box = tabMenu.getBoundingClientRect();
     tabMenu.style.left = `${Math.max(0, Math.min(window.innerWidth - box.width, x))}px`;
@@ -2010,7 +2003,7 @@
   tabMenu.firstElementChild.addEventListener('click', () => {
     const id = tabMenuFor;
     closeTabMenu();
-    if (id != null) deleteTab(id);
+    if (id != null) tabMenuAct(id);
   });
   tabMenu.addEventListener('contextmenu', (event) => event.preventDefault());
   tabMenu.addEventListener('keydown', (event) => {
