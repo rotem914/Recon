@@ -1528,7 +1528,12 @@
     return r;
   };
   for (const button of document.querySelectorAll('#tools button')) {
-    button.addEventListener('click', (event) => { pickTool(button.dataset.tool).catch((err) => console.error('tool', err)); event.currentTarget.blur(); });
+    button.addEventListener('click', (event) => {
+      // A click on the tool already in hand puts it down (Rotem, 2026-09-19).
+      if (model.tool === button.dataset.tool) setTool(null);
+      else pickTool(button.dataset.tool).catch((err) => console.error('tool', err));
+      event.currentTarget.blur();
+    });
   }
 
   /// Where the line from the anchor meets the bubble's edge, so the arrow touches the box

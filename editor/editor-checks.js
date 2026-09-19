@@ -3850,6 +3850,13 @@ export async function runChecks(editor, invoke) {
     check('K picks the crop, and its button in the sidebar is lit', model.tool === 'crop' && document.querySelector('#tools [data-tool="crop"]').classList.contains('active'));
     const button = document.querySelector('#tools [data-tool="crop"]');
     check('the crop button sits after Ruler, named Crop, an icon button like the others', !!button && button.previousElementSibling.dataset.tool === 'ruler' && button.getAttribute('aria-label') === 'Crop' && getComputedStyle(button).width === '48px');
+    // A click on the lit button puts the tool down, and one more takes it up again (Rotem, 2026-09-19).
+    button.click();
+    await sleep(0);
+    check('a click on the lit Crop button puts the crop down: no tool, the button dark, the frame gone', model.tool === null && !button.classList.contains('active') && getComputedStyle(frame).display === 'none', `tool ${model.tool}; ${getComputedStyle(frame).display}`);
+    button.click();
+    await sleep(0);
+    check('and one more click takes it up again', model.tool === 'crop' && button.classList.contains('active'), `tool ${model.tool}`);
     check('with the tool in hand a frame sits on the picture\'s edges, with a handle at each corner and the middle of each side', getComputedStyle(frame).display === 'block' && frameAt() === '0px 0px 400px 300px' && frame.querySelectorAll('.h').length === 8
       && ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se'].every((e) => !!handle(e)), `${getComputedStyle(frame).display}; ${frameAt()}; ${frame.querySelectorAll('.h').length} handles`);
     const h1 = handle('e').getBoundingClientRect();
