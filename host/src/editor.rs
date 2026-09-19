@@ -49,6 +49,8 @@ struct Level {
 pub struct Image {
     pub frame: Frame,
     levels: Mutex<Vec<Arc<Level>>>,
+    /// Whether every pixel of the frame is solid, read once, the first time it is asked.
+    opaque: OnceLock<bool>,
 }
 
 impl Image {
@@ -56,7 +58,16 @@ impl Image {
         Self {
             frame,
             levels: Mutex::new(Vec::new()),
+            opaque: OnceLock::new(),
         }
+    }
+
+    /// A picture with no see-through pixel: the page then paints its regions as they come,
+    /// without looking through each one for a pixel to lay over the background.
+    fn is_opaque(&self) -> bool {
+        *self
+            .opaque
+            .get_or_init(|| recon_pixels::is_opaque(&self.frame.rgba))
     }
 
     /// The level at 1/2^shift, built on demand from the one above it. Serialised by the
@@ -2307,6 +2318,9 @@ pub struct ImageInfo {
     pub edited_ago_s: Option<u64>,
     /// A resumed document whose file has changed on disk since it preserved its image.
     pub source_changed: bool,
+    /// No pixel the page is sent can be see-through: every pixel of the frame is solid. Never
+    /// true for a vector, whose regions are drawn from the file again at each zoom.
+    pub opaque: bool,
 }
 
 #[tauri::command]
@@ -2380,6 +2394,7 @@ pub fn editor_image_info() -> Result<ImageInfo, String> {
     };
     let standing = standing();
     Ok(ImageInfo {
+        opaque: kind != "vector" && image.is_opaque(),
         width: image.frame.width(),
         height: image.frame.height(),
         source: image.frame.source.to_string(),

@@ -67,9 +67,22 @@ pub fn half(width: u32, height: u32) -> (u32, u32) {
     ((width / 2).max(1), (height / 2).max(1))
 }
 
+/// Whether every pixel is solid, so nothing of the image is see-through.
+pub fn is_opaque(rgba: &[u8]) -> bool {
+    rgba.as_chunks::<4>().0.iter().all(|px| px[3] == 255)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn one_see_through_pixel_is_not_opaque() {
+        let mut img = gradient(4, 4);
+        assert!(is_opaque(&img));
+        img[4 * 9 + 3] = 254;
+        assert!(!is_opaque(&img));
+    }
 
     fn gradient(w: u32, h: u32) -> Vec<u8> {
         let mut v = vec![0u8; (w * h * 4) as usize];

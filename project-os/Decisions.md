@@ -123,6 +123,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-18 · The mode follows what is done: a tool picked starts the annotation, a finished element puts the tool down, and the Annotate button and the A key are gone.
 - 2026-09-18 · The colour picker's HEX is put on the clipboard by the host from a colour the page names, never a text; the picker starts no annotation.
 - 2026-09-19 · A capture can pick Recon's own editor window like any other; only the capture overlay itself is left out, Rotem's call.
+- 2026-09-19 · The wheel stretches the picture already painted and asks for one region at a time; the host says once whether a picture has a see-through pixel.
 
 ---
 
@@ -978,3 +979,35 @@ With the editor on screen when a capture starts, it can be lit and captured, and
 too, as the parts of any window are. Hidden and minimised windows stay out by the same tests
 as before, so Recon's hidden windows are never picked. Revisit if a window of Recon's that is
 not the editor, a menu or a dialog of its own, turns out to be picked where it should not be.
+
+## 2026-09-19 · The wheel stretches the picture already painted and asks for one region at a time; the host says once whether a picture has a see-through pixel
+
+### Context
+Rotem found the zoom on an opened picture stuck in a fast spin of the wheel. Every notch asked
+the host for a region and made the one on its way stale, so nothing was painted until the wheel
+rested: the stall the pan drag had on 2026-09-15, whose entry named the wheel as the next place
+to look. Beside it, every paint of an opened file looked through each pixel for a see-through
+one to lay over the background, in the page, whether the file had any or not.
+
+### Options
+1. Ask for a region at most once a frame.
+2. Stop dropping late answers while the wheel turns.
+3. Stretch what is already painted to the new zoom at once, the copy of the whole picture under
+   it, the notes with it, and ask for one region at a time, the newest zoom as each lands.
+
+For the see-through check: the page remembers a region that had none, or the host reads the
+whole frame once and says so with the picture.
+
+### Decision
+Option 3, mine, on Rotem's GO for both. Option 1 still stalls when a region takes longer than a
+frame; option 2 paints a region at a zoom it was not made for, at its natural size, so the
+picture would jump between sizes. The stretch is smoothed, as the host's own resample is. The
+host reads the frame, since a region without a see-through pixel says nothing of the next one;
+a vector is never called solid, its regions being drawn from the file again at each zoom.
+
+### Consequences
+Mid-spin the picture is a stretched copy, soft when zooming in, and turns sharp when a region
+lands; at rest the view is the ordinary paint, placed as F74 asks. The keys' zoom and
+`setZoomAround` still paint the direct way. The first info of a picture costs one pass over its
+pixels in the host, not measured here. Revisit if the soft moment reads as a fault, or if Rotem
+wants a glide between notches, which was offered and left for after this.

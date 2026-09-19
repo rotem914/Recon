@@ -188,6 +188,8 @@
      so an edge the drag uncovers is never empty (Rotem, 2026-09-15). */
   #backdrop { position: absolute; left: 0; top: 0; display: none; }
   body.panning #backdrop { display: block; }
+  /* Stretched between the wheel's notches, the picture is smoothed as the host's own resample is. */
+  body.zooming #canvas { image-rendering: auto; }
   /* The annotation margin, drawn under the picture in the same colour the host puts in the
      output, so what is on screen is what a copy contains (§3.5, §3.6). */
   #mat { position: absolute; left: 0; top: 0; display: none; background: #e9eaec; }
@@ -700,8 +702,11 @@
     const outH = Math.max(1, Math.round(srcH * model.zoom));
 
     const ticket = ++regionRequest;
+    const asked = { zoom: model.zoom, x: model.pan.x, y: model.pan.y };
     if (!shown) {
       // Only margin in view: nothing to fetch, but the mat and the notes still move.
+      document.body.classList.remove('zooming');
+      if (!drag) document.body.classList.remove('panning');
       placeComposition(vp);
       layoutScene();
       drawHud();
@@ -732,17 +737,24 @@
     canvas.style.height = `${height / dpr()}px`;
     placeComposition(vp);
     const pixels = new Uint8ClampedArray(bytes);
-    // A capture is opaque; only a file can carry transparency.
-    if (model.image.file) flattenOntoPaper(pixels, width * height);
+    // A capture is opaque; only a file can carry transparency, and the host says when this
+    // one has none, so its regions are not looked through pixel by pixel at every paint.
+    if (model.image.file && !model.image.opaque) flattenOntoPaper(pixels, width * height);
     context.putImageData(new ImageData(pixels, width, height), 0, 0);
     // The whole picture on the canvas is copied under it for the next drag, and an ordinary
     // paint landing ends the copy's showing (Rotem, 2026-09-15).
     if (x === pic.x && y === pic.y && srcW === pic.w && srcH === pic.h) captureBackdrop(width, height);
-    if (!drag) document.body.classList.remove('panning');
-    lastRegion = { x, y, w: srcW, h: srcH, width, height, zoom: model.zoom, ms: Math.round(performance.now() - askedAt) };
+    // The wheel may have zoomed on while this region was on its way: the next one is already
+    // owed, and until it lands this one is stretched to the view as it is now.
+    const zoomedOn = !(drag && drag.kind === 'pan')
+      && (model.zoom !== asked.zoom || model.pan.x !== asked.x || model.pan.y !== asked.y);
+    if (!zoomedOn) document.body.classList.remove('zooming');
+    if (!drag && !zoomedOn) document.body.classList.remove('panning');
+    lastRegion = { x, y, w: srcW, h: srcH, width, height, zoom: asked.zoom, ms: Math.round(performance.now() - askedAt) };
     // A pan drag may have moved on while this region was on its way: it is placed by its own
     // origin, so it lines up with the notes until the next one lands (Rotem, 2026-09-15).
     if (drag && drag.kind === 'pan') slideCanvas(lastRegion);
+    else if (zoomedOn) stretchCanvas(lastRegion);
     console.log(`painted ${width}x${height} at zoom ${model.zoom.toFixed(3)} in ${lastRegion.ms} ms`);
     layoutScene();
     drawHud();
@@ -798,6 +810,17 @@
     if (!region || region.zoom !== model.zoom) return;
     canvas.style.left = `${model.offset.x + ((region.x - model.pan.x) * model.zoom) / dpr()}px`;
     canvas.style.top = `${model.offset.y + ((region.y - model.pan.y) * model.zoom) / dpr()}px`;
+  };
+
+  // While the wheel zooms, the picture on the canvas is stretched over the place its region has
+  // in the view as it is now, so it grows and shrinks with every notch and stays registered
+  // with the notes; the region at the new zoom lands over it, sharp (Rotem, 2026-09-19).
+  const stretchCanvas = (region) => {
+    if (!region) return;
+    canvas.style.left = `${model.offset.x + ((region.x - model.pan.x) * model.zoom) / dpr()}px`;
+    canvas.style.top = `${model.offset.y + ((region.y - model.pan.y) * model.zoom) / dpr()}px`;
+    canvas.style.width = `${(region.w * model.zoom) / dpr()}px`;
+    canvas.style.height = `${(region.h * model.zoom) / dpr()}px`;
   };
 
   // ---------------------------------------------------------------- the callout layer
@@ -2974,7 +2997,7 @@
     if (event.deltaY !== 0) {
       const factor = event.deltaY < 0 ? 1.25 : 1 / 1.25;
       const box = stage.getBoundingClientRect();
-      setZoomAround(model.zoom * factor, event.clientX - box.left, event.clientY - box.top);
+      zoomWhileWheeling(model.zoom * factor, event.clientX - box.left, event.clientY - box.top);
       return;
     }
     const step = event.deltaMode === 1 ? 40 : 1;
@@ -3183,6 +3206,32 @@
     model.pan.x = at.x - ((cssX - model.offset.x) * dpr()) / model.zoom;
     model.pan.y = at.y - ((cssY - model.offset.y) * dpr()) / model.zoom;
     return paintRegion();
+  };
+
+  // The wheel's zoom (Rotem, 2026-09-19). Every notch asked for a region, and each newer
+  // request made the one on its way stale, so a fast spin showed nothing until it stopped.
+  // Now the picture already painted, the copy of the whole picture under it and the notes take
+  // the new zoom at once, and one region is asked for at a time, the newest zoom as each lands.
+  const zoomWhileWheeling = (next, cssX, cssY) => {
+    const at = {
+      x: model.pan.x + ((cssX - model.offset.x) * dpr()) / model.zoom,
+      y: model.pan.y + ((cssY - model.offset.y) * dpr()) / model.zoom,
+    };
+    // The same stops as setZoomAround: the whole picture as the stage is now, and 8.
+    model.zoom = Math.min(8, Math.max(Math.min(wholeNow(), model.zoom), next));
+    model.pan.x = at.x - ((cssX - model.offset.x) * dpr()) / model.zoom;
+    model.pan.y = at.y - ((cssY - model.offset.y) * dpr()) / model.zoom;
+    // A stage with no area paints nothing and places nothing, as in paintRegion.
+    if (stageHasArea()) {
+      clampPan();
+      placeComposition(viewport());
+      stretchCanvas(lastRegion);
+      document.body.classList.add('zooming');
+      if (backdropFor === imageKey()) document.body.classList.add('panning');
+      layoutScene();
+      drawHud();
+    }
+    paintWhileDragging();
   };
 
   const setZoom = (next) => {

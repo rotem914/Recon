@@ -848,6 +848,31 @@ export async function runChecks(editor, invoke) {
     check('and back in around it', model.zoom > zoomOut && Math.abs(back.x - before.x) < 1.5 && Math.abs(back.y - before.y) < 1.5,
       `zoom ${zoomOut.toFixed(3)} to ${model.zoom.toFixed(3)}, the point under the pointer moved ${(back.x - before.x).toFixed(2)},${(back.y - before.y).toFixed(2)} image px`);
 
+    // Rotem, 2026-09-19: a fast spin of the wheel. Each notch used to make the region on its way
+    // stale, so nothing was painted until the wheel rested. Now the picture already painted is
+    // stretched to the new zoom at once, read here before any region can have landed, and the
+    // view at rest is an ordinary paint at the last zoom.
+    await editor.setZoom(6);
+    const spinFrom = model.zoom;
+    const canvasEl = document.getElementById('canvas');
+    for (let i = 0; i < 5; i += 1) wheelAt({ deltaY: 120 });
+    const held = editor.lastRegion();
+    const stretchedTo = parseFloat(canvasEl.style.width);
+    const stretchWanted = (held.w * model.zoom) / editor.ratioOf();
+    check('a fast spin stretches the picture already painted to the new zoom at once',
+      model.zoom < spinFrom && held.zoom === spinFrom && Math.abs(stretchedTo - stretchWanted) < 0.01 && document.body.classList.contains('zooming'),
+      `zoom ${spinFrom.toFixed(3)} to ${model.zoom.toFixed(3)}, the canvas ${stretchedTo.toFixed(2)} css px wide for ${stretchWanted.toFixed(2)}, the region held from zoom ${held.zoom.toFixed(3)}`);
+    const sceneZoom = /scale\(([\d.]+)\)/.exec(document.getElementById('scene').style.transform);
+    check('and the notes take the new zoom with it', !!sceneZoom && Math.abs(Number(sceneZoom[1]) - model.zoom / editor.ratioOf()) < 0.0001,
+      `the scene's scale ${sceneZoom && sceneZoom[1]} for ${(model.zoom / editor.ratioOf()).toFixed(4)}`);
+    for (let i = 0; i < 80 && document.body.classList.contains('zooming'); i += 1) await sleep(25);
+    const rested = editor.lastRegion();
+    check('at rest the view is an ordinary paint at the last zoom',
+      !document.body.classList.contains('zooming') && !document.body.classList.contains('panning') && rested.zoom === model.zoom
+        && Math.abs(parseFloat(canvasEl.style.width) - rested.width / editor.ratioOf()) < 0.01,
+      `the region at zoom ${rested.zoom.toFixed(3)} for ${model.zoom.toFixed(3)}, the canvas ${canvasEl.style.width} for ${rested.width} px`);
+    check('the host says whether the file has a see-through pixel', typeof model.image.opaque === 'boolean', JSON.stringify(model.image.opaque));
+
     // A sideways wheel still pans and leaves the zoom alone: from the left end at the top
     // zoom, where this picture is wider than the window.
     await editor.setZoom(8);
