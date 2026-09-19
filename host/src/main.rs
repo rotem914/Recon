@@ -279,7 +279,7 @@ fn editor_run(demo: bool) -> i32 {
                 .map(|exe| exe.with_file_name("s18-store"))
                 .unwrap_or_else(|_| "s18-store".into()),
         );
-        tauri::WebviewWindowBuilder::new(
+        let mut window = tauri::WebviewWindowBuilder::new(
             app,
             "editor",
             tauri::WebviewUrl::App("index.html".into()),
@@ -287,8 +287,24 @@ fn editor_run(demo: bool) -> i32 {
         .title("Recon")
         .inner_size(1280.0, 800.0)
         .decorations(false)
-        .visible(demo)
-        .build()?;
+        .visible(demo);
+        // The trial: an unpacked extension in the demo's window only, in a profile of its
+        // own beside the executable, never the shared one.
+        if let Some(extensions) = std::env::var_os("RECON_EXTENSIONS").filter(|_| demo) {
+            let profile = std::env::current_exe()
+                .map(|exe| exe.with_file_name("s-webview-ext"))
+                .unwrap_or_else(|_| "s-webview-ext".into());
+            println!(
+                "extensions from {} in the profile {}",
+                std::path::Path::new(&extensions).display(),
+                profile.display()
+            );
+            window = window
+                .browser_extensions_enabled(true)
+                .extensions_path(extensions)
+                .data_directory(profile);
+        }
+        window.build()?;
         Ok(())
     });
 

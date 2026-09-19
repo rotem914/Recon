@@ -3235,6 +3235,11 @@ mod checks {
     /// The page's way to end a run.
     #[tauri::command]
     pub fn editor_exit(app: AppHandle, code: i32) {
+        // The trial: a demo with an extension loaded stays open, so it can be inspected.
+        if editor_wants_demo() && std::env::var_os("RECON_EXTENSIONS").is_some() {
+            println!("the demo ended with {code} and stays open for the extension");
+            return;
+        }
         app.exit(code);
     }
 
