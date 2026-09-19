@@ -85,7 +85,7 @@
      end above it, and fullscreen puts it away. It never rises into the top bar: past that, a taller
      timeline covers it, as it covers the sidebar. Still provisional: the colour and the 16 px line. */
   body.sized:not(.fullscreen) { --size-band: 64px; } /* 64 tall (Rotem, 2026-09-19, from 48): 24 above, the 16 px line, 24 below, the tabs and the size centred in its height */
-  #image-size { position: absolute; left: 0; right: 0; bottom: 0; height: 16px; margin: 24px 0; padding: 0 12px;
+  #image-size { position: absolute; left: 0; right: 0; bottom: 0; height: 16px; margin: 25px 0 23px; /* 1 px under the band's middle: Google Sans' digits sit high on their line, and this puts the digits themselves in the middle (Rotem, 2026-09-19) */ padding: 0 12px;
                 display: none; z-index: 4; background: var(--paper); color: #cfd4da; white-space: nowrap; text-align: center;
                 font: 500 16px/16px "Google Sans", ui-sans-serif, "Segoe UI", system-ui, sans-serif; }
   body.sized #image-size { display: block; }

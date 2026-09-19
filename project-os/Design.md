@@ -94,7 +94,7 @@ Stated by Rotem on 2026-09-16.
 | Part | Value |
 |---|---|
 | Container | 100% of the window's width, above the timeline |
-| Band | 64 px tall, the size and the tabs centred in its height: 24 px above and below the size's 16 px line, 16 px above and below the 32 px tabs (Rotem, 2026-09-19, from 48 tall with 16 px above and below the size) |
+| Band | 64 px tall, the size and the tabs centred in its height: the size's 16 px line 25 px under the band's top and 23 above its bottom, which puts the digits themselves in the middle, since Google Sans' digits sit high on their line (Rotem, 2026-09-19, the same evening, from 24 and 24), 16 px above and below the 32 px tabs (Rotem, 2026-09-19, from 48 tall with 16 px above and below the size) |
 | Background | the app background |
 | Content | the picture's size in pixels, written as 1200x1500 |
 | Text | Google Sans, 16 px, medium (500), centred in the window (Rotem, 2026-09-17, from 14 px) |

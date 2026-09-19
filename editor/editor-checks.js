@@ -1979,9 +1979,9 @@ export async function runChecks(editor, invoke) {
     const sizeBox = sizeEl.getBoundingClientRect();
     const sizeStripTop = Math.round(strip.getBoundingClientRect().top);
     const sizeStageBottom = Math.round(stage.getBoundingClientRect().bottom);
-    check('the picture\'s size is in a container across the window, 24 px under the stage and 24 px above the timeline, in a band 64 tall with the tabs centred in its height as it is, on the app\'s background',
+    check('the picture\'s size is in a container across the window, 25 px under the stage and 23 px above the timeline, its digits in the middle of a band 64 tall with the tabs centred in its height as it is, on the app\'s background',
       sizeEl.textContent === `${model.image.width}x${model.image.height}` && sizeBox.left === 0 && Math.round(sizeBox.width) === window.innerWidth
-        && Math.round(sizeBox.top) === sizeStageBottom + 24 && Math.round(sizeBox.bottom) === sizeStripTop - 24 && sizeStripTop - sizeStageBottom === 64
+        && Math.round(sizeBox.top) === sizeStageBottom + 25 && Math.round(sizeBox.bottom) === sizeStripTop - 23 && sizeStripTop - sizeStageBottom === 64
         && Math.round(document.getElementById('tabbar').getBoundingClientRect().top) === sizeStageBottom + 16 && Math.round(document.getElementById('tabbar').getBoundingClientRect().bottom) === sizeStripTop - 16
         && getComputedStyle(sizeEl).backgroundColor === getComputedStyle(document.body).backgroundColor,
       `"${sizeEl.textContent}" at ${Math.round(sizeBox.left)}-${Math.round(sizeBox.right)} by ${Math.round(sizeBox.top)}-${Math.round(sizeBox.bottom)}, the stage to ${sizeStageBottom}, the strip from ${sizeStripTop}, ${getComputedStyle(sizeEl).backgroundColor}`);
@@ -2950,10 +2950,10 @@ export async function runChecks(editor, invoke) {
       `${underSidebar.length} button(s) below the strip's top at ${stripTop}, hit ${hits.map((h) => h && (h.id || h.className || h.tagName)).join(' ')}; at the edge ${handleHit && (handleHit.id || handleHit.tagName)}`);
     const h3 = editor.setStripHeight(100000);
     check('the strip never takes more than 96% of the window', h3 === Math.floor(window.innerHeight * 0.96), `${h3} of ${window.innerHeight}`);
-    // The picture's size never rises into the top bar: it stops 24 px under it, and the strip covers it there (2026-09-16).
+    // The picture's size never rises into the top bar: it stops 25 px under it, and the strip covers it there (2026-09-16).
     const cappedSize = document.getElementById('image-size').getBoundingClientRect();
     const cappedHit = document.elementFromPoint(100, cappedSize.top + 8);
-    check('at the ceiling the picture\'s size stops 24 px under the top bar, and the strip covers it', Math.round(cappedSize.top) === 88 && strip.contains(cappedHit),
+    check('at the ceiling the picture\'s size stops 25 px under the top bar, and the strip covers it', Math.round(cappedSize.top) === 89 && strip.contains(cappedHit),
       `the size from ${Math.round(cappedSize.top)}, the strip from ${Math.round(strip.getBoundingClientRect().top)}, hit ${cappedHit && (cappedHit.id || cappedHit.className || cappedHit.tagName)}`);
 
     // The handle itself, with pointer events: up by 200 from the default, then a double-click.
@@ -3260,11 +3260,11 @@ export async function runChecks(editor, invoke) {
 
     // The plus: an icon button at the left of the band, 32 by 32, centred in the band's height, a 20 by 20 icon; no tab yet.
     const plusBox = plus.getBoundingClientRect();
-    const bandTop = Math.round(sizeEl.getBoundingClientRect().top) - 16;
+    const bandTop = Math.round(sizeEl.getBoundingClientRect().top) - 25; // the size sits 25 px under the band's top (2026-09-19)
     const icon = plus.querySelector('svg').getBoundingClientRect();
     check('the plus sits at the left of the size band, 32 by 32, 8 px in and centred in the band, with a 20 by 20 icon and no text',
       getComputedStyle(tabbar).display === 'flex' && Math.round(plusBox.width) === 32 && Math.round(plusBox.height) === 32 && Math.round(plusBox.left) === 8
-        && Math.round(plusBox.top) === bandTop + 8 && Math.round(icon.width) === 20 && Math.round(icon.height) === 20 && plus.textContent.trim() === '' && plus.getAttribute('aria-label') === 'New tab',
+        && Math.round(plusBox.top) === bandTop + 16 && Math.round(icon.width) === 20 && Math.round(icon.height) === 20 && plus.textContent.trim() === '' && plus.getAttribute('aria-label') === 'New tab',
       `${Math.round(plusBox.left)},${Math.round(plusBox.top)} ${Math.round(plusBox.width)}x${Math.round(plusBox.height)}, the band from ${bandTop}, icon ${Math.round(icon.width)}x${Math.round(icon.height)}`);
     check('before any press there is no tab, and the timeline lists the whole library', tabEls().length === 0 && thumbs().length === 2, `${tabEls().length} tabs, ${thumbs().length} thumbnails`);
 
