@@ -84,13 +84,13 @@
      shown, its text centred in the window in Google Sans at 16 px, medium (Rotem, 2026-09-17, from 14). The stage and the sidebar
      end above it, and fullscreen puts it away. It never rises into the top bar: past that, a taller
      timeline covers it, as it covers the sidebar. Still provisional: the colour and the 16 px line. */
-  body.sized:not(.fullscreen) { --size-band: 48px; } /* 16 above, the 16 px line, 16 below */
-  #image-size { position: absolute; left: 0; right: 0; bottom: 0; height: 16px; margin: 16px 0; padding: 0 12px;
+  body.sized:not(.fullscreen) { --size-band: 64px; } /* 64 tall (Rotem, 2026-09-19, from 48): 24 above, the 16 px line, 24 below, the tabs and the size centred in its height */
+  #image-size { position: absolute; left: 0; right: 0; bottom: 0; height: 16px; margin: 24px 0; padding: 0 12px;
                 display: none; z-index: 4; background: var(--paper); color: #cfd4da; white-space: nowrap; text-align: center;
                 font: 500 16px/16px "Google Sans", ui-sans-serif, "Segoe UI", system-ui, sans-serif; }
   body.sized #image-size { display: block; }
-  /* Its margin box ends 48 px above where it starts, so it stops at the top bar's 64 px. */
-  body.strip #image-size { bottom: min(var(--strip-h, 96px), calc(100vh - 112px)); }
+  /* Its margin box ends 64 px above where it starts, so it stops at the top bar's 64 px. */
+  body.strip #image-size { bottom: min(var(--strip-h, 96px), calc(100vh - 128px)); }
   body.fullscreen #image-size { display: none; }
   /* The timeline's tabs (Rotem, 2026-09-16): at the left of the picture's size band a plus, an
      icon button as the sidebar's (32 by 32, a 20 by 20 icon with round ends, the hover fill by
@@ -98,10 +98,10 @@
      never deleted, then the tabs the plus made, each a feed of its own captures, deleted by the
      × on it and dragged into another place after Main. The bar stops short of the size text.
      Provisional until Rotem states a look: 12 px text, the hover colour on the selected tab. */
-  #tabbar { position: absolute; left: 8px; bottom: 8px; height: 32px; display: none; z-index: 4;
+  #tabbar { position: absolute; left: 8px; bottom: 16px; height: 32px; display: none; z-index: 4;
             max-width: calc(50% - 80px); overflow: hidden; align-items: center; gap: 8px; }
   body.sized #tabbar { display: flex; }
-  body.strip #tabbar { bottom: calc(min(var(--strip-h, 96px), calc(100vh - 112px)) + 8px); }
+  body.strip #tabbar { bottom: calc(min(var(--strip-h, 96px), calc(100vh - 128px)) + 16px); }
   body.fullscreen #tabbar { display: none; }
   #tab-add { flex: none; width: 32px; height: 32px; padding: 0; border: none; border-radius: 10px; /* the tabs' own corners (Rotem, 2026-09-18) */
              background: transparent; color: #f2f2f2; cursor: pointer; display: grid; place-items: center;
@@ -1609,8 +1609,8 @@
   // up, the cells grow to 320 wide; past that a row of 320 enters whenever there is room
   // for one, and the strip scrolls vertically. The height is remembered by the page.
   const STRIP_MIN = 96;        // the floor
-  const STRIP_DEFAULT = 132;   // the default: 8 px clear, 112 px thumbnails, the scroller's 12 px band (Rotem, 2026-09-16 for the 112; 2026-09-17 for the band, from 128, which sat 4 px of every cell under it; 2026-09-19 for the 8, from a 1 px line and 12)
-  const STRIP_TOP = 8;         // above the cells: with the 8 px the tabs keep above the strip, 16 px from the tabs to the thumbnails (Rotem, 2026-09-19, from a 1 px line and 12)
+  const STRIP_DEFAULT = 124;   // the default: 112 px thumbnails from the strip's top edge, the scroller's 12 px band (Rotem, 2026-09-16 for the 112; 2026-09-17 for the band, from 128, which sat 4 px of every cell under it; 2026-09-19 for the top edge, from a 1 px line and 12, by way of 8)
+  const STRIP_TOP = 0;         // above the cells: nothing, since the tabs sit 16 px above the strip, centred in the 64 px band, and 16 px is what Rotem set from the tabs to the thumbnails (2026-09-19, from a 1 px line and 12, by way of 8)
   const STRIP_SCROLLER = 12;   // the one row's sideways scroller, a 4 px thumb with 4 px clear above and below: its band replaces the 8 px under the cells, so no cell's bottom edge sits under it
   const STRIP_PAD = 12;        // left and right of the cells, and under the last row (Rotem, 2026-09-17, from 8)
   const STRIP_GAP = 12;        // between the cells (Rotem, 2026-09-17, from 8)
