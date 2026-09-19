@@ -273,6 +273,17 @@ Recon exits, and copies nothing if one from that path is back by then. The hash 
 is read back against the build, and the build and the copy get their History rows like any
 change. A change to the docs alone builds nothing.
 
+**The build reaches Rotem's Recon without a command from him.** Rotem said on 2026-09-19,
+after a session handed him copy commands round after round: the flow is always the same
+one. The assistant finishes and builds; when his Recon is open, the reply asks him to quit
+it, in one line; the waiting job copies the build in the moment he does; he opens Recon
+again. The reply never carries a copy command for him to run. The waiting job is started
+as a background task of the session (the shell tool's own background run of
+`.tmp/swap-release-<commit>.ps1`), never as a hidden, detached process, which the
+permission check of the app refuses. With no Recon open, the copy is a plain copy at once.
+Only when both routes were refused does a reply hand him a command, and it says which
+refusal it met.
+
 Close with a short summary:
 
 - what changed,
