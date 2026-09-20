@@ -3269,8 +3269,8 @@ export async function runChecks(editor, invoke) {
     const plusBox = plus.getBoundingClientRect();
     const bandTop = Math.round(sizeEl.getBoundingClientRect().top) - 25; // the size sits 25 px under the band's top (2026-09-19)
     const icon = plus.querySelector('svg').getBoundingClientRect();
-    check('the plus sits at the left of the size band, 32 by 32, 8 px in and centred in the band, with a 20 by 20 icon and no text',
-      getComputedStyle(tabbar).display === 'flex' && Math.round(plusBox.width) === 32 && Math.round(plusBox.height) === 32 && Math.round(plusBox.left) === 8
+    check('the plus sits at the left of the size band, 32 by 32, 12 px in and centred in the band, with a 20 by 20 icon and no text',
+      getComputedStyle(tabbar).display === 'flex' && Math.round(plusBox.width) === 32 && Math.round(plusBox.height) === 32 && Math.round(plusBox.left) === 12
         && Math.round(plusBox.top) === bandTop + 16 && Math.round(icon.width) === 20 && Math.round(icon.height) === 20 && plus.textContent.trim() === '' && plus.getAttribute('aria-label') === 'New tab',
       `${Math.round(plusBox.left)},${Math.round(plusBox.top)} ${Math.round(plusBox.width)}x${Math.round(plusBox.height)}, the band from ${bandTop}, icon ${Math.round(icon.width)}x${Math.round(icon.height)}`);
     check('before any press there is no tab, and the timeline lists the whole library', tabEls().length === 0 && thumbs().length === 2, `${tabEls().length} tabs, ${thumbs().length} thumbnails`);
@@ -3281,7 +3281,7 @@ export async function runChecks(editor, invoke) {
     check('the first press puts Main and New tab beside the plus, New tab selected', tabNames().join('|') === 'Main|New tab' && selectedName() === 'New tab', `${tabNames().join('|')}, selected "${selectedName()}"`);
     check('Main is right after the plus, and no tab carries a ×', plus.nextElementSibling === tabEls()[0] && !tabEls()[0].querySelector('.x') && !tabEls()[1].querySelector('.x'));
     const tabStyle = getComputedStyle(tabEls()[1]);
-    check('a tab is 32 px tall with 14 px text on a 10 px radius', tabStyle.fontSize === '14px' && tabStyle.borderRadius === '10px' && Math.round(tabEls()[1].getBoundingClientRect().height) === 32, `${tabStyle.fontSize}, radius ${tabStyle.borderRadius}`);
+    check('a tab is 32 px tall with 16 px text on a 10 px radius', tabStyle.fontSize === '16px' && tabStyle.borderRadius === '10px' && Math.round(tabEls()[1].getBoundingClientRect().height) === 32, `${tabStyle.fontSize}, radius ${tabStyle.borderRadius}`);
     check('the new tab\'s feed is empty, so the timeline shows nothing yet, and stays', await until(() => thumbs().length === 0) && document.body.classList.contains('strip'), `${thumbs().length} thumbnails`);
 
     // A capture on the new tab: in the library, so in Main, and in the tab's feed.
