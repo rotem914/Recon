@@ -98,7 +98,7 @@
      never deleted, then the tabs the plus made, each a feed of its own captures, deleted by the
      × on it and dragged into another place after Main. The bar stops short of the size text.
      Provisional until Rotem states a look: 12 px text, the hover colour on the selected tab. */
-  #tabbar { position: absolute; left: 8px; bottom: 16px; height: 32px; display: none; z-index: 4;
+  #tabbar { position: absolute; left: 12px; /* on the first thumbnail's line (Rotem, 2026-09-20, from 8) */ bottom: 16px; height: 32px; display: none; z-index: 4;
             max-width: calc(50% - 80px); overflow: hidden; align-items: center; gap: 8px; }
   body.sized #tabbar { display: flex; }
   body.strip #tabbar { bottom: calc(min(var(--strip-h, 96px), calc(100vh - 128px)) + 16px); }
