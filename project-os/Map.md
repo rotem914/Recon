@@ -79,6 +79,8 @@ Recon/
 │           ├── wic.rs              # TIFF, HEIC, AVIF through the Windows Imaging Component
 │           ├── fixtures.rs         # --make-fixtures: the marked test files, feature-gated
 │           └── report.rs           # --decode-report: one evidence line per file, and the hash check
+├── plans/                          # a feature's complete plan as a file of its own, only at Rotem's word
+│   └── 2026-09-21-screen-recording-plan.md  # Stage 5, screen recording: nothing of it is built
 ├── editor/                         # the web view surface, a placeholder until S0.4
 │   ├── index.html                  # the editor: the scene, the callout, the text layer
 │   ├── editor-checks.js            # --editor-check: S0.4's evidence, not product code
@@ -139,6 +141,7 @@ anything.
 | Enforcement | `project-os/guards/*`, `project-os/hooks-settings.json`, `project-os/install-hooks.mjs` | Hooks are read at session start. Re-run the installer after editing the settings file. |
 | Outside servers | `project-os/mcp/*` | One folder per server, read before that server's first call. |
 | The plan | `project-os/Plan.md` | One file, and there is never a second: the product, the decisions, the architecture and the stages. Free-standing documents go in `notes/`, created when one is needed, never at the root. |
+| A feature's plan of its own | `plans/*` | Only when Rotem asks for one as a file. `project-os/Plan.md` names it from the stage it belongs to, and the part it replaces there says it is superseded. Today: screen recording, Stage 5. |
 | The host | `host/*` | Tray, hotkey, freeze, overlay, the region service, the editor window, decode, the composer and the clipboard today; the store later. It never renders an annotation. Check-only code is behind the `stage0-checks` feature. |
 | The composer and the clipboard | `host/src/compose.rs`, `host/src/clipboard.rs` | One function makes every output: the source byte for byte at the margin offset, the page's layer over it. The clipboard publishes that output in three formats and never reads it in the product. The references the output is checked against live in `host/references/s06/`, with the environment they are valid for. |
 | The pixel crate | `host/pixels/*` | Crop and resample, non-generic on purpose so the work is compiled optimised even in a debug build. Knows nothing about screens, windows or files. |

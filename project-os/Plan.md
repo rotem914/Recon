@@ -2434,9 +2434,10 @@ changed during a request, and editing and re-sending a sent capture. Continuing 
 moving to another capture, or switching applications during delivery must not let a late
 success close work or take focus.
 
-**Stage 5, screen recording.** Asked for by Rotem on 2026-09-20 and planned whole in part 14:
-what it is, the calls that are his, the route, the steps and their evidence. Nothing of it
-is built until he answers part 14.2.
+**Stage 5, screen recording.** Asked for by Rotem on 2026-09-20 and planned whole in
+`plans/2026-09-21-screen-recording-plan.md`, a file of its own at his word: what it is, the
+calls that are his, the route, the steps and their evidence. Part 14 here is its first draft
+and is superseded. Nothing of it is built until he says so.
 
 ---
 
@@ -2713,6 +2714,11 @@ comparison between two outputs of the same code proves only that the code is det
 ---
 
 # Part 14: Stage 5, screen recording
+
+**Superseded as a whole on 2026-09-21 by `plans/2026-09-21-screen-recording-plan.md`, the
+complete plan, a file of its own at Rotem's word. Do not build from this part: it is the
+first draft, written before the research, and several of its claims are wrong there (a paste
+into Claude, a capture hiding Recon, the variable frame rate). Its calls R1 to R7 are retired.**
 
 Asked for by Rotem on 2026-09-20: record the screen as video, the way Snagit does. This part
 is the whole plan for it. Nothing of it is built, and nothing is built until Rotem has

@@ -73,6 +73,7 @@ Mistakes in HOW you worked:
 | 2026-09-18 | Read "the lines are not on the pixel" as the lines being off the middle of the magnified square, built that, and only asked after Rotem said it was still wrong; he meant on the square's edge | The three readings put to him as scenes before the first build, as `CLAUDE.md` rule 1 already asks for a phrase that can mean two things on screen | `CLAUDE.md` rule 1 | 1 |
 | 2026-09-18 | Ran the editor's whole automated run seven times for the ruler's magnifier: once was the change's proof, the other six chased a run that stopped early over a leftover tab file of the checks' own, nothing of the change's, until Rotem stopped it | The whole run once; a stop that is not the change's is named in one line and left, never chased with more whole runs | `project-os/Workflow.md` step 8 | 1 |
 | 2026-09-19 | Committed History rows at 00:17 without reading `git diff --cached` first, and swept in another session's staged rows and rotation | `CLAUDE.md` rule 22: read the index before every commit and stage nothing I did not write | `CLAUDE.md` rule 22 | 1 |
+| 2026-09-20 | Took Rotem's answers to three of the recording plan's calls as a go to build its first step, and began reading the code for it; he had asked for a plan only | Answers to a plan's open calls are written into the plan; building starts at his word, never inferred from an answer | `project-os/Workflow.md` step 16 | 1 |
 
 ## Promoted
 
