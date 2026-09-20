@@ -18,6 +18,7 @@ never break. Parts 5 to 10 are the build: the architecture, the decisions, and t
 with the evidence that closes each one. Part 11 says which claims here are measured, which
 are documented, and which are still assumptions. Part 12 is the record of the review that
 shaped it, in one table, and part 13 lists the sources behind every documented claim.
+Part 14 is screen recording, a later stage planned whole in a part of its own.
 
 This file replaces the two documents that came before it, the product plan and the build
 plan. Their whole content is here. Every revision, and what changed in it, is recorded in
@@ -2433,6 +2434,10 @@ changed during a request, and editing and re-sending a sent capture. Continuing 
 moving to another capture, or switching applications during delivery must not let a late
 success close work or take focus.
 
+**Stage 5, screen recording.** Asked for by Rotem on 2026-09-20 and planned whole in part 14:
+what it is, the calls that are his, the route, the steps and their evidence. Nothing of it
+is built until he answers part 14.2.
+
 ---
 
 # Part 11: the evidence status of every claim here
@@ -2704,3 +2709,224 @@ comparison between two outputs of the same code proves only that the code is det
 - [Example TIFFs](https://github.com/tlnagy/exampletiffs) · the multipage TIFFs.
 - [Google WebP gallery](https://developers.google.com/speed/webp/gallery) and [an animated WebP](https://mathiasbynens.be/demo/animated-webp) · the WebP samples.
 - [An Illustrator export](https://github.com/rogerpence/using-svgs-in-css), [a Figma export with an alpha mask](https://github.com/dnfield/flutter_svg/issues/988) and [one with a mask and a filter](https://github.com/gregberge/svgr/issues/336) · the real SVG exports compared against the web view.
+
+---
+
+# Part 14: Stage 5, screen recording
+
+Asked for by Rotem on 2026-09-20: record the screen as video, the way Snagit does. This part
+is the whole plan for it. Nothing of it is built, and nothing is built until Rotem has
+answered the calls in 14.2. §3.10 keeps "video capture" out of v1, and that stands: this is
+a stage after the daily-use release, planned now so its one foundation question is asked
+early.
+
+## 14.1 What it is, as Rotem would use it
+
+1. He presses a shortcut of its own, picked in Settings beside the capture shortcuts.
+2. The screen freezes and dims exactly as it does for a capture, and he drags the area.
+   The freeze is only for choosing: it lifts the moment he lets go.
+3. A thin outline stays around the area, a small bar sits just outside it with the running
+   time and a Stop button, and a count of three runs down. Then it records. The outline and
+   the bar are never in the recording.
+4. He works. The pointer is in the recording.
+5. The same shortcut, or Stop, ends it. Escape asks once before throwing a recording away.
+6. Recon comes forward with the recording on the timeline like a capture, its thumbnail
+   carrying its length, and it plays in the window where a picture would be.
+7. Copy puts the recording on the clipboard as a file, so a paste into Claude, ChatGPT, Slack
+   or a folder attaches it. Save As writes a new MP4 and never writes over anything.
+
+What it is not, in this stage: a video editor, a player for video files from outside Recon,
+a streaming tool, a webcam recorder. Notes are not drawn over a moving recording; "annotate
+this frame" takes the frame on screen as a still and makes an ordinary document of it, which
+is the rule §3.5 already has for an animation.
+
+## 14.2 The calls that are Rotem's, before any step starts
+
+Each is put as what he would see. The recommendation is the plan's, the answer is his.
+
+| # | The call | Recommended |
+|---|---|---|
+| R1 | **Sound.** Silent recordings only; or his voice from the microphone; or the computer's own sound; or both. Each one is a switch he sets once in Settings, never a question at recording time (principle 2). | Silent first, then the microphone as its own step, since a spoken walkthrough for a client is the likeliest use. The computer's sound after it, only if he wants it. |
+| R2 | **What can be recorded.** A dragged area only; or also one click on a window to take that window's area; or also the whole screen with one key. | The dragged area and the whole screen. A click on a window joins the still capture and the recording together, later, if daily use asks. |
+| R3 | **The whole 5120 px screen.** The video type every chat and browser plays, H.264, is commonly limited to 4096 px across by the graphics card's encoder. A whole-screen recording here is wider. Either it is scaled down to 4096 across, a little soft; or it is written as the newer HEVC type, sharp, which plays on this machine and not everywhere a client opens it. An area up to 4096 across is untouched either way. S5.1 measures whether this machine's encoder takes 5120 as it is, which would retire the question. | Scale the whole screen down, keep one file type that plays everywhere. |
+| R4 | **GIF.** Whether a recording can also be saved as a GIF, for places that show no video. | Later and optional (S5.9): a GIF of a minute of screen is tens of megabytes. |
+| R5 | **The count of three.** On by default, off, or a Settings switch. | On, with a switch. |
+| R6 | **Where Recon's window goes.** When a recording starts while Recon is in front, it hides as it does for a capture; it comes back at Stop. | As written. |
+| R7 | **How long, and how much disk.** At the recommended quality a minute of a 1920x1080 area is expected at 5 to 15 MB (an assumption until S5.1 measures it). Recordings go to Recon's trash like captures and leave for good thirty days later. Whether there is a longest recording, and whether the timeline shows what the recordings cost in disk. | No limit; a plain warning when the disk runs low; the cost shown with Stage 2's storage figure. |
+
+## 14.3 How it is built
+
+**The pixels never pass through the page.** Part 5's split holds. The host records, encodes
+and stores; the page draws nothing of the recording while it is made and plays the finished
+file. No frame of a recording crosses into the web view while it is being made.
+
+**A second way of seeing the screen, for video only.** The still capture stays what it is,
+one GDI copy of the whole virtual screen, and part 8's rule that a second STILL path must be
+earned by a failure stands. Video is a different job and the measured figure says why: that
+copy takes 41 to 50 ms in a release build on this screen (part 11), which is 20 to 24
+pictures a second at best, with the processor doing all of it. So the recording uses
+Windows.Graphics.Capture, per display, which hands over each new picture as a texture that
+stays on the graphics card. Part 6a asked the capture interface to leave this door open, and
+`host/src/capture/mod.rs` says so in its header. It arrives as a sibling of `CaptureSource`,
+not a change to it.
+
+**The pipeline, all of it Windows' own:**
+
+1. `CreateForMonitor` for the display the area is on, a frame pool on one Direct3D 11 device,
+   the pointer included, the yellow border asked off.
+2. Each arriving frame is cropped to the area on the graphics card, into a texture of the
+   encoder's size. The area's corners go through `capture/coords.rs`, the one conversion,
+   and nowhere else. H.264 wants an even width and height, so an odd area loses its last
+   column or row, and the plan says so rather than padding with pixels that were never on
+   screen.
+3. Media Foundation's Sink Writer, with hardware transforms allowed and the same Direct3D
+   device, converts the colour and encodes H.264 into an MP4. Quality-based rate control,
+   tuned for screen content, so text stays sharp and a still screen costs almost nothing.
+4. Timestamps are the capture's own. Windows delivers a frame only when the screen changed,
+   so the file has a variable frame rate; a still screen gets one repeated frame a second,
+   and the last frame is written again at Stop so the length is true.
+5. Sound, when R1 brings it: WASAPI, the microphone as a capture stream and the computer's
+   sound as a loopback stream, encoded as AAC by the same Sink Writer, stamped from the same
+   clock as the video.
+
+**Why this route, on its merits.** No codec is shipped: the H.264 encoder is the one in
+Windows or on the graphics card, so the open-source release carries no patent-encumbered
+library and no licence question. No new dependency: every call is in the `windows` crate
+already in the tree, behind more of its feature flags. The work stays on the graphics card,
+which is what keeps the recording from slowing the thing being recorded. What it costs: the
+most COM-heavy code in the host, Windows 10 1903 as the floor for the capture call (already
+the plan's floor), and a border Windows 10 cannot turn off (Windows 11 can; Windows 10 is
+"expected, untested" in part 6a and stays so).
+
+**If S5.1 refuses the route**, the replacements are named now so the gate has somewhere to
+go: Desktop Duplication in place of Windows.Graphics.Capture for the frames; the encoder as
+a bare Media Foundation transform in place of the Sink Writer when its automatic colour
+conversion will not run on the card; a bundled encoder only as the last resort, since it
+brings a licence question the open-source release would have to answer.
+
+**Recon's own outline and bar stay out of the picture** through
+`SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`, documented from Windows 10 2004. The
+still capture's overlay is reused for choosing the area; a new small window of the host's
+draws the outline, and the bar is a second small window so it can sit outside the area.
+
+**A recording is a managed document.** One folder per recording under
+`%LOCALAPPDATA%\Recon\documents\<number>\`, as a capture has: `recording.mp4` written once,
+`document.json` with a kind that says recording, its size, its length and later its trim,
+`thumb.png` from its first frame. The store's schema gains the kind, and a document without
+one is a picture, so nothing already on disk changes. Tabs, delete to Recon's trash, the
+thirty-day sweep and the timeline take it as they take a capture. Rule 11 is not touched:
+a recording is Recon's own file from its first byte, and no outside file is opened here.
+
+**A recording that dies with the process.** An ordinary MP4 is unreadable until it is
+closed properly. Principle 7 says work survives, so S5.2 decides between the fragmented MP4
+sink, readable up to the last fragment, and a plain MP4 with a marker beside it so the next
+start can say "a recording was lost" rather than show a broken thumbnail. Decided on what
+S5.1's files actually do in the players that matter.
+
+**Playing it.** The page gets a `<video>` whose source is an address the host serves from
+the document's folder, by byte ranges, so scrubbing works and the file is never read whole
+into memory. Play and pause on Space, a scrubber, the length. The annotation tools are off
+over a recording except "annotate this frame".
+
+**Undo (rule 23).** A finished recording joins the list the way a finished capture does;
+deleting one is taken back by Ctrl+Z as a capture's delete is; a trim is one act, undone and
+redone. Starting and stopping are not acts in the list: a recording cannot be un-recorded
+into the past.
+
+## 14.4 The steps
+
+Each step closes on evidence, as every stage has. The diagnostic flags live behind
+`stage0-checks`, so the product build has none of them.
+
+- [ ] S5.0 Rotem answers R1 to R7. No model, his.
+- [ ] S5.1 **The gate: ten seconds to a file, no interface.** A diagnostic flag records a
+      fixed area of a test window that draws a frame counter and corner markers, through
+      the whole pipeline of 14.3. It settles, on this machine: the route runs from an
+      unpackaged program; the border is off; the pointer is in; an odd-sized area; a 4096,
+      a 5120x1440 and a 1920x1080 area, with which encoder took each; processor and
+      graphics card load while it runs; frames dropped; seconds from Stop to a closed file;
+      megabytes a minute. The file is read back frame by frame: the counter never goes
+      backwards, the length is within a frame of the clock, the corner markers sit on the
+      exact pixels. A deliberately shifted crop must FAIL that check (`project-os/QA.md`
+      §12). Then the file is played in the web view, in Windows' own player, and pasted
+      into Claude, ChatGPT and Slack, each result written down. Model: Fable 5.1, its
+      evidence decides the route.
+- [ ] S5.2 **The engine in the host.** Start, stop, the crop, the clock, the still screen,
+      the true length. What happens when the display arrangement changes, the machine
+      sleeps, the disk fills or the encoder fails mid-recording: the recording ends cleanly
+      with what it has, and says so. The crash decision above. Model: Fable 5.1, it owns
+      files the user believes are kept.
+- [ ] S5.3 **Choosing and controlling.** The shortcut in Settings, refused when taken like
+      the others. The overlay for choosing, the outline, the bar, the count, Stop by the
+      shortcut and by the button, Escape with its one question, the tray icon showing that
+      a recording runs, and a press of a capture shortcut during a recording doing
+      something decided rather than accidental. Every size, colour and distance comes from
+      `project-os/Design.md` or from Rotem, none guessed. Model: Fable 5.1, a new
+      interaction.
+- [ ] S5.4 **The recording as a document.** The store's kind, the thumbnail with its
+      length, the timeline, tabs, delete, the trash, undo and redo, and all of it back
+      after a restart. Documents made before this step open unchanged, checked against a
+      store written by the build before it. Model: Fable 5.1, it touches the store.
+- [ ] S5.5 **Playing.** The host serves the file by ranges, the `<video>`, Space, the
+      scrubber, the arrow keys stepping, "annotate this frame". A long recording is
+      scrubbed without the memory climbing. Model: Fable 5.1 for the serving, Opus 5 for
+      the controls once it serves.
+- [ ] S5.6 **Getting it out.** Copy as a file on the clipboard, inside the clipboard's one
+      transaction; Copy and Return; Save As, a new file only, with a suggested name and the
+      last export folder. Pasted into the same three places as S5.1. Model: Fable 5.1, the
+      clipboard's contract changes.
+- [ ] S5.7 **Sound**, as R1 decided. The check is a clap test made mechanical: a test
+      window flashes white on the frame it plays a click, and the file's flash and click
+      are within one frame of each other after a ten-minute recording, not only a
+      ten-second one. Model: Fable 5.1, two clocks.
+- [ ] S5.8 **Trim.** Two handles on the scrubber, kept in the document and applied at Copy
+      and Save As, the stored recording never cut. A cut without re-encoding lands on the
+      nearest key frame, so the step either says on screen where the cut really is or
+      re-encodes the first second. One act in undo. Model: Fable 5.1.
+- [ ] S5.9 **By use, each only at Rotem's word:** pause and resume; GIF export (R4); a
+      click on a window to take its area (R2). Model: named when one is taken up.
+- [ ] S5.10 **A week of real recordings**, the friction written to `project-os/History.md`
+      and anything deferred to the Backlog at his word. Model: Opus 5, it records.
+
+Depends on: the store (S1.8), the timeline and its tabs (Stage 2, pulled forward), Settings
+and its shortcuts. All built. It does not wait for anything in Stage 3.
+
+## 14.5 What could go wrong, and where it is caught
+
+| Risk | Caught at |
+|---|---|
+| The hardware encoder refuses wide or odd sizes, or the Sink Writer will not convert colour on the card and falls to the processor | S5.1, with the replacements named in 14.3 |
+| The border cannot be turned off from a program that is not packaged. Microsoft's page describes the consent call for packaged apps; reports say the switch alone works on Windows 11 | S5.1, on this machine |
+| Recording slows the thing being recorded | S5.1's load figures, judged by Rotem as F59 was |
+| Sound drifts from the picture over a long recording | S5.7's ten-minute check |
+| A crop one pixel off, the class `capture/coords.rs` exists to prevent | S5.1's corner markers, and the shifted-crop check that must fail |
+| A protected video, a film in a browser, records as black | Windows' doing and not changed; said in the README |
+| HDR switched on: the recording is the standard-range view, as the still capture's is | Logged as the still capture logs it (F61); this machine has HDR off |
+| A recording of a client's screen sits on disk for thirty days after deletion | The trash's rule, unchanged; R7 is where Rotem can change it |
+
+## 14.6 What is known and what is assumed
+
+**Measured here:** the GDI copy of this screen takes 41 to 50 ms (part 11), which is why
+video needs another route. The display is 5120x1440 at 100% (S0.8). The HEVC and AV1
+extensions are installed (S0.8).
+
+**Documented:** the pointer switch in the capture session is from Windows 10 2004; the
+border switch is from build 20348, so Windows 11; the H.264 encoder takes NV12, I420, IYUV,
+YUY2 and YV12, offers quality-based rate control, and steps aside for a certified hardware
+encoder when one is present; windows can be excluded from capture from Windows 10 2004. A
+display recorder on this same Windows route exists in Rust, by a Windows engineer, under
+MIT: proof it can be done, not code to copy.
+
+**Assumed until S5.1:** everything about this machine's encoder, the 4096 limit included;
+that the web view plays the file; the megabytes a minute; that the route runs unpackaged
+with the border off; that the Sink Writer keeps the conversion on the card.
+
+Sources for this part, in part 13's form:
+
+- [Windows.Graphics.Capture, IsBorderRequired](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.graphicscapturesession.isborderrequired) · the border switch, its build, and the consent call it describes.
+- [Windows.Graphics.Capture, IsCursorCaptureEnabled](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.graphicscapturesession.iscursorcaptureenabled) · the pointer in the recording, from Windows 10 2004.
+- [H.264 Video Encoder](https://learn.microsoft.com/en-us/windows/win32/medfound/h-264-video-encoder) · input types, rate control, and the hardware encoder taking over.
+- [H.264 Video Decoder](https://learn.microsoft.com/en-us/windows/win32/medfound/h-264-video-decoder) · 4096 by 2304 as the decoder's ceiling, the reason R3 exists.
+- [Using the Sink Writer to encode video](https://learn.microsoft.com/en-us/windows/win32/medfound/tutorial--using-the-sink-writer-to-encode-video) · the writer the pipeline ends in.
+- [SetWindowDisplayAffinity](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowdisplayaffinity) · keeping Recon's outline and bar out of the recording.
+- [robmikh/displayrecorder](https://github.com/robmikh/displayrecorder) · a Rust display recorder on the same Windows route, MIT.
