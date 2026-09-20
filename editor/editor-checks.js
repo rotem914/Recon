@@ -2689,6 +2689,13 @@ export async function runChecks(editor, invoke) {
       boxes.map((b) => `${Math.round(b.left)}-${Math.round(b.right)}, ${Math.round(b.height)} tall`).join(' '));
     check('every window button has a name', buttons.every((b) => b.title.length > 0), buttons.map((b) => b.title).join(', '));
 
+    // The close X alone is 12 by 12, the other three icons 10 by 10 (Rotem, 2026-09-21).
+    const icons = buttons.map((b) => b.querySelector('svg').getBoundingClientRect());
+    check('the close X is 12 by 12 and the other window icons 10 by 10',
+      icons.slice(0, 3).every((i) => Math.round(i.width) === 10 && Math.round(i.height) === 10)
+      && Math.round(icons[3].width) === 12 && Math.round(icons[3].height) === 12,
+      icons.map((i) => `${Math.round(i.width)}x${Math.round(i.height)}`).join(' '));
+
     const before = { w: window.innerWidth, h: window.innerHeight, maximized: await win.isMaximized() };
     document.getElementById('win-max').click();
     for (let i = 0; i < 40 && !(await win.isMaximized()); i += 1) await sleep(50);

@@ -29,6 +29,8 @@
   #winbtns button:hover { background: rgba(255,255,255,.09); color: #f2f2f2; }
   #winbtns #win-close:hover { background: #c42b1c; color: #fff; }
   #winbtns svg { width: 10px; height: 10px; stroke: currentColor; fill: none; stroke-width: 1; }
+  /* The close X alone is 2 px larger than the other window buttons: 12 px, not 10 (Rotem, 2026-09-21). */
+  #winbtns #win-close svg { width: 12px; height: 12px; }
   body.fullscreen #bar { display: none; }
   /* Settings (Rotem, 2026-09-18): a button left of minimize, a chevron pointing down, the window buttons'
      own box and icon size, opening a modal with the two global shortcuts. The modal's look
