@@ -108,9 +108,10 @@ Stated by Rotem on 2026-09-16 for the timeline's tabs.
 
 | Part | Value |
 |---|---|
-| Plus button | an icon button at the left of the image size container: 32 by 32, no fill of its own, a plus icon, 20 by 20, with round ends, the hover fill by A1, on the tabs' own 10 px corners (Rotem, 2026-09-18, from square) |
+| Plus button | an icon button after the last tab, on the tabs' right, and alone at the bar's left until the first tab exists (Rotem, 2026-09-20, from fixed at the left of the image size container): 32 by 32, no fill of its own, a plus icon, 20 by 20, with round ends, the hover fill by A1, on the tabs' own 10 px corners (Rotem, 2026-09-18, from square) |
 | Tabs | beside the plus, once it was pressed: Main first, pinned and never deleted, then the tabs the plus made, in the order they are dragged into |
-| Tab text | 14 px |
+| Tab text | Google Sans, medium (500), 16 px (Rotem, 2026-09-20, from 14 px in the system font; semibold was his word, medium is the one weight bundled) |
+| Placement | the row starts 12 px from the window's left, on the first thumbnail's line (Rotem, 2026-09-20, from 8) |
 | Tab corners | 10 px radius |
 | Tab name | a click on the selected tab's name edits it in place; Enter keeps it |
 | Tab delete | a right press on a tab after Main opens a dropdown with Delete, which deletes it; no × on the tab (Rotem, 2026-09-18, from a × pressed twice) |
