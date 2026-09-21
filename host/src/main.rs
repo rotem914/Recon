@@ -131,31 +131,9 @@ fn begin_capture() {
         let _guard = guard;
         let source = capture::screen::WholeVirtualScreen;
         let started = std::time::Instant::now();
-        // The mouse pointer, read beside the freeze and before the overlay swaps it for its
-        // crosshair (Rotem, 2026-09-21).
-        let pointer = settings::capture_pointer()
-            .then(capture::pointer::grab)
-            .flatten();
 
         match source.freeze() {
             Ok(mut frame) => {
-                // The pointer is part of the picture (Rotem, 2026-09-22): drawn into the frozen
-                // pixels where it stood, so the overlay shows it and the capture holds it.
-                if let Some(pointer) = &pointer {
-                    let drawn = pointer.burn_into(&mut frame);
-                    log(&format!(
-                        "the mouse pointer, {}x{} at desktop {},{}: {}",
-                        pointer.at.width,
-                        pointer.at.height,
-                        pointer.at.x,
-                        pointer.at.y,
-                        if drawn {
-                            "drawn into the frozen pixels"
-                        } else {
-                            "outside the frozen frame, not drawn"
-                        }
-                    ));
-                }
                 marks::mark(marks::FREEZE_DONE);
                 // v1 does not capture HDR: what GDI hands over from a display with HDR on
                 // is Windows' SDR rendering of it, so the fact is said, never silent (S0.8).
@@ -181,7 +159,26 @@ fn begin_capture() {
                 ));
 
                 let shown = std::time::Instant::now();
-                match overlay::select_region(&frame) {
+                let outcome = overlay::select_region(&frame);
+                // The mouse pointer is part of the picture (Rotem, 2026-09-22): the ordinary
+                // arrow, drawn into the frozen pixels where the mouse was at the selection,
+                // before the crop, so the part of it inside the area is what is kept.
+                let selected_at = overlay::take_selected_at();
+                if let (Outcome::Selected(_), Some((x, y)), true) =
+                    (&outcome, selected_at, settings::capture_pointer())
+                {
+                    let drawn = capture::pointer::arrow_at(x, y)
+                        .map(|pointer| pointer.burn_into(&mut frame));
+                    log(&format!(
+                        "the mouse pointer at the selection, desktop {x},{y}: {}",
+                        match drawn {
+                            Some(true) => "drawn into the frozen pixels",
+                            Some(false) => "outside the frozen frame, not drawn",
+                            None => "Windows handed over no arrow, not drawn",
+                        }
+                    ));
+                }
+                match outcome {
                     Outcome::Selected(rect) => {
                         log(&format!(
                             "selected {}x{} at desktop {},{} after {} ms on screen",

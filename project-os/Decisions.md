@@ -127,7 +127,8 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-19 · The magnifier is one unit in the host: the page asks for the finished panel and paints it, Rotem's choice of two.
 - 2026-09-19 · Rotem's inspector is in his own builds of Recon only, behind a build switch, never in the public release.
 - _2026-09-22 · The captured pointer is an element in the notes carrying its own picture, never pixels of the capture; Rotem's choice over a pointer burned in._ (superseded the same day, below)
-- 2026-09-22 · The pointer is drawn into the frozen pixels after all, before the overlay, so the area is chosen on the picture that is kept; Rotem's word.
+- _2026-09-22 · The pointer is drawn into the frozen pixels after all, before the overlay, so the area is chosen on the picture that is kept; Rotem's word._ (where and when is superseded the same day, below; embedded stands)
+- 2026-09-22 · The embedded pointer is the ordinary arrow, drawn where the mouse was at the selection, not where it stood at the shortcut; Rotem's word.
 - 2026-09-22 · A scrolling capture is the person's own scroll, joined by numbers of rows in strips that vote; Rotem's pick over Recon scrolling by itself.
 - _2026-09-22 · Whether an area scrolls is asked off the overlay's thread, by its scrollbar, by what it says, or by content taller than it; and Recon's own windows stay out of the copies by Windows' exclusion._ (its clause handing the capture the area the application names is superseded the same day, below; the rest stands)
 - 2026-09-22 · A scrolling capture's area is the lit frame, whole; what the application says scrolls only decides whether the button shows.
@@ -1110,3 +1111,33 @@ the panel once at the top, what is below it once at the end, and what is beside 
 copy's lower part had it. A classic scrollbar that stands inside the frame behind a window
 border is cut off only in part; measured on the check's stand-in, 10 px of 18. Revisit
 option 1 if Rotem wants the picture to hold the scrolling part alone.
+
+## 2026-09-22 · The embedded pointer is the ordinary arrow, drawn where the mouse was at the selection
+
+### Context
+The entry above drew the pointer into the frozen screen where it stood when the shortcut
+was pressed. In use Rotem read it as the pointer freezing in place: he wants it where the
+mouse is when the area is confirmed, the moment he named the selection, the release that
+ends a drag or the click on a lit area. He was told first that after a drag that spot is
+the area's corner.
+
+### Options
+1. Where the mouse was at the shortcut, as built.
+2. Where the mouse is at the selection.
+3. A new right click in capture mode that plants the pointer, the area chosen after it.
+
+### Decision
+Option 2, Rotem's, on 2026-09-22. Two calls ride with it, the assistant's, his to veto. The
+picture is the ordinary arrow of his pointer scheme, since the pointer on screen at the
+selection is the overlay's crosshair, which is Recon's and not the screen's. And the spot
+travels beside the overlay's outcome, not inside it, so a selection stays a rectangle for
+the self test and the scrolling capture, which read one.
+
+### Consequences
+A selection's rectangle ends one pixel before the corner a drag was released on, so after a
+drag down and to the right the arrow's tip is just outside and none of it is in the
+capture; after a drag up and to the left all of it is; a click on a lit window has it
+whole. The frozen screen no longer shows a pointer while the area is chosen. The pointer as
+Windows showed it at the shortcut is no longer read in the product; the read stays for the
+tests. Revisit if the arrow should be pulled inside the area after a drag, or if option 3
+is wanted after all.

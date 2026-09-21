@@ -195,12 +195,14 @@ dark fill the thumbnail's × had, rgba(10,12,14,.75), and its red on hover, #c03
 
 ### Captured pointer
 
-Stated by Rotem on 2026-09-22, in place of the element on top he chose the day before.
+Stated by Rotem on 2026-09-22.
 
 | Part | Value |
 |---|---|
-| Use | a capture holds the mouse pointer where it stood when the shortcut was pressed, as part of the picture, like any other pixel of the screen; it cannot be moved or taken off afterwards |
-| While choosing the area | the frozen screen shows that pointer too, so what is seen is what is captured |
+| The selection | Rotem's name, 2026-09-22, for the moment a capture's area is confirmed: the release of the left button that ends a drag, or the click on a lit area |
+| Use | a capture holds the mouse pointer exactly where the mouse was at the selection, as part of the picture; it cannot be moved or taken off afterwards. At first it was taken where it stood when the shortcut was pressed, which read as the pointer freezing in place |
+| Which pointer | the ordinary arrow: at the selection the pointer on screen is Recon's own crosshair, which is not part of the screen. The assistant's call, Rotem's to change |
+| After a drag | the mouse is on the corner the drag ended at, so only the part of the arrow inside the area is in the capture: all of it after a drag up and to the left, none of it after a drag down and to the right |
 | Switch | Settings, Mouse pointer in captures: off, and a capture holds no pointer |
 
 ### Crop

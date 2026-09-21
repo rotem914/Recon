@@ -1,9 +1,12 @@
 //! The mouse pointer as it stood at the freeze (Rotem, 2026-09-21).
 //!
-//! A screen copy never holds the pointer, so it is read beside the freeze: which pointer
-//! Windows was showing, where, and its picture with its own transparency. It is then drawn
-//! into the frozen pixels where it stood (Rotem, 2026-09-22, in place of an element on top
-//! that could be moved), so the capture holds it as the screen did.
+//! A screen copy never holds the pointer, so its picture is read from Windows with its own
+//! transparency and drawn into the captured pixels (Rotem, 2026-09-22, in place of an
+//! element on top that could be moved). Where: at the spot the mouse was at the selection,
+//! the release that ended a drag or the click that picked a window (Rotem, the same day,
+//! after the pointer frozen where it stood at the shortcut read wrong). Which: the ordinary
+//! arrow of the user's pointer scheme, since at the selection the pointer on screen is the
+//! overlay's crosshair, which is Recon's and not the screen's.
 //!
 //! Windows hands a pointer over as something to draw, never as pixels with alpha, and an
 //! old one-colour pointer has no alpha at all. So it is drawn twice, on black and on white,
@@ -29,8 +32,9 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::UI::HiDpi::{GetDpiForMonitor, GetSystemMetricsForDpi, MDT_EFFECTIVE_DPI};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CopyImage, DestroyIcon, DrawIconEx, GetCursorInfo, GetIconInfo, CURSORINFO, CURSOR_SHOWING,
-    DI_NORMAL, HICON, ICONINFO, IMAGE_CURSOR, LR_COPYFROMRESOURCE, SM_CXCURSOR,
+    CopyImage, DestroyIcon, DrawIconEx, GetCursorInfo, GetIconInfo, LoadCursorW, CURSORINFO,
+    CURSOR_SHOWING, DI_NORMAL, HICON, ICONINFO, IDC_ARROW, IMAGE_CURSOR, LR_COPYFROMRESOURCE,
+    SM_CXCURSOR,
 };
 
 use super::coords::{desktop_box_in_frame, DesktopRect};
@@ -79,8 +83,17 @@ impl Pointer {
     }
 }
 
+/// The ordinary arrow with its tip on `x`, `y`, in desktop coordinates, at the size of the
+/// display that point is on.
+pub fn arrow_at(x: i32, y: i32) -> Option<Pointer> {
+    unsafe {
+        let arrow = LoadCursorW(None, IDC_ARROW).ok()?;
+        sized_read(HANDLE(arrow.0), windows::Win32::Foundation::POINT { x, y })
+    }
+}
+
 /// The pointer Windows is showing right now, or None when it shows none or will not say.
-/// Called before the overlay goes up, which swaps the pointer for its own crosshair.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn grab() -> Option<Pointer> {
     unsafe {
         let mut info = CURSORINFO {
@@ -99,27 +112,26 @@ pub fn grab() -> Option<Pointer> {
         if info.flags.0 & CURSOR_SHOWING.0 == 0 || info.hCursor.is_invalid() {
             return None;
         }
-        // The pointer at the size of the display it stands on, read again from its own file;
-        // the copy is this function's to destroy. At 100%, or when Windows will not make
-        // one, the pointer as handed over.
-        let wanted = size_on_display(info.ptScreenPos);
-        let sized = wanted.and_then(|side| {
-            CopyImage(
-                HANDLE(info.hCursor.0),
-                IMAGE_CURSOR,
-                side,
-                side,
-                LR_COPYFROMRESOURCE,
-            )
-            .ok()
-            .map(|copy| HICON(copy.0))
+        sized_read(HANDLE(info.hCursor.0), info.ptScreenPos)
+    }
+}
+
+/// A pointer at the size of the display `at` is on, read again from its own file; the copy
+/// is this function's to destroy. At 100%, or when Windows will not make one, the pointer
+/// as handed over.
+unsafe fn sized_read(cursor: HANDLE, at: windows::Win32::Foundation::POINT) -> Option<Pointer> {
+    unsafe {
+        let sized = size_on_display(at).and_then(|side| {
+            CopyImage(cursor, IMAGE_CURSOR, side, side, LR_COPYFROMRESOURCE)
+                .ok()
+                .map(|copy| HICON(copy.0))
         });
         let resized = sized.and_then(|copy| {
-            let pointer = read(copy, info.ptScreenPos);
+            let pointer = read(copy, at);
             let _ = DestroyIcon(copy);
             pointer
         });
-        resized.or_else(|| read(HICON(info.hCursor.0), info.ptScreenPos))
+        resized.or_else(|| read(HICON(cursor.0), at))
     }
 }
 
@@ -384,7 +396,8 @@ mod tests {
         use super::super::screen::WholeVirtualScreen;
         use super::super::CaptureSource;
         println!("{}", super::super::display::make_per_monitor_aware());
-        let pointer = super::grab().expect("Windows shows a pointer and hands it over");
+        // The capture's own call: the ordinary arrow, its tip on a spot of the screen.
+        let pointer = super::arrow_at(200, 200).expect("Windows hands the arrow over");
         let mut frame = WholeVirtualScreen.freeze().expect("the screen freezes");
         let before = frame.rgba.clone();
         assert!(

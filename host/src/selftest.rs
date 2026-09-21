@@ -447,6 +447,24 @@ fn drag_test(frame: &Frame) -> Result<(), String> {
                 return Err(format!("dragged {expected:?} and got back {got:?}"));
             }
             println!("  the overlay returned exactly the dragged rectangle: {got:?}");
+            // The spot the capture draws the mouse pointer at (Rotem, 2026-09-22): where the
+            // mouse was at the release, which is the corner the drag ended on.
+            let released = (
+                expected.x + expected.width as i32,
+                expected.y + expected.height as i32,
+            );
+            match crate::overlay::take_selected_at() {
+                Some(at) if at == released => {
+                    println!(
+                        "  the mouse at the selection was recorded where it was released: {at:?}"
+                    )
+                }
+                other => {
+                    return Err(format!(
+                    "released at {released:?}, and the selection recorded the mouse at {other:?}"
+                ))
+                }
+            }
             match seen.try_recv() {
                 Ok(Ok(())) => {}
                 Ok(Err(err)) => return Err(err),
@@ -1000,7 +1018,16 @@ fn window_pick_test(frame: &Frame) -> Result<(), String> {
                 "  a click at {},{} picked the stand-in's visible bounds exactly: {got:?}",
                 corner.0, corner.1
             );
-            Ok(())
+            // The spot the capture draws the mouse pointer at: where the click landed.
+            match crate::overlay::take_selected_at() {
+                Some(at) if at == corner => {
+                    println!("  the mouse at the selection was recorded where it clicked: {at:?}");
+                    Ok(())
+                }
+                other => Err(format!(
+                    "clicked at {corner:?}, and the selection recorded the mouse at {other:?}"
+                )),
+            }
         }
         Outcome::Selected(got) => Err(format!(
             "a click inside the stand-in gave {got:?} rather than its visible bounds {expected:?}"

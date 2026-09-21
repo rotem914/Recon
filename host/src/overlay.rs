@@ -128,6 +128,17 @@ pub enum Outcome {
     Scroll { rect: DesktopRect, window: isize },
 }
 
+/// Where the mouse was at the selection, in desktop coordinates: at the release that ended
+/// a drag, or at the click that picked a window (Rotem, 2026-09-22). The capture draws the
+/// mouse pointer there. Beside the outcome rather than inside it, so a selection stays a
+/// rectangle for everything that reads one.
+static SELECTED_AT: std::sync::Mutex<Option<(i32, i32)>> = std::sync::Mutex::new(None);
+
+/// Taken once, by the capture the selection belongs to.
+pub fn take_selected_at() -> Option<(i32, i32)> {
+    SELECTED_AT.lock().ok()?.take()
+}
+
 /// One display's overlay window and the pixels it shows.
 struct Surface {
     hwnd: HWND,
@@ -729,6 +740,16 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                     return Some(());
                 }
                 let drag = state.drag.take()?;
+                // The mouse at this release, which is the selection when one is made below.
+                let released_at = state
+                    .monitor_of(hwnd)
+                    .map(|m| (m.rect.x + point.x, m.rect.y + point.y));
+                let selected = |at: Option<(i32, i32)>| {
+                    if let Ok(mut slot) = SELECTED_AT.lock() {
+                        *slot = at;
+                    }
+                };
+                selected(None);
                 if !drag.moved {
                     // A click with no drag captures the window that was lit under it. With
                     // nothing lit, on bare desktop on a display without one, it is a
@@ -736,6 +757,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                     match state.hover {
                         Some(hover) if hover.surface == hwnd.0 as isize => {
                             state.outcome = Outcome::Selected(hover.rect);
+                            selected(released_at);
                             crate::log(&format!(
                                 "overlay: a click picked the window {}{} at {}x{} desktop {},{}",
                                 crate::platform::window_owner(HWND(hover.window as *mut _)).line(),
@@ -767,6 +789,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                     state.outcome = Outcome::Cancelled;
                 } else {
                     state.outcome = Outcome::Selected(rect);
+                    selected(released_at);
                     crate::marks::mark(crate::marks::SELECTION_COMPLETED);
                 }
                 Some(())
