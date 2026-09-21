@@ -4,6 +4,228 @@ NOT read by default - consult only when digging into an old entry.
 Moved here verbatim by project-os/rotate.ps1. Movement only: nothing is rewritten, compressed, or deleted.
 
 ## Archived decisions
+## 2026-09-16 · Google Sans is bundled with the page, the medium Latin subset, for the image size only
+
+### Context
+
+Rotem asked for the image size's text in Google Sans, medium, from Google Fonts. The web view's
+security policy in `host/tauri.conf.json` takes stylesheets and fonts from the page's own origin
+only (`style-src 'self' 'unsafe-inline'`, `font-src 'self'`), and Recon has to work without a
+network. Google Fonts serves the weight as 25 files, one per script; the family is under the SIL
+Open Font License, whose text Google Fonts' own file list for the family carries.
+
+### Options
+
+1. Link Google Fonts' stylesheet from the page at runtime: the policy refuses it, and it needs a
+   network.
+2. Bundle every file Google Fonts serves for the weight, all 25 scripts.
+3. Bundle only the file for the script the text is written in, Latin, which holds the digits
+   and the x.
+4. Inline the font in the page as base64: the policy allows no data: fonts.
+
+### Decision
+
+Option 3, with the family's `OFL.txt`, in `editor/fonts/`, 23 KB. The subset is the assistant's
+call, Rotem's to veto.
+
+### Consequences
+
+A character outside Latin in that container falls back to the system font, character by
+character. Another weight or script is one more file from the same stylesheet. The notes keep
+the system font, so the export needs no inlined font; putting Google Sans on the notes would
+bring part 5's inlining back, and whether the policy lets the serialized layer load it is not
+established here. Revisit when the font is wanted on the notes or on text in another script.
+
+---
+
+## 2026-09-16 · A new capture is copied by the page's own copy, after it loads, not by the host at present
+
+### Context
+
+Rotem asked on 2026-09-16 for every capture to land on the clipboard by itself, with no key
+pressed. The clipboard is the host's (part 5), and the host holds the captured pixels before
+the page hears of them, so the copy could be made in either place.
+
+### Options
+
+1. The host publishes the raw frame at `present`, before the window shows: no page involved,
+   but no notice on screen, and a failure only in the log.
+2. The host publishes the frame and tells the page in an event, which shows the notice: a
+   second copy path beside `editor_copy`, and a new event.
+3. The page calls its own `copyComposed` once the capture has loaded, the same call as
+   `Ctrl+C`: one copy path, the notice and the NOT COPIED line for free.
+
+### Decision
+
+Option 3, by the assistant, Rotem's to veto: a gate in the page's `capture-ready` listener on
+`source === 'capture'` and no file, so a file opened or a frame stepped is never copied unasked.
+
+### Consequences
+
+Every copy goes through one path, so a change to the copy reaches the automatic one. The cost
+is an empty layer export before the copy, and the copy lands after the window shows rather
+than before; a check's capture probe copies too, since it announces itself as a capture. Revisit
+if the copy ever shows on the capture-to-usable marks, or if the pixels are wanted on the
+clipboard before the window is up.
+
+---
+
+## 2026-09-16 · The timeline's tabs are the page's own file beside the documents, Main implicit, a feed a list of ids
+
+### Context
+
+Rotem asked on 2026-09-16 for tabs on the timeline: a plus makes Main and New tab, a capture
+taken on a tab lands in Main and in that tab, a tab can be deleted but never Main, and the
+tabs after Main can be reordered. A tab is a list of tasks from a client, so it has to
+survive a restart, and the host owns every file Recon keeps.
+
+### Options
+
+1. A tab recorded on each document: a `tab` field in `document.json`, the strip grouping
+   by it.
+2. One list the page owns, `tabs.json` beside the documents, each tab naming the ids of its
+   captures, the host writing it whole and never reading it, like a document's notes.
+3. The page's own browser storage, like the timeline's remembered height.
+
+### Decision
+
+Option 2, by the assistant. Main is not stored: it is the whole library, as the timeline
+always was, so no document changes when a tab is made, deleted or reordered, and the
+document format stays at schema 1. Option 1 would rewrite a document's record for a tab
+change and could put a capture in one tab only, where Rotem's feeds are lists a capture may
+join. Option 3 is cleared with the web view's data and cannot be backed up with the store.
+The plus and the tabs sit in the picture's size band, at its left, where Rotem placed the
+plus; the tabs' look is provisional until he states one (`project-os/Design.md`).
+
+### Consequences
+
+A feed is a list of document ids, so a document deleted to the trash leaves its tab when the
+library does and returns with a restore or Ctrl+Z; a document swept from the trash leaves a
+dangling id that lists nothing. The file is written through a temporary file and a rename
+like every record, one write at a time from the page, and a file that does not parse is set
+aside under a dated name rather than written over. The plus lives in the band, so no tab can
+be made before the first picture is on screen. Revisit if a tab needs a name of its own, a
+place for a file opened rather than captured, or more tabs than the band's left half holds.
+
+---
+
+## 2026-09-16 · Between a callout's two clicks the bubble keeps its automatic offset from the pointer, and a drop gives its number back
+
+### Context
+
+Rotem asked on 2026-09-16 for the callout in two clicks: the first marks the end of the
+line, the bubble moves with the mouse, the second locks it and starts the typing. He did
+not say where the pointer sits in the bubble while it follows, nor what happens to a bubble
+abandoned between the clicks.
+
+### Options
+
+1. The pointer at the bubble's centre: the bubble jumps under the pointer at the first
+   move, covering the point just clicked, and the second click lands on the bubble.
+2. The bubble keeps the offset it started with, from its automatic place to the anchor:
+   no jump, the anchor stays visible beside the pointer, the second click lands on the
+   picture.
+3. A drag from the anchor to the bubble, as Snagit draws a callout: one press, not two
+   clicks, which is not what was asked.
+
+For the abandoned bubble: keep its number as a gap, as an empty bubble discarded at
+commit does; or give the number back, as a drawn shape shorter than four pixels does.
+
+### Decision
+
+Option 2, by the assistant, provisional and Rotem's to change (`project-os/Plan.md` §3.5
+says so). The number goes back: nothing of the bubble was ever shown as a note, so there
+is no gap for the numbering rule to keep, and the next callout takes the number the
+abandoned one would have. Escape, Ctrl+Z, a change of tool, leaving annotation and another
+picture arriving each drop it.
+
+### Consequences
+
+The first move never jumps the bubble, and the automatic place is a starting position as
+§3.5 promises. The pointer is beside the bubble, not inside it, so locking it exactly on a
+spot means aiming its corner, which is the cost. Ctrl+Z between the clicks takes back the
+first click and leaves nothing to redo. Revisit if Rotem wants the pointer inside the
+bubble, or a drag instead of the second click.
+
+---
+
+## 2026-09-16 · The thumbnail with the notes is composed by the host from a layer the page draws at thumbnail scale, at every save
+
+### Context
+
+Rotem asked on 2026-09-16 that the notes on a picture show on its thumbnail in the timeline
+too. The thumbnail was made once by the host from the document's own image and kept as
+`thumb.png`; the notes live in the page's scene, and only the page can draw them, since the
+host never renders an annotation (`project-os/Map.md`).
+
+### Options
+
+1. The page draws the notes over the thumbnail in the strip itself, from its scene: works
+   for the picture on screen only, and after a restart every other thumbnail loses its notes,
+   unless the page rebuilds a scene for each document from the saved notes.
+2. The page sends its full-size layer to the host at every save, as a copy does, and the
+   host composes and resamples it into `thumb.png`: a full-size rasterize and PNG encode on
+   the page's thread after every pause in typing, a few hundred milliseconds on a 4K capture.
+3. The page draws the layer at the thumbnail's own scale, the composition fitted into the
+   box, and the host resamples the picture to that scale, composes the small layer over it
+   with the margin around, and writes `thumb.png` anew. Chosen.
+
+### Decision
+
+Option 3, by the assistant. The cost on the page is a thumbnail-sized canvas and PNG, the
+host's work is one resample and a small compose, and the result is on disk, so a restart and
+every other picture in the strip keep their notes. The blur rects are applied to a copy at
+full size before the resample, exactly as a copy applies them. The refresh runs after each
+save of the notes, not awaited by the save, one at a time with the newest scene queued.
+
+### Consequences
+
+`thumb.png` is no longer made once: it follows the notes, so the timeline shows what an
+export would, margin and all, and a thumbnail of a composition with a margin is the whole
+composition fitted into the box. Only the picture on screen is thumbnailed this way; a
+document's notes changed while it is not on screen do not happen today. The page's box
+size, 320 by 200, is repeated in the page (`THUMB_BOX`) and must match the host's. Revisit
+if the notes should also show on a picture's thumbnail before its first save, or if the
+store gains a way to render notes without the page.
+
+---
+
+## 2026-09-16 · The ruler is a box in the scene with its size in image pixels beside the corner the drag ended at, and its × is counter-scaled
+
+### Context
+
+Rotem asked for a ruler: mark an area, and its size in pixels, width and height, shows the
+whole time in a bubble beside the pointer; he chose the reading where the box and its size
+stay on the picture and in every copy, and asked for a round 16 px × with a 12 px X on hover
+to delete it. Three things had to be placed: where the size goes once the pointer is gone,
+what scale the label and the × live at, and how the ruler is drawn.
+
+### Options
+
+1. The size in screen pixels, always readable, and some other size in the copy.
+2. The size in image pixels like a note, beside the corner the drag ended at; the × alone
+   counter-scaled to 16 screen pixels.
+3. The ruler drawn in the shapes' SVG with a `<text>` label, measured for its bubble.
+
+### Decision
+
+Option 2, by the assistant. The label goes into the copy, and the copy has one scale, so
+the label is laid out in image pixels like every note (the 2026-09-11 decision: no minimum
+on-screen size). It sits beside b, the corner the drag ends at, which is where the pointer
+is while the drag lasts, so "beside the pointer" and "stays where it was" are the same
+place. The × is editing UI, never in a copy, so it is the one part sized in screen pixels:
+the scene's scale is undone on it through a CSS variable the scene's transform sets. The
+ruler is an HTML box in the scene like the blur, not SVG, so the label's bubble sizes
+itself and the hover × is plain CSS; the export takes the × out by its `data-ui` mark.
+
+### Consequences
+
+At a fit view of a wide capture the size reads small, as a note does; the note's size
+ladder does not reach it. The × stays 16 px at every zoom, so it can cover a ruler smaller
+than 16 screen pixels. A shape with `kind: "ruler"` in a saved document is ignored by a
+page before this one, which draws nothing for a kind it does not know. Revisit if Rotem
+states a look for the label, or wants the size readable at every zoom on screen.
+
 ## 2026-09-16 · The focus return target is used once: a hide with no capture since activates nothing
 
 ### Context
