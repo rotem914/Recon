@@ -77,10 +77,6 @@ const WM_SCROLLS: u32 = WM_APP + 2;
 /// A no is asked again once the pointer has gone this far from where it was asked: one
 /// part of a window can hold a list that scrolls beside a panel that does not.
 const ASK_AGAIN_PX: i32 = 120;
-/// The area handed to a scrolling capture is what its application says scrolls, inside the
-/// lit area; an answer smaller than this across or down is not believed, and the lit area
-/// is used whole.
-const SCROLL_AREA_MIN: u32 = 100;
 
 /// The marching frame: a light dash then a dark gap, these many pixels long, a band this
 /// thick just inside the lit area, walking one pixel along the frame every tick. Rotem's
@@ -712,15 +708,12 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                     if !state.on_button(hwnd, point) {
                         return None;
                     }
+                    // The area is the lit frame, whole: what was framed is what is captured
+                    // (Rotem, 2026-09-22, after the area shrank to the half of the frame its
+                    // application said scrolls). What stands still inside it is the
+                    // stitcher's to deal with.
                     let hover = state.hover?;
-                    let rect = state
-                        .scrolls
-                        .get(&hover.part.unwrap_or(hover.window))
-                        .copied()
-                        .flatten()
-                        .and_then(|area| clamp_to(area, hover.rect))
-                        .filter(|r| r.width >= SCROLL_AREA_MIN && r.height >= SCROLL_AREA_MIN)
-                        .unwrap_or(hover.rect);
+                    let rect = hover.rect;
                     crate::log(&format!(
                         "overlay: the round button was pressed on {}: a scrolling capture of {}x{} at desktop {},{}",
                         crate::platform::window_owner(HWND(hover.window as *mut _)).line(),

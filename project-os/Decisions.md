@@ -129,7 +129,8 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - _2026-09-22 · The captured pointer is an element in the notes carrying its own picture, never pixels of the capture; Rotem's choice over a pointer burned in._ (superseded the same day, below)
 - 2026-09-22 · The pointer is drawn into the frozen pixels after all, before the overlay, so the area is chosen on the picture that is kept; Rotem's word.
 - 2026-09-22 · A scrolling capture is the person's own scroll, joined by numbers of rows in strips that vote; Rotem's pick over Recon scrolling by itself.
-- 2026-09-22 · Whether an area scrolls is asked off the overlay's thread, by its scrollbar, by what it says, or by content taller than it; and Recon's own windows stay out of the copies by Windows' exclusion.
+- _2026-09-22 · Whether an area scrolls is asked off the overlay's thread, by its scrollbar, by what it says, or by content taller than it; and Recon's own windows stay out of the copies by Windows' exclusion._ (its clause handing the capture the area the application names is superseded the same day, below; the rest stands)
+- 2026-09-22 · A scrolling capture's area is the lit frame, whole; what the application says scrolls only decides whether the button shows.
 
 ---
 
@@ -1083,3 +1084,29 @@ accessibility tree on until it restarts. On a Windows older than 2004 the exclus
 refused: the bar then goes outside the area, and the capture is refused in words when
 nothing outside has room. Enter and Escape are taken as global keys while it lasts, so
 the page under it cannot be sent an Enter meanwhile.
+
+## 2026-09-22 · A scrolling capture's area is the lit frame, whole
+
+### Context
+The first build handed the capture the area its application said scrolls, cut to the lit
+frame. Rotem pressed the button on a window in the right part of his screen and the live
+area came up exactly half as tall as the frame he had pressed it on: the application named
+a panel inside the page, and the frame on screen had promised the whole page.
+
+### Options
+1. Keep the application's area, and move the lit frame to it before the press, so the
+   frame never lies. The picture holds only what scrolls, and the frame jumps about as
+   answers arrive, a moment after each area is lit.
+2. The lit frame, whole, always. What is framed is what is captured, and whatever stands
+   still inside it, a title bar, a side panel, is left to the stitcher.
+
+### Decision
+Option 2, the assistant's, as the fix of Rotem's bug on 2026-09-22. The application's
+answer now only decides whether the button shows.
+
+### Consequences
+A capture of a frame in which only a panel scrolls holds the still parts too: what is above
+the panel once at the top, what is below it once at the end, and what is beside it as each
+copy's lower part had it. A classic scrollbar that stands inside the frame behind a window
+border is cut off only in part; measured on the check's stand-in, 10 px of 18. Revisit
+option 1 if Rotem wants the picture to hold the scrolling part alone.

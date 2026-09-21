@@ -1405,6 +1405,27 @@ fn scroll_test_with(_frame: &Frame, child: &mut std::process::Child) -> Result<(
     let side = crate::magnifier::scaled(crate::scrolling::draw::BUTTON_PX, scale);
     let rise = crate::magnifier::scaled(crate::scrolling::draw::BUTTON_RISE_PX, scale);
 
+    // The lit frame: the stand-in has no parts, so the overlay lights its visible bounds,
+    // read here from the window manager. The capture's area has to be that frame, whole.
+    let mut visible_bounds = RECT::default();
+    unsafe {
+        DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            &mut visible_bounds as *mut RECT as *mut std::ffi::c_void,
+            std::mem::size_of::<RECT>() as u32,
+        )
+        .map_err(|err| format!("the stand-in's visible bounds could not be read: {err}"))?;
+    }
+    let lit = DesktopRect::from_points(
+        visible_bounds.left,
+        visible_bounds.top,
+        visible_bounds.right,
+        visible_bounds.bottom,
+    );
+    // Where the page sits inside the frame.
+    let (dx, dy) = (area.x - lit.x, area.y - lit.y);
+
     // The bar cannot be seen in a copy of the screen, which is the point of it; its looks
     // are written as a picture of their own to be looked at, the round button's with them.
     if let (Some((rgba, width, height)), Ok(exe)) =
@@ -1526,14 +1547,14 @@ fn scroll_test_with(_frame: &Frame, child: &mut std::process::Child) -> Result<(
             centre.0, centre.1
         );
         let rect = match picked {
-            Outcome::Scroll { rect, .. } if rect == area => rect,
+            Outcome::Scroll { rect, .. } if rect == lit => rect,
             other => {
                 return Err(format!(
-                "a click on the round button gave {other:?} rather than the client area {area:?}"
-            ))
+                    "a click on the round button gave {other:?} rather than the lit frame {lit:?}"
+                ))
             }
         };
-        println!("  a click on it handed back the stand-in's client area exactly: {rect:?}");
+        println!("  a click on it handed back the lit frame exactly, not the part of it that scrolls: {rect:?}");
 
         let session = std::thread::spawn(move || crate::scrolling::run(rect));
         std::thread::sleep(std::time::Duration::from_millis(900));
@@ -1544,8 +1565,8 @@ fn scroll_test_with(_frame: &Frame, child: &mut std::process::Child) -> Result<(
         let mut at = RECT::default();
         unsafe { GetWindowRect(bar, &mut at).map_err(|err| err.to_string())? };
         let visible = unsafe { IsWindowVisible(bar) }.as_bool();
-        let bottom_gap = area.y + area.height as i32 - at.bottom;
-        let off_centre = (at.left + at.right) / 2 - (area.x + area.width as i32 / 2);
+        let bottom_gap = lit.y + lit.height as i32 - at.bottom;
+        let off_centre = (at.left + at.right) / 2 - (lit.x + lit.width as i32 / 2);
         if !visible || bottom_gap != rise || off_centre.abs() > 1 {
             return Err(format!(
                 "the bar is visible: {visible}, {bottom_gap} px up from the area's bottom for {rise}, {off_centre} px off its middle"
@@ -1621,13 +1642,19 @@ fn scroll_test_with(_frame: &Frame, child: &mut std::process::Child) -> Result<(
                 }
             }
         }
-        if (tall.width(), tall.height()) != (area.width, SCROLL_PAGE_ROWS as u32) {
+        // The frame around the page stands still: its title bar is the picture's top and its
+        // bottom edge the picture's end, each once. The stand-in's own scrollbar may be cut
+        // off at the right, and nothing of the page with it.
+        let tall_rows = SCROLL_PAGE_ROWS as u32 + lit.height - area.height;
+        let width = tall.width() as i32;
+        if tall.height() != tall_rows || width > lit.width as i32 || width < dx + area.width as i32
+        {
             return Err(format!(
-                "the tall picture is {}x{}, and the page is {}x{}",
+                "the tall picture is {}x{}, and the frame with the whole page in it is {}x{tall_rows}, the page {} wide from {dx}",
                 tall.width(),
                 tall.height(),
-                area.width,
-                SCROLL_PAGE_ROWS
+                lit.width,
+                area.width
             ));
         }
         // Left out of the comparison: the two bottom corners of the last rows, where Windows
@@ -1642,7 +1669,7 @@ fn scroll_test_with(_frame: &Frame, child: &mut std::process::Child) -> Result<(
                     continue;
                 }
                 let (r, g, b) = scroll_page_pixel(x, row);
-                let i = ((row * area.width as i32 + x) * 4) as usize;
+                let i = (((row + dy) * width + x + dx) * 4) as usize;
                 if tall.rgba[i..i + 4] != [r, g, b, 255] {
                     wrong += 1;
                 }
