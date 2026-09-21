@@ -1,9 +1,9 @@
 //! The mouse pointer as it stood at the freeze (Rotem, 2026-09-21).
 //!
 //! A screen copy never holds the pointer, so it is read beside the freeze: which pointer
-//! Windows was showing, where, and its picture with its own transparency. It travels to the
-//! editor apart from the frozen pixels and lands there as an element on top of the capture,
-//! so it can be moved or deleted and the capture under it is whole.
+//! Windows was showing, where, and its picture with its own transparency. It is then drawn
+//! into the frozen pixels where it stood (Rotem, 2026-09-22, in place of an element on top
+//! that could be moved), so the capture holds it as the screen did.
 //!
 //! Windows hands a pointer over as something to draw, never as pixels with alpha, and an
 //! old one-colour pointer has no alpha at all. So it is drawn twice, on black and on white,
@@ -33,7 +33,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     DI_NORMAL, HICON, ICONINFO, IMAGE_CURSOR, LR_COPYFROMRESOURCE, SM_CXCURSOR,
 };
 
-use super::coords::DesktopRect;
+use super::coords::{desktop_box_in_frame, DesktopRect};
+use super::Frame;
 
 /// No pointer Windows ships is near this; a size past it is a bitmap not worth trusting.
 const LARGEST: i32 = 512;
@@ -43,6 +44,39 @@ pub struct Pointer {
     pub at: DesktopRect,
     /// Tightly packed, top-down, straight alpha.
     pub rgba: Vec<u8>,
+}
+
+impl Pointer {
+    /// Draws the pointer over the frame's pixels where it stood, the part of it inside the
+    /// frame. The frame stays solid: a screen copy has no transparency, and gains none.
+    /// Returns whether any of it was inside.
+    pub fn burn_into(&self, frame: &mut Frame) -> bool {
+        let Some((left, top)) = desktop_box_in_frame(frame.geometry, self.at) else {
+            return false;
+        };
+        let (fw, fh) = (i64::from(frame.width()), i64::from(frame.height()));
+        for row in 0..i64::from(self.at.height) {
+            let y = i64::from(top) + row;
+            if y < 0 || y >= fh {
+                continue;
+            }
+            for col in 0..i64::from(self.at.width) {
+                let x = i64::from(left) + col;
+                if x < 0 || x >= fw {
+                    continue;
+                }
+                let from = (row * i64::from(self.at.width) + col) as usize * 4;
+                let to = (y * fw + x) as usize * 4;
+                let alpha = u32::from(self.rgba[from + 3]);
+                for c in 0..3 {
+                    let over = u32::from(self.rgba[from + c]) * alpha;
+                    let under = u32::from(frame.rgba[to + c]) * (255 - alpha);
+                    frame.rgba[to + c] = ((over + under + 127) / 255) as u8;
+                }
+            }
+        }
+        true
+    }
 }
 
 /// The pointer Windows is showing right now, or None when it shows none or will not say.
@@ -230,7 +264,56 @@ fn recover(on_black: &[u8], on_white: &[u8]) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::recover;
+    use super::super::coords::{DesktopRect, FrameGeometry};
+    use super::super::Frame;
+    use super::{recover, Pointer};
+
+    /// A 2 by 2 pointer, solid red, half white, clear and solid blue, over a grey 3 by 3
+    /// frame whose origin is left of the primary display: each pixel lands where it stood,
+    /// blended by its alpha, the frame solid throughout; hanging over the corner, only the
+    /// part inside is drawn; wholly outside, nothing is.
+    #[test]
+    fn the_pointer_is_drawn_into_the_frame_where_it_stood() {
+        let grey = || Frame {
+            geometry: FrameGeometry {
+                origin_x: -100,
+                origin_y: 50,
+                width: 3,
+                height: 3,
+            },
+            rgba: [100u8, 100, 100, 255].repeat(9),
+            source: "test",
+        };
+        let pointer = |x, y| Pointer {
+            at: DesktopRect {
+                x,
+                y,
+                width: 2,
+                height: 2,
+            },
+            rgba: vec![
+                255, 0, 0, 255, 255, 255, 255, 128, 9, 9, 9, 0, 0, 0, 255, 255,
+            ],
+        };
+        let pixel = |frame: &Frame, x: usize, y: usize| frame.rgba[(y * 3 + x) * 4..][..4].to_vec();
+
+        let mut frame = grey();
+        assert!(pointer(-99, 51).burn_into(&mut frame));
+        assert_eq!(pixel(&frame, 1, 1), vec![255, 0, 0, 255]);
+        assert_eq!(pixel(&frame, 2, 1), vec![178, 178, 178, 255]);
+        assert_eq!(pixel(&frame, 1, 2), vec![100, 100, 100, 255]);
+        assert_eq!(pixel(&frame, 2, 2), vec![0, 0, 255, 255]);
+        assert_eq!(pixel(&frame, 0, 0), vec![100, 100, 100, 255]);
+
+        let mut frame = grey();
+        assert!(pointer(-101, 49).burn_into(&mut frame));
+        assert_eq!(pixel(&frame, 0, 0), vec![0, 0, 255, 255]);
+        assert_eq!(pixel(&frame, 1, 0), vec![100, 100, 100, 255]);
+
+        let mut frame = grey();
+        assert!(!pointer(-97, 50).burn_into(&mut frame));
+        assert_eq!(frame.rgba, grey().rgba);
+    }
 
     #[test]
     fn a_solid_pixel_keeps_its_colour() {
@@ -285,6 +368,65 @@ mod tests {
         seen.save(&path).unwrap();
         println!(
             "{w}x{h} at {},{} written to {}",
+            pointer.at.x,
+            pointer.at.y,
+            path.display()
+        );
+    }
+
+    /// The capture's own sequence, for real: the process made aware of each display's scale
+    /// as the product is, the pointer read, the screen frozen, the pointer drawn in, and the
+    /// 160 px around it written beside the test executable, to be looked at against the
+    /// pointer on screen. `cargo test --all-features pointer -- --ignored`.
+    #[test]
+    #[ignore]
+    fn the_pointer_is_in_a_real_frozen_screen() {
+        use super::super::screen::WholeVirtualScreen;
+        use super::super::CaptureSource;
+        println!("{}", super::super::display::make_per_monitor_aware());
+        let pointer = super::grab().expect("Windows shows a pointer and hands it over");
+        let mut frame = WholeVirtualScreen.freeze().expect("the screen freezes");
+        let before = frame.rgba.clone();
+        assert!(
+            pointer.burn_into(&mut frame),
+            "the pointer is on the screen"
+        );
+        let changed = frame
+            .rgba
+            .chunks(4)
+            .zip(before.chunks(4))
+            .filter(|(now, was)| now != was)
+            .count();
+        assert!(changed > 0, "some pixel took the pointer");
+        assert!(
+            changed <= (pointer.at.width * pointer.at.height) as usize,
+            "and none outside its box did"
+        );
+        assert!(frame.rgba.iter().skip(3).step_by(4).all(|&a| a == 255));
+        let (fw, fh) = (frame.width() as i64, frame.height() as i64);
+        let left = (i64::from(pointer.at.x) - i64::from(frame.geometry.origin_x) - 64)
+            .clamp(0, (fw - 160).max(0));
+        let top = (i64::from(pointer.at.y) - i64::from(frame.geometry.origin_y) - 64)
+            .clamp(0, (fh - 160).max(0));
+        let around = frame
+            .crop(super::super::coords::ImageRect {
+                x: left as u32,
+                y: top as u32,
+                width: 160.min(fw as u32),
+                height: 160.min(fh as u32),
+            })
+            .unwrap();
+        let path = std::env::current_exe()
+            .unwrap()
+            .with_file_name("pointer-in-frame.png");
+        image::RgbaImage::from_raw(160.min(fw as u32), 160.min(fh as u32), around)
+            .unwrap()
+            .save(&path)
+            .unwrap();
+        println!(
+            "{}x{} pointer at desktop {},{}, {changed} pixels changed, written to {}",
+            pointer.at.width,
+            pointer.at.height,
             pointer.at.x,
             pointer.at.y,
             path.display()

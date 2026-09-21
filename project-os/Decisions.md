@@ -126,7 +126,8 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-19 · The wheel stretches the picture already painted and asks for one region at a time; the host says once whether a picture has a see-through pixel.
 - 2026-09-19 · The magnifier is one unit in the host: the page asks for the finished panel and paints it, Rotem's choice of two.
 - 2026-09-19 · Rotem's inspector is in his own builds of Recon only, behind a build switch, never in the public release.
-- 2026-09-22 · The captured pointer is an element in the notes carrying its own picture, never pixels of the capture; Rotem's choice over a pointer burned in.
+- _2026-09-22 · The captured pointer is an element in the notes carrying its own picture, never pixels of the capture; Rotem's choice over a pointer burned in._ (superseded the same day, below)
+- 2026-09-22 · The pointer is drawn into the frozen pixels after all, before the overlay, so the area is chosen on the picture that is kept; Rotem's word.
 
 ---
 
@@ -971,3 +972,32 @@ in a copy, as a ruler is. Every undo step of such a document carries the picture
 kilobytes. Revisit if the pointer should show during the selection, if a pointer should be
 addable by hand to a capture that has none, or when the size on a scaled display and an
 enlarged pointer have been seen by eye.
+
+## 2026-09-22 · The pointer is drawn into the frozen pixels after all, before the overlay
+
+### Context
+The entry above landed the pointer as an element on top of the capture, Rotem's choice of
+two. Having it in hand, he said the element is not needed: a plain capture with the ordinary
+pointer in it, embedded. This supersedes that entry; its reading of the pointer from
+Windows, and the Settings switch, stand.
+
+### Options
+1. Draw the pointer into the capture after the area is chosen: the frozen screen shown
+   while choosing has no pointer, and the capture then has one.
+2. Draw it into the frozen screen at once, before the overlay goes up: the pointer is seen
+   while choosing, where it will be in the capture.
+
+### Decision
+Embedded: Rotem's, on 2026-09-22. Option 2 is the assistant's, his to veto: what is seen
+while choosing is what is kept, and the magnifier shows the same pixels the capture holds.
+The element's code is taken out whole, page, host and checks, rather than left unused.
+
+### Consequences
+The pointer cannot be moved or taken off a capture; the switch in Settings is the only way
+to a capture without one, and it holds from the next capture. The preserved image of such a
+capture is the screen with the pointer, by design, and nothing of the screen under the
+pointer is kept. A capture made while the element existed keeps a `pointer` shape in its
+notes, which the page no longer draws, as it draws nothing for a kind it does not know; its
+pixels never held the pointer, so it now shows none. The scrolling capture another session
+is building reads the screen again after the area is chosen, so it holds no pointer.
+Revisit if a pointer is ever wanted off one capture after the fact.

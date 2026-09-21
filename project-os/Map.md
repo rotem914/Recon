@@ -71,7 +71,7 @@ Recon/
 │       │   ├── mod.rs              # the capture interface and the frame it produces
 │       │   ├── coords.rs           # the ONE desktop-to-image conversion, with its tests
 │       │   ├── display.rs          # DPI awareness and the live display layout
-│       │   ├── pointer.rs          # the mouse pointer at the freeze: its picture and place, never drawn into the frame
+│       │   ├── pointer.rs          # the mouse pointer at the freeze: its picture and place, drawn into the frozen pixels
 │       │   └── screen.rs           # the chosen path: one copy of the whole virtual screen
 │       └── source/
 │           ├── mod.rs              # the image source: sniff, open, the decoded-image contract, sRGB once

@@ -102,14 +102,15 @@ pub fn desktop_to_image(
     })
 }
 
-/// Where something that sat on the desktop, the mouse pointer's picture, lands in the image a
-/// selection became: its top left in that image's pixels, or None when no part of it is
-/// inside. Signed, since a pointer at the selection's edge hangs over it.
-pub fn desktop_box_in_selection(selection: DesktopRect, boxed: DesktopRect) -> Option<(i32, i32)> {
-    let left = i64::from(boxed.x) - i64::from(selection.x);
-    let top = i64::from(boxed.y) - i64::from(selection.y);
-    let inside = left < i64::from(selection.width)
-        && top < i64::from(selection.height)
+/// Where something that sat on the desktop, the mouse pointer's picture, lands in a frozen
+/// frame: its top left in the frame's pixels, or None when no part of it is inside. Signed,
+/// and not refused like a selection past the edge: a pointer at the screen's edge hangs over
+/// it, and the part inside is still drawn.
+pub fn desktop_box_in_frame(frame: FrameGeometry, boxed: DesktopRect) -> Option<(i32, i32)> {
+    let left = i64::from(boxed.x) - i64::from(frame.origin_x);
+    let top = i64::from(boxed.y) - i64::from(frame.origin_y);
+    let inside = left < i64::from(frame.width)
+        && top < i64::from(frame.height)
         && left + i64::from(boxed.width) > 0
         && top + i64::from(boxed.height) > 0;
     inside.then_some((left as i32, top as i32))
@@ -119,13 +120,13 @@ pub fn desktop_box_in_selection(selection: DesktopRect, boxed: DesktopRect) -> O
 mod tests {
     use super::*;
 
-    /// A pointer inside the selection lands at its offset, one hanging over the left edge at
-    /// a negative one, and one wholly outside nowhere; on a display left of the primary too.
+    /// A pointer inside the frame lands at its offset, one hanging over the left edge at a
+    /// negative one, and one wholly outside nowhere; on a frame left of the primary display.
     #[test]
-    fn a_box_on_the_desktop_lands_in_the_selection() {
-        let selection = DesktopRect {
-            x: -1900,
-            y: 100,
+    fn a_box_on_the_desktop_lands_in_the_frame() {
+        let selection = FrameGeometry {
+            origin_x: -1900,
+            origin_y: 100,
             width: 400,
             height: 300,
         };
@@ -136,15 +137,15 @@ mod tests {
             height: 32,
         };
         assert_eq!(
-            desktop_box_in_selection(selection, boxed(-1800, 150)),
+            desktop_box_in_frame(selection, boxed(-1800, 150)),
             Some((100, 50))
         );
         assert_eq!(
-            desktop_box_in_selection(selection, boxed(-1910, 100)),
+            desktop_box_in_frame(selection, boxed(-1910, 100)),
             Some((-10, 0))
         );
-        assert_eq!(desktop_box_in_selection(selection, boxed(-1932, 100)), None);
-        assert_eq!(desktop_box_in_selection(selection, boxed(-1500, 100)), None);
+        assert_eq!(desktop_box_in_frame(selection, boxed(-1932, 100)), None);
+        assert_eq!(desktop_box_in_frame(selection, boxed(-1500, 100)), None);
     }
 
     /// One display at the origin: this machine's current arrangement.

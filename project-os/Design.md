@@ -195,16 +195,13 @@ dark fill the thumbnail's × had, rgba(10,12,14,.75), and its red on hover, #c03
 
 ### Captured pointer
 
-Stated by Rotem on 2026-09-21.
+Stated by Rotem on 2026-09-22, in place of the element on top he chose the day before.
 
 | Part | Value |
 |---|---|
-| Use | a capture taken with the mouse pointer inside the area arrives with the pointer as an element on top, where it stood when the shortcut was pressed, at its own size; the capture under it is whole |
-| Move and delete | a drag moves it; on hover it shows the Ruler's delete button, and one press deletes it; Delete on it selected does the same; each is one step of Ctrl+Z |
-| In the output | in every copy, every save and the timeline's thumbnail, until deleted |
-
-Not stated, so provisional: the delete button sits centred on the pointer's top right
-corner, and the pointer selected shows the shapes' two blue dots at its corners.
+| Use | a capture holds the mouse pointer where it stood when the shortcut was pressed, as part of the picture, like any other pixel of the screen; it cannot be moved or taken off afterwards |
+| While choosing the area | the frozen screen shows that pointer too, so what is seen is what is captured |
+| Switch | Settings, Mouse pointer in captures: off, and a capture holds no pointer |
 
 ### Crop
 

@@ -131,13 +131,30 @@ fn begin_capture() {
         let source = capture::screen::WholeVirtualScreen;
         let started = std::time::Instant::now();
         // The mouse pointer, read beside the freeze and before the overlay swaps it for its
-        // crosshair (Rotem, 2026-09-21). Never drawn into the frozen pixels.
+        // crosshair (Rotem, 2026-09-21).
         let pointer = settings::capture_pointer()
             .then(capture::pointer::grab)
             .flatten();
 
         match source.freeze() {
-            Ok(frame) => {
+            Ok(mut frame) => {
+                // The pointer is part of the picture (Rotem, 2026-09-22): drawn into the frozen
+                // pixels where it stood, so the overlay shows it and the capture holds it.
+                if let Some(pointer) = &pointer {
+                    let drawn = pointer.burn_into(&mut frame);
+                    log(&format!(
+                        "the mouse pointer, {}x{} at desktop {},{}: {}",
+                        pointer.at.width,
+                        pointer.at.height,
+                        pointer.at.x,
+                        pointer.at.y,
+                        if drawn {
+                            "drawn into the frozen pixels"
+                        } else {
+                            "outside the frozen frame, not drawn"
+                        }
+                    ));
+                }
                 marks::mark(marks::FREEZE_DONE);
                 // v1 does not capture HDR: what GDI hands over from a display with HDR on
                 // is Windows' SDR rendering of it, so the fact is said, never silent (S0.8).
@@ -205,28 +222,7 @@ fn begin_capture() {
                                         rgba: pixels,
                                         source: "capture",
                                     };
-                                    // The pointer comes along when any part of it is
-                                    // inside the selection, placed in the capture's pixels.
-                                    let pointer = pointer.and_then(|pointer| {
-                                        let (x, y) = capture::coords::desktop_box_in_selection(
-                                            rect, pointer.at,
-                                        )?;
-                                        editor::CapturedPointer::new(
-                                            x,
-                                            y,
-                                            pointer.at.width,
-                                            pointer.at.height,
-                                            pointer.rgba,
-                                        )
-                                    });
-                                    log(&match &pointer {
-                                        Some(p) => format!(
-                                            "the mouse pointer comes along: {}x{} at {},{} in the capture",
-                                            p.width, p.height, p.x, p.y
-                                        ),
-                                        None => "no mouse pointer comes along".to_string(),
-                                    });
-                                    match editor::present(captured, pointer) {
+                                    match editor::present(captured) {
                                         Ok(show_ms) => {
                                             marks::mark(marks::EDITOR_SHOW_RETURNED);
                                             log(&format!(
