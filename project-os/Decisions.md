@@ -126,6 +126,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-19 · The wheel stretches the picture already painted and asks for one region at a time; the host says once whether a picture has a see-through pixel.
 - 2026-09-19 · The magnifier is one unit in the host: the page asks for the finished panel and paints it, Rotem's choice of two.
 - 2026-09-19 · Rotem's inspector is in his own builds of Recon only, behind a build switch, never in the public release.
+- 2026-09-22 · The captured pointer is an element in the notes carrying its own picture, never pixels of the capture; Rotem's choice over a pointer burned in.
 
 ---
 
@@ -937,3 +938,36 @@ Option 2, Rotem's GO after the costs were put to him. The variable has a name of
 
 ### Consequences
 The release Rotem runs is built with `--features own-extensions` (`project-os/Workflow.md` step 16); a public release is built without it. With the extension loaded, the key left of 1 belongs to the inspector, so it types nothing in a note, and in Hebrew that key is the semicolon. The height of the timeline, which the page keeps in the browser's storage, starts over once in the new profile.
+
+## 2026-09-22 · The captured pointer is an element in the notes carrying its own picture, never pixels of the capture
+
+### Context
+Rotem asked that a capture include the mouse pointer. A screen copy never holds it, and
+Recon freezes the screen at the shortcut, so the pointer's place is where it stood then,
+often inside the area unasked. The capture's pixels are the thing Recon promises to keep.
+
+### Options
+1. Draw the pointer into the frozen pixels: a small build, and it can never be taken off.
+2. An element on top that can be moved and deleted, as Snagit does.
+3. For either: in every capture, or behind a switch in Settings.
+
+### Decision
+Option 2 with the switch, Rotem's, on 2026-09-21. The rest is the assistant's, his to veto.
+The element is a shape of kind `pointer` in the document's notes, its picture a PNG inside
+them, so saving, the copy, the thumbnail, the crop and undo reach it with no path of their
+own, and the document format stays at schema 1. The host hands the picture over once,
+through the region scheme, so a return to the capture never adds a second one. The arrival
+is part of the capture: the history starts with it, so Ctrl+Z never takes it off, while a
+move or a delete is a step. It comes along when any part of it is inside the selection. The
+switch is on by default. Its alpha comes from drawing it on black and on white, since
+Windows hands a pointer over as something to draw; a pixel that inverts what is under it,
+the text pointer's, is kept as solid black.
+
+### Consequences
+The overlay does not show where the pointer will land, since the frozen picture has none.
+A blur drawn over the pointer blurs the capture under it and leaves the pointer sharp, as
+the blur works on the source. A pointer hanging over the capture's edge is cut at the edge
+in a copy, as a ruler is. Every undo step of such a document carries the picture, a few
+kilobytes. Revisit if the pointer should show during the selection, if a pointer should be
+addable by hand to a capture that has none, or when the size on a scaled display and an
+enlarged pointer have been seen by eye.

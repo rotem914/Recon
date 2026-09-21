@@ -147,12 +147,15 @@ Stated by Rotem on 2026-09-18.
 | Button | a chevron pointing down (Rotem, 2026-09-18, from three dots the same day), left of minimize in the top bar, in the window buttons' own box and icon size: 48 by 40 with a 10 by 10 icon |
 | Opens | a modal |
 | Content | a shortcut that opens Recon itself, and the shortcut that starts a capture, each picked by pressing it; under Capture a second row, Capture 2, for a second shortcut that starts the same capture (Rotem, 2026-09-19), empty until picked, with its own × |
+| Mouse pointer in captures | a row under Capture 2 with a switch, on until switched off (Rotem, 2026-09-21); it holds from the next capture |
 
 The modal's look is not stated yet. Provisional in the page until it is: a 50% black veil,
 a 420 px panel in the icon button hover colour on 13 px corners with 24 px of padding, the
 title in Google Sans 16 px medium, 14 px rows in the top bar title's #cfd4da, a 32 px field
 in the app background on the tabs' 10 px corners, a 1 px #7aa7ff ring while it waits for a
-shortcut, a refusal under its field in #ff5252, the veil fading in by A1.
+shortcut, a refusal under its field in #ff5252, the veil fading in by A1. The switch: a 32 by
+18 track in the app background with a 12 px #8b9098 knob, the track #7aa7ff and the knob
+#f2f2f2 when on, moving by A1.
 
 ### Callout
 
@@ -189,6 +192,19 @@ callout line's #7aa7ff; the size bubble beside the corner the drag ended at, 8 p
 and below it, dark #1b1f24 with a 1 px #3a4149 border, 4 px corners, white 14 px medium
 text, all in image pixels like a note; the × centred on the box's top right corner, the
 dark fill the thumbnail's × had, rgba(10,12,14,.75), and its red on hover, #c0392b, a 1.5 px line, 16 screen pixels at every zoom.
+
+### Captured pointer
+
+Stated by Rotem on 2026-09-21.
+
+| Part | Value |
+|---|---|
+| Use | a capture taken with the mouse pointer inside the area arrives with the pointer as an element on top, where it stood when the shortcut was pressed, at its own size; the capture under it is whole |
+| Move and delete | a drag moves it; on hover it shows the Ruler's delete button, and one press deletes it; Delete on it selected does the same; each is one step of Ctrl+Z |
+| In the output | in every copy, every save and the timeline's thumbnail, until deleted |
+
+Not stated, so provisional: the delete button sits centred on the pointer's top right
+corner, and the pointer selected shows the shapes' two blue dots at its corners.
 
 ### Crop
 

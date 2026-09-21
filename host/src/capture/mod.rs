@@ -11,6 +11,7 @@
 
 pub mod coords;
 pub mod display;
+pub mod pointer;
 pub mod screen;
 
 // Re-exported because every caller needs the conversion itself; the coordinate TYPES are

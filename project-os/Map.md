@@ -71,6 +71,7 @@ Recon/
 │       │   ├── mod.rs              # the capture interface and the frame it produces
 │       │   ├── coords.rs           # the ONE desktop-to-image conversion, with its tests
 │       │   ├── display.rs          # DPI awareness and the live display layout
+│       │   ├── pointer.rs          # the mouse pointer at the freeze: its picture and place, never drawn into the frame
 │       │   └── screen.rs           # the chosen path: one copy of the whole virtual screen
 │       └── source/
 │           ├── mod.rs              # the image source: sniff, open, the decoded-image contract, sRGB once
@@ -123,7 +124,7 @@ Where state lives and who is allowed to write it.
 |---|---|---|---|
 | The process docs | `CLAUDE.md`, `project-os/*.md` | Markdown | the assistant, under the rules each file states |
 | The hooks setting | `.claude/settings.local.json` | JSON | `project-os/install-hooks.mjs` only. Machine-local, not committed. |
-| The two shortcuts | `%APPDATA%\Recon\recon.json`, the keys `hotkey` and `open_hotkey` | JSON | the host only, when Settings changes a shortcut: every other key kept, flushed and renamed into place. Read at startup, and the log says where the value came from. |
+| The two shortcuts | `%APPDATA%\Recon\recon.json`, the keys `hotkey` and `open_hotkey`, and `capture_pointer`, Settings' switch for the mouse pointer | JSON | the host only, when Settings changes a shortcut: every other key kept, flushed and renamed into place. Read at startup, and the log says where the value came from. |
 | Start with Windows | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, the value `Recon` | the command `"<exe>" --startup` | the host only, at the tray's "Start with Windows" tick; removed when it is unticked |
 | Recon's trash | `%LOCALAPPDATA%\Recon\trash\<number>\` | a deleted document's folder, whole, plus `trashed` with the time; removed for good at a startup thirty days on | the host only, at a delete and at the startup sweep |
 | The timeline's tabs | `%LOCALAPPDATA%\Recon\tabs.json` | JSON, schema 1: the selected tab, and every tab after Main with its name and the ids of its captures; rewritten whole through a temporary file. One that does not parse is set aside as `tabs.broken-<ms>.json` | the host only, at every change the page makes to the tabs. The checks use `host/target/debug/tabs.json` instead |

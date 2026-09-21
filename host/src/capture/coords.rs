@@ -102,9 +102,50 @@ pub fn desktop_to_image(
     })
 }
 
+/// Where something that sat on the desktop, the mouse pointer's picture, lands in the image a
+/// selection became: its top left in that image's pixels, or None when no part of it is
+/// inside. Signed, since a pointer at the selection's edge hangs over it.
+pub fn desktop_box_in_selection(selection: DesktopRect, boxed: DesktopRect) -> Option<(i32, i32)> {
+    let left = i64::from(boxed.x) - i64::from(selection.x);
+    let top = i64::from(boxed.y) - i64::from(selection.y);
+    let inside = left < i64::from(selection.width)
+        && top < i64::from(selection.height)
+        && left + i64::from(boxed.width) > 0
+        && top + i64::from(boxed.height) > 0;
+    inside.then_some((left as i32, top as i32))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A pointer inside the selection lands at its offset, one hanging over the left edge at
+    /// a negative one, and one wholly outside nowhere; on a display left of the primary too.
+    #[test]
+    fn a_box_on_the_desktop_lands_in_the_selection() {
+        let selection = DesktopRect {
+            x: -1900,
+            y: 100,
+            width: 400,
+            height: 300,
+        };
+        let boxed = |x, y| DesktopRect {
+            x,
+            y,
+            width: 32,
+            height: 32,
+        };
+        assert_eq!(
+            desktop_box_in_selection(selection, boxed(-1800, 150)),
+            Some((100, 50))
+        );
+        assert_eq!(
+            desktop_box_in_selection(selection, boxed(-1910, 100)),
+            Some((-10, 0))
+        );
+        assert_eq!(desktop_box_in_selection(selection, boxed(-1932, 100)), None);
+        assert_eq!(desktop_box_in_selection(selection, boxed(-1500, 100)), None);
+    }
 
     /// One display at the origin: this machine's current arrangement.
     fn single_display() -> FrameGeometry {

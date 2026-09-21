@@ -61,6 +61,15 @@
                     color: #cfd4da; display: grid; place-items: center; cursor: pointer; visibility: hidden;
                     transition: background-color 144ms ease-out; /* A1 */ }
   .setting .clear.shown { visibility: visible; }
+  /* The switch (Rotem, 2026-09-21), provisional like the rest of the modal: a 32 by 18 track in
+     the field's colour with a 12 px knob, the selected ring's blue when on, moving by A1. */
+  .setting .switch { justify-self: end; grid-column: 2 / -1; width: 32px; height: 18px; padding: 0; border: none; border-radius: 9px;
+                     background: var(--paper); cursor: pointer; position: relative; transition: background-color 144ms ease-out; /* A1 */ }
+  .setting .switch::after { content: ""; position: absolute; left: 3px; top: 3px; width: 12px; height: 12px; border-radius: 6px;
+                            background: #8b9098; transition: transform 144ms ease-out, background-color 144ms ease-out; /* A1 */ }
+  .setting .switch[aria-checked="true"] { background: #7aa7ff; }
+  .setting .switch[aria-checked="true"]::after { transform: translateX(14px); background: #f2f2f2; }
+  @media (prefers-reduced-motion: reduce) { .setting .switch, .setting .switch::after { transition: none; } }
   .setting .said { grid-column: 1 / -1; margin-top: 4px; color: #ff5252; display: none; }
   .setting .said.shown { display: block; }
   @media (prefers-reduced-motion: reduce) { #settings-close, .setting .clear { transition: none; } }
@@ -312,13 +321,19 @@
      ruler, centred on its top right corner. Counter-scaled by the scene's own scale (--k), so it is
      16 screen pixels at every zoom; never in a copy, the export takes it out. Its fill is
      provisional: the ones the thumbnail's x had. Hidden while the ruler is being drawn. */
-  .ruler .x { position: absolute; left: calc(100% + 2px); top: -2px; width: 16px; /* on the outer corner, past the 2 px border */ height: 16px; border-radius: 8px; border: none; padding: 0;
+  /* The mouse pointer a capture caught (Rotem, 2026-09-21): its own picture in a box of the scene
+     like the ruler's, in image pixels, so it is in every copy; a drag moves it, and the ruler's
+     x on hover deletes it. */
+  .pointer { position: absolute; cursor: move; }
+  .pointer img { display: block; width: 100%; height: 100%; pointer-events: none; user-select: none; }
+  .ruler .x, .pointer .x { position: absolute; left: calc(100% + 2px); top: -2px; width: 16px; /* on the outer corner, past the 2 px border */ height: 16px; border-radius: 8px; border: none; padding: 0;
               background: rgba(10,12,14,.75); color: #f2f2f2; cursor: pointer; display: none; place-items: center;
               transform-origin: 0 0; transform: scale(calc(1 / var(--k, 1))) translate(-50%, -50%); }
-  .ruler .x svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; }
-  .ruler:hover .x { display: grid; }
-  .ruler.drawing .x, body.plain .ruler .x { display: none; }
-  .ruler .x:hover { background: #c0392b; }
+  .pointer .x { left: 100%; top: 0; /* the box has no border to clear */ }
+  .ruler .x svg, .pointer .x svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; }
+  .ruler:hover .x, .pointer:hover .x { display: grid; }
+  .ruler.drawing .x, body.plain .ruler .x, body.plain .pointer .x { display: none; }
+  .ruler .x:hover, .pointer .x:hover { background: #c0392b; }
   /* The ruler's magnifier (Rotem, 2026-09-18): the capture's circle, the whole time the ruler
      tool is in hand, and while a ruler is dragged out its size sits above the circle, as in a
      capture, and returns beside the ruler's corner at the release. Every number is the
@@ -420,6 +435,11 @@
       <span>Capture 2</span>
       <button class="key" type="button"></button>
       <button class="clear" type="button" title="Clear"><svg viewBox="0 0 10 10"><path d="M.5 .5l9 9M9.5 .5l-9 9"/></svg></button>
+      <div class="said"></div>
+    </div>
+    <div class="setting" data-switch="pointer">
+      <span id="setting-pointer-name">Mouse pointer in captures</span>
+      <button class="switch" type="button" role="switch" aria-checked="true" aria-labelledby="setting-pointer-name"></button>
       <div class="said"></div>
     </div>
   </div>
@@ -1392,6 +1412,27 @@
     for (const el of [...scene.querySelectorAll('.ruler')]) {
       if (!model.shapes.some((s) => s.id === el.dataset.shape)) el.remove();
     }
+    // The mouse pointer a capture caught: its picture, at its own size, where it stood.
+    for (const shape of model.shapes) {
+      if (shape.kind !== 'pointer') continue;
+      let el = scene.querySelector(`.pointer[data-shape="${shape.id}"]`);
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'pointer';
+        el.dataset.shape = shape.id;
+        el.innerHTML = '<img alt="" draggable="false"><button type="button" class="x" data-ui="x" aria-label="Delete"><svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg></button>';
+        if (String(shape.src).startsWith('data:image/png;base64,')) el.firstElementChild.src = shape.src;
+        scene.appendChild(el);
+      }
+      const r = rectOfShape(shape);
+      el.style.left = `${r.x}px`;
+      el.style.top = `${r.y}px`;
+      el.style.width = `${r.w}px`;
+      el.style.height = `${r.h}px`;
+    }
+    for (const el of [...scene.querySelectorAll('.pointer')]) {
+      if (!model.shapes.some((s) => s.id === el.dataset.shape)) el.remove();
+    }
     // The crop's frame (S3.6): on the picture's edges while the crop tool is in hand, on the
     // rect a handle is dragging while the drag lasts.
     const cropRect = model.cropping || pictureRect();
@@ -2347,7 +2388,7 @@
   // While the modal is open the keyboard is its own: nothing reaches the editor under it.
   const settingsVeil = document.getElementById('settings-veil');
   const settingsPanel = document.getElementById('settings');
-  const settingRows = [...settingsPanel.querySelectorAll('.setting')];
+  const settingRows = [...settingsPanel.querySelectorAll('.setting[data-which]')];
   const settingsState = { open: false, recording: null, keys: null };
   const settingRow = (which) => settingRows.find((row) => row.dataset.which === which);
   const drawSettings = () => {
@@ -2362,7 +2403,23 @@
       const clear = row.querySelector('.clear');
       if (clear) clear.classList.toggle('shown', !!label && !recording);
     }
+    pointerSwitch.setAttribute('aria-checked', String(!settingsState.keys || settingsState.keys.pointer !== false));
   };
+  // The switch for the mouse pointer in a capture (Rotem, 2026-09-21): on until switched off,
+  // kept by the host in the settings file, and in force from the next capture.
+  const pointerRow = settingsPanel.querySelector('.setting[data-switch="pointer"]');
+  const pointerSwitch = pointerRow.querySelector('.switch');
+  pointerSwitch.addEventListener('click', async () => {
+    const said = pointerRow.querySelector('.said');
+    try {
+      settingsState.keys = await invoke('editor_settings_pointer', { on: pointerSwitch.getAttribute('aria-checked') !== 'true' });
+      said.textContent = '';
+    } catch (err) {
+      said.textContent = String(err);
+    }
+    said.classList.toggle('shown', !!said.textContent);
+    drawSettings();
+  });
   const saySetting = (which, text) => {
     const said = settingRow(which).querySelector('.said');
     said.textContent = text || '';
@@ -2704,8 +2761,9 @@
     const shapeEl = target.closest && target.closest('[data-shape]');
     if (shapeEl) {
       const shape = model.shapes.find((s) => s.id === shapeEl.dataset.shape);
-      // The ruler's x (Rotem, 2026-09-16): one press deletes it, one step of undo.
-      if (target.closest('.ruler .x')) {
+      // The ruler's x (Rotem, 2026-09-16): one press deletes it, one step of undo. The
+      // captured pointer has the same one.
+      if (target.closest('.ruler .x, .pointer .x')) {
         if (model.editing) commitEditing();
         removeShape(shape);
         settle();
@@ -2839,7 +2897,7 @@
       drag.shape.a = { x: Math.round(point.x + drag.dx), y: Math.round(point.y + drag.dy) };
       drag.shape.b = { x: Math.round(point.x + drag.bx), y: Math.round(point.y + drag.by) };
       drag.moved = true;
-      if (drag.shape.kind === 'blur' || drag.shape.kind === 'ruler') layoutScene(); else drawArrows();
+      if (drag.shape.kind === 'blur' || drag.shape.kind === 'ruler' || drag.shape.kind === 'pointer') layoutScene(); else drawArrows();
       return;
     }
     if (drag.kind === 'anchor') {
@@ -3626,6 +3684,46 @@
     lastRegion: () => lastRegion,
   };
 
+  // The mouse pointer a capture caught (Rotem, 2026-09-21) arrives beside it: the host says
+  // where it stood and hands its picture over once. It joins the scene before the capture's
+  // automatic copy, so the copy carries it, and it is part of the capture as it arrived: the
+  // history starts with it, so Ctrl+Z never takes it off, while moving or deleting it is a
+  // step like any other. Its picture travels in the notes, so it is back after a restart.
+  const takePointer = async (info) => {
+    const at = info.pointer;
+    if (!at || info.source !== 'capture' || info.file) return false;
+    if (info.document_id !== model.image.document_id || model.shapes.some((s) => s.kind === 'pointer')) return false;
+    try {
+      const response = await fetch(`http://region.localhost/?pointer=${info.document_id}`, { cache: 'no-store' });
+      if (!response.ok) throw new Error(await response.text());
+      const blob = await response.blob();
+      const src = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(blob);
+      });
+      // The picture is decoded before it joins, so the copy that follows draws it.
+      const probe = new Image();
+      probe.src = src;
+      await probe.decode();
+      if (info.document_id !== model.image.document_id) return false;
+      const shape = { id: `s${model.nextShape}`, kind: 'pointer', a: { x: at.x, y: at.y }, b: { x: at.x + at.width, y: at.y + at.height }, src };
+      model.nextShape += 1;
+      model.shapes.push(shape);
+      // The capture as it arrived is where its history starts; should a step have been made
+      // in the moment before the pointer joined, the pointer is one more step and none is lost.
+      if (model.history.steps.length === 1) model.history = { steps: [snapshot()], index: 0, seq: [0] };
+      else record();
+      layoutScene();
+      markDirty();
+      return true;
+    } catch (err) {
+      console.warn(`the mouse pointer did not arrive: ${err}`);
+      return false;
+    }
+  };
+
   const boot = async () => {
     console.log('page booted, asking the host for an image');
     await measureRatio();
@@ -3639,6 +3737,7 @@
       // a frame stepped or a file stepped onto arrives by the same event and joins nothing.
       if ((event.payload.source === 'capture' && !event.payload.file) || event.payload.linked) captureIntoTab(event.payload.document_id);
       await loadImage(event.payload);
+      await takePointer(event.payload);
       drawHud();
       console.log(`capture shown ${Math.round(performance.now() - arrived)} ms after the page heard of it`);
       // A capture is on the clipboard the moment it opens (Rotem, 2026-09-16): the same

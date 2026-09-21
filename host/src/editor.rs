@@ -1616,11 +1616,74 @@ pub fn show(app: &AppHandle) -> Result<u128, String> {
 /// This is the join between the capture path and the editor that did not exist until the
 /// review (F49): the page is told the image changed, loads it through the region service,
 /// and the window is shown. Returns how long the show took.
-pub fn present(frame: Frame) -> Result<u128, String> {
+pub fn present(frame: Frame, pointer: Option<CapturedPointer>) -> Result<u128, String> {
     state().set_document(None);
     // Taking a capture activates history navigation (§3.4).
     state().history_active.store(true, Ordering::SeqCst);
-    present_frame(frame, None)
+    present_frame(frame, None, pointer)
+}
+
+/// The mouse pointer a capture caught (Rotem, 2026-09-21): its picture as a PNG, and where
+/// its top left sits in the capture's own pixels, which may be past an edge. It is never
+/// drawn into the capture: the page takes it once, as an element of the scene that can be
+/// moved and deleted, and from then on it lives in the document's notes.
+pub struct CapturedPointer {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub png: Vec<u8>,
+}
+
+impl CapturedPointer {
+    pub fn new(x: i32, y: i32, width: u32, height: u32, rgba: Vec<u8>) -> Option<Self> {
+        let picture = image::RgbaImage::from_raw(width, height, rgba)?;
+        let mut png = std::io::Cursor::new(Vec::new());
+        picture.write_to(&mut png, image::ImageFormat::Png).ok()?;
+        Some(Self {
+            x,
+            y,
+            width,
+            height,
+            png: png.into_inner(),
+        })
+    }
+}
+
+/// The pointer waiting for the page, with the number of the capture it belongs to.
+static POINTER: Mutex<Option<(u64, CapturedPointer)>> = Mutex::new(None);
+
+/// Where the waiting pointer sits, for the page's announcement of this document.
+#[derive(serde::Serialize, Clone)]
+pub struct PointerAt {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+fn pointer_waiting(id: u64) -> Option<PointerAt> {
+    let slot = POINTER.lock().ok()?;
+    let (of, pointer) = slot.as_ref()?;
+    (*of == id).then_some(PointerAt {
+        x: pointer.x,
+        y: pointer.y,
+        width: pointer.width,
+        height: pointer.height,
+    })
+}
+
+/// The pointer's picture, handed over once: a second ask for the same capture, a return to
+/// it later in the session, finds nothing, so the page can never add the pointer twice.
+fn take_pointer(id: u64) -> Result<Vec<u8>, String> {
+    let mut slot = POINTER.lock().map_err(|_| "the pointer is locked")?;
+    match slot.take() {
+        Some((of, pointer)) if of == id => Ok(pointer.png),
+        other => {
+            *slot = other;
+            Err(format!("no pointer waits for document {id}"))
+        }
+    }
 }
 
 /// Hides the editor and returns the focus to the application the capture began in (§3.1).
@@ -1653,7 +1716,11 @@ fn set_title(app: &AppHandle, info: &ImageInfo) {
     }
 }
 
-fn present_frame(frame: Frame, reuse: Option<u64>) -> Result<u128, String> {
+fn present_frame(
+    frame: Frame,
+    reuse: Option<u64>,
+    pointer: Option<CapturedPointer>,
+) -> Result<u128, String> {
     let app = app()?;
     let is_capture = frame.source == "capture";
     let id = match reuse {
@@ -1663,6 +1730,11 @@ fn present_frame(frame: Frame, reuse: Option<u64>) -> Result<u128, String> {
         }
         None => next_document_id(),
     };
+    // Before the page hears of the picture, under the picture's own number, so the
+    // announcement already says a pointer waits; a picture without one clears the last.
+    if let Ok(mut slot) = POINTER.lock() {
+        *slot = pointer.map(|pointer| (id, pointer));
+    }
     state().set_frame(frame);
     // A capture is a document from its first moment (§3.8: new captures save
     // automatically), so the previous one is never overwritten by the next (§3.3).
@@ -1747,7 +1819,7 @@ fn open_path_as(path: &std::path::Path, joins: bool) -> Result<u128, String> {
         save_links(&links);
         Some(id)
     });
-    present_frame(frame_of(decoded, name), reuse.flatten())
+    present_frame(frame_of(decoded, name), reuse.flatten(), None)
 }
 
 /// Previous, next, first or last in the folder (§3.4). A file gone since the listing is
@@ -1896,6 +1968,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         crate::settings::editor_settings,
         crate::settings::editor_settings_set,
         crate::settings::editor_settings_recording,
+        crate::settings::editor_settings_pointer,
         editor_open_dialog,
         editor_fullscreen,
         editor_navigate,
@@ -1948,6 +2021,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         checks::editor_dialog_outcome,
         checks::editor_press_escape,
         checks::editor_capture_probe,
+        checks::editor_capture_probe_pointer,
         checks::editor_load_probe,
         checks::editor_load_screen,
         checks::editor_look_at_window,
@@ -1988,6 +2062,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         crate::settings::editor_settings,
         crate::settings::editor_settings_set,
         crate::settings::editor_settings_recording,
+        crate::settings::editor_settings_pointer,
         editor_open_dialog,
         editor_fullscreen,
         editor_annotate,
@@ -2029,6 +2104,24 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
                 };
                 responder.respond(response.expect("a thumbnail response"));
             });
+            return;
+        }
+        // The mouse pointer a capture caught (Rotem, 2026-09-21), taken once by the page.
+        if let Some(id) = query
+            .strip_prefix("pointer=")
+            .and_then(|s| s.parse::<u64>().ok())
+        {
+            let response = match take_pointer(id) {
+                Ok(png) => tauri::http::Response::builder()
+                    .header("Content-Type", "image/png")
+                    .header("Access-Control-Allow-Origin", APP_ORIGIN)
+                    .body(png),
+                Err(err) => tauri::http::Response::builder()
+                    .status(404)
+                    .header("Access-Control-Allow-Origin", APP_ORIGIN)
+                    .body(err.into_bytes()),
+            };
+            responder.respond(response.expect("a pointer response"));
             return;
         }
         // The ruler's magnifier (Rotem, 2026-09-18) asks for the few pixels around the
@@ -2502,6 +2595,9 @@ pub struct ImageInfo {
     /// No pixel the page is sent can be see-through: every pixel of the frame is solid. Never
     /// true for a vector, whose regions are drawn from the file again at each zoom.
     pub opaque: bool,
+    /// The mouse pointer this capture caught, still waiting for the page to take it; null
+    /// for everything else, and for the same capture once it was taken.
+    pub pointer: Option<PointerAt>,
 }
 
 #[tauri::command]
@@ -2591,6 +2687,7 @@ pub fn editor_image_info() -> Result<ImageInfo, String> {
         linked: link(current_document_id()).is_some(),
         edited_ago_s: standing.edited_ago_s,
         source_changed: standing.source_changed,
+        pointer: pointer_waiting(current_document_id()),
     })
 }
 
@@ -4648,7 +4745,31 @@ mod checks {
         }
         let mut frame = detail_probe_frame(width, height);
         frame.source = "capture";
-        present(frame)?;
+        present(frame, None)?;
+        editor_image_info()
+    }
+
+    /// The same probe with a mouse pointer caught on it: a 32 by 32 picture, a solid red
+    /// square of 16 in its top left and the rest clear, its top left at `x`, `y`.
+    #[tauri::command]
+    pub fn editor_capture_probe_pointer(
+        width: u32,
+        height: u32,
+        x: i32,
+        y: i32,
+    ) -> Result<ImageInfo, String> {
+        if width == 0 || height == 0 || width > 8192 || height > 8192 {
+            return Err(format!("{width}x{height} is not a probe size"));
+        }
+        let mut frame = detail_probe_frame(width, height);
+        frame.source = "capture";
+        let mut rgba = vec![0u8; 32 * 32 * 4];
+        for row in 0..16 {
+            for col in 0..16 {
+                rgba[(row * 32 + col) * 4..][..4].copy_from_slice(&[255, 0, 0, 255]);
+            }
+        }
+        present(frame, CapturedPointer::new(x, y, 32, 32, rgba))?;
         editor_image_info()
     }
 

@@ -165,6 +165,14 @@ static KEYS: Mutex<Keys> = Mutex::new(Keys {
     },
 });
 
+/// Whether a capture takes the mouse pointer with it (Rotem, 2026-09-21). Read at every
+/// capture, so the switch in Settings holds from the next one.
+static POINTER: AtomicBool = AtomicBool::new(true);
+
+pub fn capture_pointer() -> bool {
+    POINTER.load(Ordering::SeqCst)
+}
+
 /// Whether the shortcut plugin is in this process. A check run has none, and there a
 /// registration is the parse alone, plus whatever the checks declared taken.
 static LIVE: AtomicBool = AtomicBool::new(false);
@@ -214,6 +222,7 @@ fn unregister_live(app: &tauri::AppHandle, label: &str) {
 /// Neither failure ends the process (F15); Settings shows it and offers another.
 pub fn start(app: &tauri::AppHandle, cfg: &config::Config, live: bool) -> Keys {
     LIVE.store(live, Ordering::SeqCst);
+    POINTER.store(cfg.capture_pointer, Ordering::SeqCst);
     let mut keys = Keys::default();
     for (which, label) in [
         (Which::Capture, Some(cfg.hotkey.clone())),
@@ -295,6 +304,8 @@ pub struct SettingsView {
     capture2_active: bool,
     open: String,
     open_active: bool,
+    /// The switch: a capture takes the mouse pointer with it.
+    pointer: bool,
 }
 
 fn view(keys: &Keys) -> SettingsView {
@@ -305,7 +316,21 @@ fn view(keys: &Keys) -> SettingsView {
         capture2_active: keys.capture2.active,
         open: keys.open.label.clone(),
         open_active: keys.open.active,
+        pointer: capture_pointer(),
     }
+}
+
+/// The switch for the mouse pointer. The file first: a switch that was not saved is said
+/// so and stays as it was.
+#[tauri::command]
+pub fn editor_settings_pointer(on: bool) -> Result<SettingsView, String> {
+    config::save_pointer(on).map_err(|err| format!("NOT SAVED: {err}"))?;
+    POINTER.store(on, Ordering::SeqCst);
+    crate::log(&format!(
+        "settings: the mouse pointer in a capture is {}",
+        if on { "on" } else { "off" }
+    ));
+    editor_settings()
 }
 
 #[tauri::command]

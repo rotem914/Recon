@@ -130,6 +130,11 @@ fn begin_capture() {
         let _guard = guard;
         let source = capture::screen::WholeVirtualScreen;
         let started = std::time::Instant::now();
+        // The mouse pointer, read beside the freeze and before the overlay swaps it for its
+        // crosshair (Rotem, 2026-09-21). Never drawn into the frozen pixels.
+        let pointer = settings::capture_pointer()
+            .then(capture::pointer::grab)
+            .flatten();
 
         match source.freeze() {
             Ok(frame) => {
@@ -200,7 +205,28 @@ fn begin_capture() {
                                         rgba: pixels,
                                         source: "capture",
                                     };
-                                    match editor::present(captured) {
+                                    // The pointer comes along when any part of it is
+                                    // inside the selection, placed in the capture's pixels.
+                                    let pointer = pointer.and_then(|pointer| {
+                                        let (x, y) = capture::coords::desktop_box_in_selection(
+                                            rect, pointer.at,
+                                        )?;
+                                        editor::CapturedPointer::new(
+                                            x,
+                                            y,
+                                            pointer.at.width,
+                                            pointer.at.height,
+                                            pointer.rgba,
+                                        )
+                                    });
+                                    log(&match &pointer {
+                                        Some(p) => format!(
+                                            "the mouse pointer comes along: {}x{} at {},{} in the capture",
+                                            p.width, p.height, p.x, p.y
+                                        ),
+                                        None => "no mouse pointer comes along".to_string(),
+                                    });
+                                    match editor::present(captured, pointer) {
                                         Ok(show_ms) => {
                                             marks::mark(marks::EDITOR_SHOW_RETURNED);
                                             log(&format!(

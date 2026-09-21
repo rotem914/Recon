@@ -21,6 +21,9 @@ pub struct Config {
     /// A second shortcut that starts a capture, beside the first (Rotem, 2026-09-19). None
     /// until one is picked in Settings, for the same reason as the open shortcut.
     pub second_hotkey: Option<String>,
+    /// Whether a capture takes the mouse pointer with it, as an element on top (Rotem,
+    /// 2026-09-21). On unless the file says `"capture_pointer": false`.
+    pub capture_pointer: bool,
     /// Where the value came from, in words, for the log.
     pub source: String,
 }
@@ -34,6 +37,7 @@ pub fn load() -> Config {
             hotkey,
             open_hotkey: file_value().as_ref().and_then(open_of),
             second_hotkey: file_value().as_ref().and_then(second_of),
+            capture_pointer: file_value().as_ref().is_none_or(pointer_of),
         };
     }
 
@@ -42,6 +46,7 @@ pub fn load() -> Config {
             hotkey: DEFAULT_HOTKEY.into(),
             open_hotkey: None,
             second_hotkey: None,
+            capture_pointer: true,
             source: "no application data directory, so the built-in default".into(),
         };
     };
@@ -51,6 +56,7 @@ pub fn load() -> Config {
             hotkey: DEFAULT_HOTKEY.into(),
             open_hotkey: None,
             second_hotkey: None,
+            capture_pointer: true,
             source: format!(
                 "{} does not exist yet, so the built-in default",
                 path.display()
@@ -65,6 +71,7 @@ pub fn load() -> Config {
                 hotkey: DEFAULT_HOTKEY.into(),
                 open_hotkey: None,
                 second_hotkey: None,
+                capture_pointer: true,
                 source: format!(
                     "{} could not be read ({err}), so the built-in default",
                     path.display()
@@ -79,12 +86,14 @@ pub fn load() -> Config {
                 hotkey: hotkey.to_string(),
                 open_hotkey: open_of(&value),
                 second_hotkey: second_of(&value),
+                capture_pointer: pointer_of(&value),
                 source: format!("{}", path.display()),
             },
             None => Config {
                 hotkey: DEFAULT_HOTKEY.into(),
                 open_hotkey: open_of(&value),
                 second_hotkey: second_of(&value),
+                capture_pointer: pointer_of(&value),
                 source: format!(
                     "{} has no \"hotkey\" key, so the built-in default",
                     path.display()
@@ -95,6 +104,7 @@ pub fn load() -> Config {
             hotkey: DEFAULT_HOTKEY.into(),
             open_hotkey: None,
             second_hotkey: None,
+            capture_pointer: true,
             source: format!(
                 "{} is not valid JSON ({err}), so the built-in default",
                 path.display()
@@ -142,6 +152,13 @@ fn second_of(value: &serde_json::Value) -> Option<String> {
     named(value, "second_hotkey")
 }
 
+fn pointer_of(value: &serde_json::Value) -> bool {
+    value
+        .get("capture_pointer")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true)
+}
+
 fn named(value: &serde_json::Value, key: &str) -> Option<String> {
     value
         .get(key)
@@ -174,6 +191,24 @@ pub fn save(
             None => object.remove(key),
         };
     }
+    write_object(path, object)
+}
+
+/// Writes Settings' switch for the mouse pointer into the config file, every other key kept.
+pub fn save_pointer(on: bool) -> Result<PathBuf, String> {
+    let path = config_path().ok_or("there is no application data folder to save into")?;
+    let mut object = match file_value() {
+        Some(serde_json::Value::Object(map)) => map,
+        _ => serde_json::Map::new(),
+    };
+    object.insert("capture_pointer".into(), on.into());
+    write_object(path, object)
+}
+
+fn write_object(
+    path: PathBuf,
+    object: serde_json::Map<String, serde_json::Value>,
+) -> Result<PathBuf, String> {
     let text = serde_json::to_string_pretty(&serde_json::Value::Object(object))
         .map_err(|err| err.to_string())?;
     if let Some(dir) = path.parent() {
@@ -244,6 +279,16 @@ mod tests {
         assert!(value.get("open_hotkey").is_none());
         assert!(value.get("second_hotkey").is_none());
         assert_eq!(value["kept"], 7);
+
+        // The pointer switch: on when the file says nothing, kept across a shortcut save.
+        assert!(load().capture_pointer);
+        save_pointer(false).unwrap();
+        assert!(!load().capture_pointer);
+        save("Ctrl+Alt+S", None, None).unwrap();
+        assert!(!load().capture_pointer);
+        assert_eq!(load().hotkey, "Ctrl+Alt+S");
+        save_pointer(true).unwrap();
+        assert!(load().capture_pointer);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
