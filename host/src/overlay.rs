@@ -18,10 +18,17 @@
 //! draws a free rectangle, exactly as before. When the pointer moves from one window to
 //! the next, the lit area glides from the one to the other rather than jumping, unless
 //! Windows' own animations are off.
+//!
+//! When the lit area is one that scrolls, a round button sits on it, near its bottom: a
+//! click on it ends the overlay with the area handed to the scrolling capture
+//! (`crate::scrolling`, Rotem, 2026-09-22). Whether an area scrolls is asked of its
+//! application on another thread, so the button shows a moment after the area is lit and
+//! this thread never waits for it.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::Instant;
 
 use windows::core::{w, BOOL, PCWSTR};
@@ -32,9 +39,9 @@ use windows::Win32::Graphics::Dwm::{
 use windows::Win32::Graphics::Gdi::{
     AlphaBlend, BeginPaint, BitBlt, CreateCompatibleDC, CreateDIBSection, CreateRectRgn,
     CreateSolidBrush, DeleteDC, DeleteObject, EndPaint, ExcludeClipRect, FillRect, GdiFlush, GetDC,
-    GetRegionData, GetUpdateRgn, InvalidateRect, ReleaseDC, RestoreDC, SaveDC, SelectObject,
-    SetViewportOrgEx, AC_SRC_ALPHA, AC_SRC_OVER, BLENDFUNCTION, DIB_RGB_COLORS, HBITMAP, HBRUSH,
-    HDC, HFONT, HGDIOBJ, PAINTSTRUCT, RGNDATA, RGNDATAHEADER, SRCCOPY,
+    GetRegionData, GetUpdateRgn, IntersectClipRect, InvalidateRect, ReleaseDC, RestoreDC, SaveDC,
+    SelectObject, SetViewportOrgEx, AC_SRC_ALPHA, AC_SRC_OVER, BLENDFUNCTION, DIB_RGB_COLORS,
+    HBITMAP, HBRUSH, HDC, HFONT, HGDIOBJ, PAINTSTRUCT, RGNDATA, RGNDATAHEADER, SRCCOPY,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, VK_ESCAPE};
@@ -42,17 +49,20 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, EnumChildWindows,
     EnumWindows, GetClassNameW, GetCursorPos, GetForegroundWindow, GetMessageW, GetSystemMetrics,
     GetWindowLongPtrW, GetWindowRect, IsIconic, IsWindow, IsWindowVisible, LoadCursorW,
-    PostMessageW, PostQuitMessage, RegisterClassExW, SetForegroundWindow, SetTimer, ShowWindow,
-    SystemParametersInfoW, TranslateMessage, CS_HREDRAW, CS_VREDRAW, GWL_EXSTYLE, IDC_CROSS, MSG,
-    SM_CXDRAG, SM_CYDRAG, SPI_GETCLIENTAREAANIMATION, SW_SHOW, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
-    WM_APP, WM_DESTROY, WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE,
-    WM_PAINT, WM_TIMER, WNDCLASSEXW, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+    PostMessageW, PostQuitMessage, RegisterClassExW, SetCursor, SetForegroundWindow, SetTimer,
+    ShowWindow, SystemParametersInfoW, TranslateMessage, CS_HREDRAW, CS_VREDRAW, GWL_EXSTYLE,
+    HTCLIENT, IDC_CROSS, IDC_HAND, MSG, SM_CXDRAG, SM_CYDRAG, SPI_GETCLIENTAREAANIMATION, SW_SHOW,
+    SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, WM_APP, WM_DESTROY, WM_ERASEBKGND, WM_KEYDOWN,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_PAINT, WM_SETCURSOR, WM_TIMER, WNDCLASSEXW,
+    WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
 };
 
 use crate::capture::coords::DesktopRect;
 use crate::capture::display::{monitors, MonitorInfo};
 use crate::capture::Frame;
 use crate::magnifier::{place_panel, scaled, solid_header, Cells, LINE_RGB, LINE_SIDE};
+use crate::scrolling::detect;
+use crate::scrolling::draw::{scroll_button, Canvas, BUTTON_PX, BUTTON_RISE_PX};
 
 /// How dark the unselected area gets. 0 is untouched, 255 is black.
 const DIM_ALPHA: u8 = 140;
@@ -60,6 +70,17 @@ const DIM_ALPHA: u8 = 140;
 /// Posted by the overlay to itself once its windows exist. Its dispatch is S0.7's mark
 /// "overlay accepting input": the loop that delivers the pointer to these windows is running.
 const WM_ACCEPTING: u32 = WM_APP + 1;
+
+/// Posted by the thread that asked whether an area scrolls, once its answer is waiting.
+const WM_SCROLLS: u32 = WM_APP + 2;
+
+/// A no is asked again once the pointer has gone this far from where it was asked: one
+/// part of a window can hold a list that scrolls beside a panel that does not.
+const ASK_AGAIN_PX: i32 = 120;
+/// The area handed to a scrolling capture is what its application says scrolls, inside the
+/// lit area; an answer smaller than this across or down is not believed, and the lit area
+/// is used whole.
+const SCROLL_AREA_MIN: u32 = 100;
 
 /// The marching frame: a light dash then a dark gap, these many pixels long, a band this
 /// thick just inside the lit area, walking one pixel along the frame every tick. Rotem's
@@ -106,6 +127,9 @@ pub enum Outcome {
     Selected(DesktopRect),
     /// Escape, or a click with no drag. Nothing was captured and nothing was replaced.
     Cancelled,
+    /// The round button was pressed: a scrolling capture of this area, in desktop
+    /// coordinates, inside this top-level window, which has the foreground by now.
+    Scroll { rect: DesktopRect, window: isize },
 }
 
 /// One display's overlay window and the pixels it shows.
@@ -120,6 +144,8 @@ struct Surface {
     painted: bool,
     /// The size bubble's text face at this display's scale.
     font: HFONT,
+    /// The round button at this display's scale, as it is and as it is under the pointer.
+    button: Option<(Canvas, Canvas)>,
 }
 
 struct Drag {
@@ -201,6 +227,15 @@ struct State {
     ink: HBRUSH,
     /// When the overlay came up: the dashes' walk is the time since, times the speed.
     started: Instant,
+    /// What each window or part said when asked whether it scrolls: the area that does, or
+    /// none; and where the pointer was when each was asked, an entry with no answer yet
+    /// being a question still out.
+    scrolls: HashMap<isize, Option<DesktopRect>>,
+    asked: HashMap<isize, (i32, i32)>,
+    answers: (Sender<detect::Answer>, Receiver<detect::Answer>),
+    /// Whether the pointer is on the round button, and whether it was pressed there.
+    button_hot: bool,
+    button_down: bool,
 }
 
 thread_local! {
@@ -269,7 +304,21 @@ pub fn select_region(frame: &Frame) -> Outcome {
         // Whatever happened, the window that was in front before the overlay appeared gets
         // the foreground back. On a cancellation that is the whole of "restores the previous
         // context"; after a selection it stops the desktop being left with nothing focused.
-        if prior_foreground.is_invalid() {
+        if let Outcome::Scroll { window, .. } = outcome {
+            // The page about to be scrolled gets the foreground, not whoever had it: the
+            // wheel and the keys have to reach it, and nothing may lie over it.
+            let target = HWND(window as *mut _);
+            let given = IsWindow(Some(target)).as_bool() && SetForegroundWindow(target).as_bool();
+            crate::log(&format!(
+                "overlay: foreground {} to the window to be scrolled, {}",
+                if given {
+                    "given"
+                } else {
+                    "NOT given (refused)"
+                },
+                crate::platform::window_owner(target).line()
+            ));
+        } else if prior_foreground.is_invalid() {
             crate::log("overlay: no foreground to restore");
         } else if !IsWindow(Some(prior_foreground)).as_bool() {
             crate::log(&format!(
@@ -405,6 +454,11 @@ unsafe fn build_state(
         border: unsafe { CreateSolidBrush(colorref(ANTS_DASH_RGB)) },
         ink: unsafe { CreateSolidBrush(colorref(ANTS_GAP_RGB)) },
         started: Instant::now(),
+        scrolls: HashMap::new(),
+        asked: HashMap::new(),
+        answers: channel(),
+        button_hot: false,
+        button_down: false,
     })
 }
 
@@ -501,6 +555,8 @@ unsafe fn build_surface(frame: &Frame, monitor: &MonitorInfo, screen_dc: HDC) ->
         previous,
         painted: false,
         font,
+        button: scroll_button(monitor.scale_percent, false)
+            .zip(scroll_button(monitor.scale_percent, true)),
     })
 }
 
@@ -560,7 +616,9 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                     let state = borrowed.as_mut()?;
                     let surface = state.surface_at(at.x, at.y)?;
                     state.pointer = Some((surface, (at.x, at.y)));
-                    Some((surface, state.update_hover(surface, (at.x, at.y))))
+                    let changed = state.update_hover(surface, (at.x, at.y));
+                    state.ask_whether_it_scrolls((at.x, at.y));
+                    Some((surface, changed))
                 });
                 if let Some((surface, changed)) = changed {
                     unsafe { invalidate_hover_change(changed) };
@@ -575,6 +633,11 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             let point = point_of(lparam);
             STATE.with(|cell| {
                 if let Some(state) = cell.borrow_mut().as_mut() {
+                    // A press on the round button is the button's, and starts no drag.
+                    if state.on_button(hwnd, point) {
+                        state.button_down = true;
+                        return;
+                    }
                     if let Some(monitor) = state.monitor_of(hwnd).map(|m| m.rect) {
                         let desktop = (
                             (monitor.x + point.x)
@@ -616,13 +679,16 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 if state.drag.is_some() {
                     return None;
                 }
-                Some(state.update_hover(hwnd.0 as isize, desktop))
+                let changed = state.update_hover(hwnd.0 as isize, desktop);
+                state.ask_whether_it_scrolls(desktop);
+                Some(changed)
             });
             if let Some(changed) = hover_change {
                 unsafe { invalidate_hover_change(changed) };
             } else {
                 unsafe { drag_move(hwnd, point) };
             }
+            unsafe { refresh_button(hwnd, point) };
             let panel_after = STATE.with(|cell| {
                 let borrowed = cell.borrow();
                 borrowed.as_ref()?.magnifier(hwnd, hdc).map(|p| p.rect)
@@ -636,9 +702,39 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         }
         WM_LBUTTONUP => {
             let _ = unsafe { ReleaseCapture() };
+            let point = point_of(lparam);
             let finished = STATE.with(|cell| {
                 let mut borrowed = cell.borrow_mut();
                 let state = borrowed.as_mut()?;
+                if std::mem::take(&mut state.button_down) {
+                    // Released on the button it was pressed on: the scrolling capture.
+                    // Released anywhere else: nothing, and the overlay stays.
+                    if !state.on_button(hwnd, point) {
+                        return None;
+                    }
+                    let hover = state.hover?;
+                    let rect = state
+                        .scrolls
+                        .get(&hover.part.unwrap_or(hover.window))
+                        .copied()
+                        .flatten()
+                        .and_then(|area| clamp_to(area, hover.rect))
+                        .filter(|r| r.width >= SCROLL_AREA_MIN && r.height >= SCROLL_AREA_MIN)
+                        .unwrap_or(hover.rect);
+                    crate::log(&format!(
+                        "overlay: the round button was pressed on {}: a scrolling capture of {}x{} at desktop {},{}",
+                        crate::platform::window_owner(HWND(hover.window as *mut _)).line(),
+                        rect.width,
+                        rect.height,
+                        rect.x,
+                        rect.y
+                    ));
+                    state.outcome = Outcome::Scroll {
+                        rect,
+                        window: hover.window,
+                    };
+                    return Some(());
+                }
                 let drag = state.drag.take()?;
                 if !drag.moved {
                     // A click with no drag captures the window that was lit under it. With
@@ -687,6 +783,38 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             }
             LRESULT(0)
         }
+        WM_SCROLLS => {
+            STATE.with(|cell| {
+                if let Some(state) = cell.borrow_mut().as_mut() {
+                    while let Ok(answer) = state.answers.1.try_recv() {
+                        state.scrolls.insert(answer.key, answer.scrolls);
+                    }
+                }
+            });
+            // The button may have come up under a pointer that is resting on its place.
+            let at = STATE.with(|cell| cell.borrow().as_ref()?.pointer);
+            if let Some((surface, desktop)) = at {
+                let surface = HWND(surface as *mut _);
+                let origin = STATE.with(|cell| cell.borrow().as_ref()?.origin_of(surface));
+                if let Some(origin) = origin {
+                    let point = POINT {
+                        x: desktop.0 - origin.0,
+                        y: desktop.1 - origin.1,
+                    };
+                    unsafe { refresh_button(surface, point) };
+                }
+            }
+            unsafe { invalidate_button() };
+            LRESULT(0)
+        }
+        WM_SETCURSOR if (lparam.0 & 0xFFFF) as u32 == HTCLIENT => {
+            let hot = STATE.with(|cell| cell.borrow().as_ref().is_some_and(|s| s.button_hot));
+            if !hot {
+                return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
+            }
+            unsafe { SetCursor(LoadCursorW(None, IDC_HAND).ok()) };
+            LRESULT(1)
+        }
         WM_KEYDOWN if wparam.0 as u16 == VK_ESCAPE.0 => {
             STATE.with(|cell| {
                 if let Some(state) = cell.borrow_mut().as_mut() {
@@ -701,13 +829,22 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             // The glide first, while the lit area is on its way from one window to the
             // next: where it was and where it is now are repainted whole, since the dim
             // moves with it. It is read off the clock too, so a late frame skips ahead.
-            let moved = STATE.with(|cell| {
+            let (moved, arrived) = STATE.with(|cell| {
                 let mut borrowed = cell.borrow_mut();
-                let state = borrowed.as_mut()?;
-                state.advance_glide(hwnd.0 as isize)
+                let Some(state) = borrowed.as_mut() else {
+                    return (None, false);
+                };
+                let gliding = state.glide.is_some();
+                let moved = state.advance_glide(hwnd.0 as isize);
+                (moved, gliding && state.glide.is_none())
             });
             if let Some((origin, before, after)) = moved {
                 unsafe { invalidate_union(hwnd, origin, before, after) };
+            }
+            // The round button waits for the lit area to come to rest, and the glide's last
+            // ticks move nothing, so nothing else would repaint its place.
+            if arrived {
+                unsafe { invalidate_button() };
             }
             // One frame of the dashes, and only the frame itself is repainted: four thin
             // strips, not the lit area, so the walk costs nothing to speak of. The walk
@@ -812,6 +949,43 @@ unsafe fn invalidate_magnifier(hwnd: HWND) {
     }
 }
 
+/// Marks the round button's place for repainting, as it stands now.
+unsafe fn invalidate_button() {
+    let button = STATE.with(|cell| cell.borrow().as_ref()?.button());
+    if let Some((surface, rect)) = button {
+        let _ = unsafe { InvalidateRect(Some(HWND(surface as *mut _)), Some(&rect), false) };
+    }
+}
+
+/// Re-reads whether the pointer is on the round button. When that changed, the button is
+/// repainted in its other look, and so are the magnifier and the pointer's lines, which
+/// stand aside while the pointer is on it: both where they were and where they are.
+unsafe fn refresh_button(hwnd: HWND, point: POINT) {
+    let was = STATE.with(|cell| cell.borrow().as_ref().is_some_and(|s| s.button_hot));
+    let now = STATE.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .is_some_and(|s| s.drag.is_none() && s.on_button(hwnd, point))
+    });
+    if was == now {
+        return;
+    }
+    unsafe {
+        invalidate_magnifier(hwnd);
+        invalidate_cross();
+    }
+    STATE.with(|cell| {
+        if let Some(state) = cell.borrow_mut().as_mut() {
+            state.button_hot = now;
+        }
+    });
+    unsafe {
+        invalidate_magnifier(hwnd);
+        invalidate_cross();
+        invalidate_button();
+    }
+}
+
 fn point_of(lparam: LPARAM) -> POINT {
     let x = (lparam.0 & 0xFFFF) as i16 as i32;
     let y = ((lparam.0 >> 16) & 0xFFFF) as i16 as i32;
@@ -873,12 +1047,89 @@ impl State {
         })
     }
 
+    /// The round button, and the window it is on, in its client coordinates: in the middle
+    /// of the lit area's width, 24 px up from its bottom. Only on an area that said it
+    /// scrolls, that has room for it, while nothing is dragged and the lit area is at rest.
+    fn button(&self) -> Option<(isize, RECT)> {
+        let hover = self.hover?;
+        if self.drag.as_ref().is_some_and(|d| d.moved) || self.glide.is_some() {
+            return None;
+        }
+        (*self.scrolls.get(&hover.part.unwrap_or(hover.window))?)?;
+        let surface = self
+            .surfaces
+            .iter()
+            .find(|s| s.hwnd.0 as isize == hover.surface)?;
+        surface.button.as_ref()?;
+        let scale = surface.monitor.scale_percent;
+        let (side, rise) = (scaled(BUTTON_PX, scale), scaled(BUTTON_RISE_PX, scale));
+        let (width, height) = (hover.rect.width as i32, hover.rect.height as i32);
+        if width < side + 2 * rise || height < side + 2 * rise {
+            return None;
+        }
+        let origin = (surface.monitor.rect.x, surface.monitor.rect.y);
+        let left = hover.rect.x - origin.0 + (width - side) / 2;
+        let bottom = hover.rect.y - origin.1 + height - rise;
+        Some((
+            hover.surface,
+            RECT {
+                left,
+                top: bottom - side,
+                right: left + side,
+                bottom,
+            },
+        ))
+    }
+
+    /// Whether a point of this window is on the round button: inside its circle.
+    fn on_button(&self, hwnd: HWND, point: POINT) -> bool {
+        let Some((surface, rect)) = self.button() else {
+            return false;
+        };
+        let radius = (rect.right - rect.left) as f64 / 2.0;
+        let dx = point.x as f64 + 0.5 - (rect.left as f64 + radius);
+        let dy = point.y as f64 + 0.5 - (rect.top as f64 + radius);
+        surface == hwnd.0 as isize && dx * dx + dy * dy <= radius * radius
+    }
+
+    /// Asks the lit area whether it scrolls, the first time it is lit, and again after a no
+    /// once the pointer has moved well away from where it was asked. Never while a question
+    /// about the same area is still out.
+    fn ask_whether_it_scrolls(&mut self, desktop: (i32, i32)) {
+        let Some(hover) = self.hover else {
+            return;
+        };
+        let key = hover.part.unwrap_or(hover.window);
+        let again = match (self.asked.get(&key), self.scrolls.get(&key)) {
+            (None, _) => true,
+            (Some(_), None) | (Some(_), Some(Some(_))) => false,
+            (Some(at), Some(None)) => {
+                (at.0 - desktop.0).abs().max((at.1 - desktop.1).abs()) >= ASK_AGAIN_PX
+            }
+        };
+        if !again {
+            return;
+        }
+        self.asked.insert(key, desktop);
+        self.scrolls.remove(&key);
+        detect::ask(
+            key,
+            desktop,
+            self.answers.0.clone(),
+            hover.surface,
+            WM_SCROLLS,
+        );
+    }
+
     /// The pointer's lines, and the window they are on, in its client coordinates: the row
     /// left and right of the pointer, then the column above and below it, each stopping
     /// the gap short of it, each followed by the pixel-wide strips on its two sides, marked,
     /// which take a part of the line's strength. A drag that has moved has them at its clamped point, as the magnifier
     /// has; otherwise they are at the pointer as last seen.
     fn cross(&self) -> Option<(isize, [(RECT, bool); 12])> {
+        if self.button_hot {
+            return None;
+        }
         let (surface, desktop) = match self.drag.as_ref() {
             Some(drag) if drag.moved => (drag.hwnd, drag.current),
             _ => self.pointer?,
@@ -944,6 +1195,9 @@ impl State {
     /// given DC, in client coordinates. None while the pointer is on another window, or
     /// before it was seen at all.
     fn magnifier(&self, hwnd: HWND, hdc: HDC) -> Option<Panel> {
+        if self.button_hot {
+            return None;
+        }
         let surface = self.surface_of(hwnd)?;
         let scale = surface.monitor.scale_percent;
         let display = surface.monitor.rect;
@@ -1549,6 +1803,44 @@ unsafe fn paint_piece(hwnd: HWND, hdc: HDC, dirty: RECT) {
                 }
                 let _ = unsafe { DeleteObject(HGDIOBJ(to_gap.0)) };
                 let _ = unsafe { DeleteObject(HGDIOBJ(to_dash.0)) };
+            }
+
+            // 4. the round button of an area that scrolls, over everything but the magnifier.
+            if let Some((_, rect)) = state.button().filter(|(s, _)| *s == hwnd.0 as isize) {
+                let touches = rect.right > dirty.left
+                    && rect.left < dirty.right
+                    && rect.bottom > dirty.top
+                    && rect.top < dirty.bottom;
+                if let (true, Some((plain, hot))) = (touches, surface.button.as_ref()) {
+                    let drawn = if state.button_hot { hot } else { plain };
+                    let blend = BLENDFUNCTION {
+                        BlendOp: AC_SRC_OVER as u8,
+                        BlendFlags: 0,
+                        SourceConstantAlpha: 255,
+                        AlphaFormat: AC_SRC_ALPHA as u8,
+                    };
+                    // Cut to the dirty piece by the clip, so a piece never gets half a blend.
+                    let saved = unsafe { SaveDC(hdc) };
+                    unsafe {
+                        IntersectClipRect(hdc, dirty.left, dirty.top, dirty.right, dirty.bottom)
+                    };
+                    let _ = unsafe {
+                        AlphaBlend(
+                            hdc,
+                            rect.left,
+                            rect.top,
+                            drawn.width,
+                            drawn.height,
+                            drawn.dc,
+                            0,
+                            0,
+                            drawn.width,
+                            drawn.height,
+                            blend,
+                        )
+                    };
+                    let _ = unsafe { RestoreDC(hdc, saved) };
+                }
             }
         });
     }

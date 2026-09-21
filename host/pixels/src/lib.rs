@@ -10,6 +10,8 @@
 //! Nothing here knows about the screen, a window, or a file. Bytes in, bytes out, RGBA,
 //! 4 bytes per pixel, top-down, tightly packed.
 
+pub mod stitch;
+
 use image::{ImageBuffer, Rgba};
 
 /// Copies one rectangle out of an image, row by row. `None` if it does not fit.

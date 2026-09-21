@@ -30,6 +30,7 @@ mod measure;
 mod overlay;
 mod platform;
 mod registration;
+mod scrolling;
 #[cfg(feature = "stage0-checks")]
 mod selftest;
 mod settings;
@@ -242,6 +243,23 @@ fn begin_capture() {
                         }
                     }
                     Outcome::Cancelled => log("cancelled: nothing captured, nothing replaced"),
+                    // The round button: the person scrolls the area, and what passes is
+                    // joined into one tall picture, which arrives as a capture does. No
+                    // pointer is in it: it is read off the live screen, which holds none.
+                    Outcome::Scroll { rect, .. } => match scrolling::run(rect) {
+                        scrolling::Ended::Done(tall) => match editor::present(tall) {
+                            Ok(show_ms) => {
+                                log(&format!("editor shown: the show itself {show_ms} ms"))
+                            }
+                            Err(err) => log(&format!("EDITOR NOT SHOWN: {err}")),
+                        },
+                        scrolling::Ended::Cancelled => {
+                            log("cancelled: nothing captured, nothing replaced")
+                        }
+                        scrolling::Ended::Failed(why) => {
+                            log(&format!("SCROLLING CAPTURE REFUSED: {why}"))
+                        }
+                    },
                 }
             }
             Err(err) => log(&format!("FREEZE FAILED: {err}")),
@@ -433,6 +451,9 @@ fn main() {
         }
         if std::env::args().any(|a| a == "--stand-in-window") {
             std::process::exit(selftest::stand_in_window());
+        }
+        if std::env::args().any(|a| a == "--stand-in-scroll") {
+            std::process::exit(selftest::scroll_stand_in_window());
         }
         if std::env::args().any(|a| a == "--hold-clipboard") {
             std::process::exit(selftest::hold_clipboard());

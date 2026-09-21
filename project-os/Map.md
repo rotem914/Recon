@@ -44,7 +44,7 @@ Recon/
 │   ├── tauri.conf.json             # zero windows in the config: the host creates its own, hidden
 │   ├── capabilities/default.json   # what the editor page may call: the host's commands and events
 │   ├── icons/                      # the Recon logo: icon.ico for the exe and the taskbar, icon.png for the tray
-│   ├── pixels/                     # recon-pixels: crop and resample, optimised in every profile
+│   ├── pixels/                     # recon-pixels: crop, resample and the scrolling capture's stitcher, optimised in every profile
 │   ├── references/s06/             # the six reviewed reference outputs and their environment (S0.6)
 │   └── src/
 │       ├── main.rs                 # tray, hotkey, capture to editor, the selection guard, the diagnostic flags
@@ -61,6 +61,10 @@ Recon/
 │       ├── config.rs               # the three shortcuts: read at startup, saved by Settings, and where they were read from
 │       ├── overlay.rs              # the Win32 selection overlay, one window per display
 │       ├── magnifier.rs            # the zoom circle's panel, one unit: drawn here for the capture, the Ruler and the Color picker
+│       ├── scrolling/              # the scrolling capture: the person scrolls, Recon joins what passes
+│       │   ├── mod.rs              # the live part: the dim with the area clear, the bar, Enter and Escape, the copies handed to the stitcher
+│       │   ├── detect.rs           # whether the area under the pointer scrolls, asked on a thread of its own
+│       │   └── draw.rs             # a bitmap with its own transparency, round shapes, text; the round button's picture
 │       ├── selftest.rs             # --selftest and --capture-demo: S0.2's evidence, feature-gated
 │       ├── settings.rs             # Settings: the global shortcuts swapped live, two for the capture, a taken one refused, all let go while one is pressed
 │       ├── bench.rs                 # --bench: S0.3's boundary measurement, feature-gated
@@ -145,7 +149,8 @@ anything.
 | A feature's plan of its own | `plans/*` | Only when Rotem asks for one as a file. `project-os/Plan.md` names it from the stage it belongs to, and the part it replaces there says it is superseded. Today: screen recording, Stage 5. |
 | The host | `host/*` | Tray, hotkey, freeze, overlay, the region service, the editor window, decode, the composer and the clipboard today; the store later. It never renders an annotation. Check-only code is behind the `stage0-checks` feature. |
 | The composer and the clipboard | `host/src/compose.rs`, `host/src/clipboard.rs` | One function makes every output: the source byte for byte at the margin offset, the page's layer over it. The clipboard publishes that output in three formats and never reads it in the product. The references the output is checked against live in `host/references/s06/`, with the environment they are valid for. |
-| The pixel crate | `host/pixels/*` | Crop and resample, non-generic on purpose so the work is compiled optimised even in a debug build. Knows nothing about screens, windows or files. |
+| The pixel crate | `host/pixels/*` | Crop, resample and the stitcher of a scrolling capture, non-generic on purpose so the work is compiled optimised even in a debug build. Knows nothing about screens, windows or files. |
+| The scrolling capture | `host/src/scrolling/*`, `host/pixels/src/stitch.rs`, the round button in `host/src/overlay.rs` | A second way a capture gets its pixels: live copies of one area while the person scrolls it, joined into one frame that arrives in the editor as any capture does. Its own windows are excluded from screen copies by Windows. It writes no file. |
 | The one conversion | `host/src/capture/coords.rs` | The only place allowed to subtract a frame origin. Part 5 names the four coordinate spaces; this file is the edge between two of them. |
 | The image source | `host/src/source/*` | Path in, decoded frame out, for all nine formats. Only ever reads a file (rule 11); the decode report hashes every file before and after to prove it. Orientation and the colour profile are applied here, once. |
 | The editor | `editor/*` | The scene, the callout and the text layer. Laid out in image pixels; one CSS transform does the zoom. Embedded into the binary at build time, so an edit here needs a rebuild. |

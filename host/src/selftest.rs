@@ -20,18 +20,23 @@ use std::time::Instant;
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
-use windows::Win32::Graphics::Gdi::ClientToScreen;
+use windows::Win32::Graphics::Gdi::{
+    BeginPaint, ClientToScreen, EndPaint, InvalidateRect, SetDIBitsToDevice, DIB_RGB_COLORS,
+    PAINTSTRUCT,
+};
 use windows::Win32::System::Console::GetConsoleWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     keybd_event, mouse_event, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, MOUSEEVENTF_LEFTDOWN,
-    MOUSEEVENTF_LEFTUP, VK_ESCAPE,
+    MOUSEEVENTF_LEFTUP, MOUSEEVENTF_WHEEL, VK_ESCAPE, VK_RETURN,
 };
 use windows::Win32::UI::WindowsAndMessaging::ShowWindow;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DispatchMessageW, FindWindowW, GetCursorPos,
-    GetForegroundWindow, GetMessageW, GetWindowRect, IsWindow, PostMessageW, PostQuitMessage,
-    RegisterClassExW, SetCursorPos, TranslateMessage, CW_USEDEFAULT, MSG, SW_SHOW, WINDOW_EX_STYLE,
-    WM_CLOSE, WM_DESTROY, WNDCLASSEXW, WS_CHILD, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
+    CreateWindowExW, DefWindowProcW, DispatchMessageW, FindWindowW, GetClientRect, GetCursorPos,
+    GetForegroundWindow, GetMessageW, GetWindowRect, IsWindow, IsWindowVisible, PostMessageW,
+    PostQuitMessage, RegisterClassExW, SetCursorPos, TranslateMessage, CW_USEDEFAULT, MSG, SB_VERT,
+    SCROLLINFO, SIF_PAGE, SIF_POS, SIF_RANGE, SW_SHOW, WINDOW_EX_STYLE, WM_CLOSE, WM_DESTROY,
+    WM_MOUSEWHEEL, WM_PAINT, WM_SIZE, WNDCLASSEXW, WS_CHILD, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
+    WS_VSCROLL,
 };
 
 use crate::capture::coords::{DesktopRect, FrameGeometry};
@@ -43,6 +48,44 @@ use crate::Selecting;
 
 pub fn run() -> i32 {
     let mut failures = 0;
+
+    // `--selftest --scroll-trial <part of a title>`: the scrolling capture tried on a real
+    // window the person opened, a browser's page. Nothing is compared; the tall picture is
+    // written to be looked at.
+    let args: Vec<String> = std::env::args().collect();
+    if let Some(at) = args.iter().position(|a| a == "--scroll-trial") {
+        quiet();
+        return match scroll_trial(args.get(at + 1).map(String::as_str).unwrap_or("")) {
+            Ok(()) => 0,
+            Err(reason) => {
+                println!("scrolling trial FAILED: {reason}");
+                1
+            }
+        };
+    }
+
+    // `--selftest --only-scroll` runs section I alone: it takes the mouse for a quarter of
+    // a minute, and the sections before it take a minute more.
+    if std::env::args().any(|a| a == "--only-scroll") {
+        println!("=== I. the round button on an area that scrolls, and the scrolling capture it starts ===");
+        quiet();
+        return match WholeVirtualScreen.freeze() {
+            Ok(frame) => match scroll_test(&frame) {
+                Ok(()) => {
+                    println!("RESULT: the scrolling capture's check passed.");
+                    0
+                }
+                Err(reason) => {
+                    println!("scrolling capture FAILED: {reason}");
+                    1
+                }
+            },
+            Err(err) => {
+                println!("freeze FAILED: {err}");
+                1
+            }
+        };
+    }
 
     println!("=== A. the environment this evidence was produced on ===");
     println!("dpi awareness   : {}", dpi_awareness());
@@ -174,6 +217,19 @@ pub fn run() -> i32 {
         Ok(()) => {}
         Err(reason) => {
             println!("window pick FAILED: {reason}");
+            failures += 1;
+        }
+    }
+
+    println!();
+    println!(
+        "=== I. the round button on an area that scrolls, and the scrolling capture it starts ==="
+    );
+    quiet();
+    match scroll_test(&frame) {
+        Ok(()) => {}
+        Err(reason) => {
+            println!("scrolling capture FAILED: {reason}");
             failures += 1;
         }
     }
@@ -455,6 +511,7 @@ fn drag_test(frame: &Frame) -> Result<(), String> {
             Ok(())
         }
         Outcome::Cancelled => Err("the drag came back as a cancellation".into()),
+        Outcome::Scroll { rect, .. } => Err(format!("the round button answered instead: {rect:?}")),
     }
 }
 
@@ -680,6 +737,7 @@ fn cancel_test(frame: &Frame) -> Result<(), String> {
             Ok(())
         }
         Outcome::Selected(rect) => Err(format!("escape still produced a selection: {rect:?}")),
+        Outcome::Scroll { rect, .. } => Err(format!("the round button answered instead: {rect:?}")),
     }
 }
 
@@ -950,6 +1008,7 @@ fn window_pick_test(frame: &Frame) -> Result<(), String> {
         Outcome::Cancelled => {
             Err("a click inside the stand-in cancelled rather than picking it".to_string())
         }
+        Outcome::Scroll { rect, .. } => Err(format!("the round button answered instead: {rect:?}")),
     };
     if let Err(err) = pick_result {
         let _ = child.kill();
@@ -991,6 +1050,9 @@ fn window_pick_test(frame: &Frame) -> Result<(), String> {
             "a click on the stand-in's part gave {got:?} rather than the part {part:?}"
         )),
         Ok(Outcome::Cancelled) => Err("a click on the stand-in's part cancelled".to_string()),
+        Ok(Outcome::Scroll { rect, .. }) => {
+            Err(format!("the round button answered instead: {rect:?}"))
+        }
         Err(err) => Err(err),
     };
     if let Err(err) = part_result {
@@ -1027,6 +1089,7 @@ fn window_pick_test(frame: &Frame) -> Result<(), String> {
             "a drag inside the stand-in gave {got:?} rather than the dragged {dragged:?}"
         )),
         Outcome::Cancelled => Err("a drag inside the stand-in cancelled".to_string()),
+        Outcome::Scroll { rect, .. } => Err(format!("the round button answered instead: {rect:?}")),
     }
 }
 
@@ -1100,6 +1163,673 @@ pub fn stand_in_window() -> i32 {
         }
     }
     0
+}
+
+/// The title of the stand-in that scrolls, a second process of this same executable.
+const SCROLL_STAND_IN: &str = "Recon scrolling stand-in";
+/// How long its page is, and how far one notch of the wheel moves it.
+const SCROLL_PAGE_ROWS: i32 = 2400;
+const SCROLL_NOTCH_ROWS: i32 = 90;
+
+/// The colour of one pixel of the stand-in's page: bands of lines that look like nothing
+/// else on the page, with blank rows between them, as text has. The stand-in paints from
+/// this and the check reads the tall picture against it, so the two sides of the comparison
+/// share the formula and nothing else: the screen, the copies and the stitcher lie between.
+fn scroll_page_pixel(x: i32, row: i32) -> (u8, u8, u8) {
+    if row % 23 < 5 {
+        return (255, 255, 255);
+    }
+    let n = ((x / 7) as u32).wrapping_mul(2654435761) ^ (row as u32).wrapping_mul(40503);
+    ((n >> 8) as u8, (n >> 16) as u8, (n >> 24) as u8)
+}
+
+/// A window whose client area scrolls a long page, with a real scrollbar, the wheel moving
+/// it a fixed step at once. Run with --stand-in-scroll; exits when the window is closed.
+pub fn scroll_stand_in_window() -> i32 {
+    use std::sync::atomic::{AtomicI32, Ordering};
+    static OFFSET: AtomicI32 = AtomicI32::new(0);
+
+    // The windows crate keeps this one with the common controls, a feature nothing in the
+    // product needs; the stand-in names it itself.
+    #[link(name = "user32")]
+    extern "system" {
+        fn SetScrollInfo(hwnd: HWND, bar: i32, info: *const SCROLLINFO, redraw: i32) -> i32;
+    }
+
+    unsafe fn sync(hwnd: HWND) {
+        let mut client = RECT::default();
+        let _ = unsafe { GetClientRect(hwnd, &mut client) };
+        let longest = (SCROLL_PAGE_ROWS - client.bottom).max(0);
+        OFFSET.store(
+            OFFSET.load(Ordering::SeqCst).clamp(0, longest),
+            Ordering::SeqCst,
+        );
+        let info = SCROLLINFO {
+            cbSize: std::mem::size_of::<SCROLLINFO>() as u32,
+            fMask: SIF_RANGE | SIF_PAGE | SIF_POS,
+            nMin: 0,
+            nMax: SCROLL_PAGE_ROWS - 1,
+            nPage: client.bottom.max(0) as u32,
+            nPos: OFFSET.load(Ordering::SeqCst),
+            nTrackPos: 0,
+        };
+        unsafe { SetScrollInfo(hwnd, SB_VERT.0, &info, 1) };
+    }
+
+    unsafe extern "system" fn proc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> windows::Win32::Foundation::LRESULT {
+        use windows::Win32::Foundation::LRESULT;
+        match msg {
+            WM_DESTROY => {
+                unsafe { PostQuitMessage(0) };
+                LRESULT(0)
+            }
+            WM_SIZE => {
+                unsafe { sync(hwnd) };
+                LRESULT(0)
+            }
+            WM_MOUSEWHEEL => {
+                let notches = ((wparam.0 >> 16) & 0xFFFF) as i16 as i32 / 120;
+                OFFSET.fetch_sub(notches * SCROLL_NOTCH_ROWS, Ordering::SeqCst);
+                unsafe {
+                    sync(hwnd);
+                    let _ = InvalidateRect(Some(hwnd), None, false);
+                }
+                LRESULT(0)
+            }
+            WM_PAINT => {
+                let mut ps = PAINTSTRUCT::default();
+                let hdc = unsafe { BeginPaint(hwnd, &mut ps) };
+                let mut client = RECT::default();
+                let _ = unsafe { GetClientRect(hwnd, &mut client) };
+                let (width, height) = (client.right, client.bottom);
+                if width > 0 && height > 0 {
+                    let offset = OFFSET.load(Ordering::SeqCst);
+                    let mut bgra = vec![0u8; (width * height * 4) as usize];
+                    for y in 0..height {
+                        for x in 0..width {
+                            let (r, g, b) = scroll_page_pixel(x, y + offset);
+                            let at = ((y * width + x) * 4) as usize;
+                            bgra[at] = b;
+                            bgra[at + 1] = g;
+                            bgra[at + 2] = r;
+                            bgra[at + 3] = 255;
+                        }
+                    }
+                    let info = crate::magnifier::solid_header(width, height);
+                    unsafe {
+                        SetDIBitsToDevice(
+                            hdc,
+                            0,
+                            0,
+                            width as u32,
+                            height as u32,
+                            0,
+                            0,
+                            0,
+                            height as u32,
+                            bgra.as_ptr() as *const std::ffi::c_void,
+                            &info,
+                            DIB_RGB_COLORS,
+                        );
+                    }
+                }
+                let _ = unsafe { EndPaint(hwnd, &ps) };
+                LRESULT(0)
+            }
+            _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
+        }
+    }
+
+    let title: Vec<u16> = SCROLL_STAND_IN
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    unsafe {
+        let instance =
+            windows::Win32::System::LibraryLoader::GetModuleHandleW(None).unwrap_or_default();
+        let class = WNDCLASSEXW {
+            cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
+            lpfnWndProc: Some(proc),
+            hInstance: instance.into(),
+            hCursor: windows::Win32::UI::WindowsAndMessaging::LoadCursorW(
+                None,
+                windows::Win32::UI::WindowsAndMessaging::IDC_ARROW,
+            )
+            .unwrap_or_default(),
+            lpszClassName: windows::core::PCWSTR(title.as_ptr()),
+            ..Default::default()
+        };
+        RegisterClassExW(&class);
+        let Ok(hwnd) = CreateWindowExW(
+            WINDOW_EX_STYLE(0),
+            windows::core::PCWSTR(title.as_ptr()),
+            windows::core::PCWSTR(title.as_ptr()),
+            WS_OVERLAPPEDWINDOW | WS_VSCROLL,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            1100,
+            1000,
+            None,
+            None,
+            Some(instance.into()),
+            None,
+        ) else {
+            return 1;
+        };
+        sync(hwnd);
+        let _ = ShowWindow(hwnd, SW_SHOW);
+        let mut msg = MSG::default();
+        while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+            let _ = TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+    }
+    0
+}
+
+/// The scrolling capture, end to end, against a window that scrolls a page this check can
+/// work out for itself. The round button is looked for on the screen where it has to be; a
+/// click on it has to hand back the stand-in's client area, read here from the window
+/// manager; the bar has to be where the button was, and absent from a copy of the screen;
+/// the wheel scrolls the page to its end and Enter ends the capture; and the tall picture
+/// has to be the page, pixel for pixel, every row of it once. Before that, the same start
+/// ended by Escape, which has to hand back nothing.
+fn scroll_test(frame: &Frame) -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|err| err.to_string())?;
+    let mut child = std::process::Command::new(exe)
+        .arg("--stand-in-scroll")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|err| format!("the scrolling stand-in did not start: {err}"))?;
+    let result = scroll_test_with(frame, &mut child);
+    let title: Vec<u16> = SCROLL_STAND_IN
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    if let Ok(hwnd) = unsafe { FindWindowW(PCWSTR::null(), PCWSTR(title.as_ptr())) } {
+        let _ = unsafe { PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0)) };
+    }
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let _ = child.kill();
+    result
+}
+
+fn scroll_test_with(_frame: &Frame, child: &mut std::process::Child) -> Result<(), String> {
+    // In front, as the other stand-in is waited for.
+    let started = Instant::now();
+    let hwnd = loop {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let hwnd = unsafe { GetForegroundWindow() };
+        let owner = crate::platform::window_owner(hwnd);
+        if owner.exists && owner.pid == child.id() && owner.title == SCROLL_STAND_IN {
+            println!("  in front: {}", owner.line());
+            break hwnd;
+        }
+        if started.elapsed() > std::time::Duration::from_secs(8) {
+            return Err("the scrolling stand-in never came to the foreground".into());
+        }
+    };
+    std::thread::sleep(std::time::Duration::from_millis(400));
+
+    // Its client area, from the window manager: what the button has to hand back.
+    let mut client = RECT::default();
+    let mut origin = POINT::default();
+    unsafe {
+        GetClientRect(hwnd, &mut client).map_err(|err| err.to_string())?;
+        if !ClientToScreen(hwnd, &mut origin).as_bool() {
+            return Err("the stand-in's client origin could not be read".into());
+        }
+    }
+    let area = DesktopRect::from_points(
+        origin.x,
+        origin.y,
+        origin.x + client.right,
+        origin.y + client.bottom,
+    );
+    let scale = monitors()
+        .into_iter()
+        .find(|m| {
+            origin.x >= m.rect.x
+                && origin.y >= m.rect.y
+                && origin.x < m.rect.x + m.rect.width as i32
+                && origin.y < m.rect.y + m.rect.height as i32
+        })
+        .map(|m| m.scale_percent)
+        .ok_or("the stand-in is on no display")?;
+    let side = crate::magnifier::scaled(crate::scrolling::draw::BUTTON_PX, scale);
+    let rise = crate::magnifier::scaled(crate::scrolling::draw::BUTTON_RISE_PX, scale);
+
+    // The bar cannot be seen in a copy of the screen, which is the point of it; its looks
+    // are written as a picture of their own to be looked at, the round button's with them.
+    if let (Some((rgba, width, height)), Ok(exe)) =
+        (crate::scrolling::looks(scale), std::env::current_exe())
+    {
+        let path = exe.with_file_name("s02-scrolling-looks.png");
+        if let Some(buffer) = image::RgbaImage::from_raw(width, height, rgba) {
+            if buffer.save(&path).is_ok() {
+                println!(
+                    "  the bar's and the button's looks are at {}",
+                    path.display()
+                );
+            }
+        }
+    }
+
+    // Escape first: the page is still at its top then, which the look under the bar relies on.
+    for ending in ["Escape", "Enter"] {
+        // A fresh freeze each time: the overlay shows the screen as it is now.
+        let frame = WholeVirtualScreen
+            .freeze()
+            .map_err(|err| format!("freeze failed: {err}"))?;
+        let (saw, seen) = std::sync::mpsc::channel();
+        let window = hwnd.0 as isize;
+        let picked = with_overlay(&frame, move || {
+            // Near the top left corner, so the magnifier beside the pointer is clear of the
+            // button's place at any scale.
+            move_to(area.x + 40, area.y + 40);
+            // The lit area is whatever the overlay lights under that point: the window, since
+            // the stand-in has no parts. The button sits on the lit area, so its place is
+            // worked out from the window's visible bounds, not from the client area.
+            let mut bounds = RECT::default();
+            let read = unsafe {
+                DwmGetWindowAttribute(
+                    HWND(window as *mut _),
+                    DWMWA_EXTENDED_FRAME_BOUNDS,
+                    &mut bounds as *mut RECT as *mut std::ffi::c_void,
+                    std::mem::size_of::<RECT>() as u32,
+                )
+            };
+            if read.is_err() {
+                let _ = saw.send(Err("the stand-in's bounds could not be read".to_string()));
+                press_escape();
+                return;
+            }
+            let centre = (
+                bounds.left + (bounds.right - bounds.left) / 2,
+                bounds.bottom - rise - side / 2,
+            );
+            println!(
+                "  the stand-in's visible bounds are {},{} to {},{}",
+                bounds.left, bounds.top, bounds.right, bounds.bottom
+            );
+            // The answer comes from another thread: looked for, for three seconds, as the
+            // button's blue at its centre's side, clear of the arrow.
+            let probe = DesktopRect {
+                x: centre.0 + side / 4,
+                y: centre.1 - side / 4,
+                width: 1,
+                height: 1,
+            };
+            let (r, g, b) = crate::scrolling::draw::BLUE_RGB;
+            let waited = Instant::now();
+            let mut last = None;
+            let shown = loop {
+                if let Ok(pixel) = copy_rect(probe) {
+                    last = Some((pixel[0], pixel[1], pixel[2]));
+                    if last == Some((r, g, b)) {
+                        break true;
+                    }
+                }
+                if waited.elapsed() > std::time::Duration::from_secs(3) {
+                    break false;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            };
+            if !shown {
+                let _ = saw.send(Err(format!(
+                    "no round button at {},{}: the screen there is {last:?}, not its blue",
+                    probe.x, probe.y
+                )));
+                press_escape();
+                return;
+            }
+            let _ = saw.send(Ok((centre, waited.elapsed().as_millis())));
+            // The button on the lit area, as a person sees it, to be looked at; then under
+            // the pointer, where it has to be its lighter blue and the magnifier gone.
+            let around = DesktopRect {
+                x: centre.0 - side * 3,
+                y: centre.1 - side * 2,
+                width: side as u32 * 6,
+                height: side as u32 * 3,
+            };
+            let write = |name: &str| {
+                if let (Ok(pixels), Ok(exe)) = (copy_rect(around), std::env::current_exe()) {
+                    if let Some(buffer) =
+                        image::RgbaImage::from_raw(around.width, around.height, pixels)
+                    {
+                        let _ = buffer.save(exe.with_file_name(name));
+                    }
+                }
+            };
+            write("s02-scrolling-button.png");
+            move_to(centre.0, centre.1);
+            std::thread::sleep(std::time::Duration::from_millis(120));
+            write("s02-scrolling-button-hot.png");
+            let hot = copy_rect(probe).ok().map(|p| (p[0], p[1], p[2]));
+            if hot != Some(crate::scrolling::draw::BLUE_HOT_RGB) {
+                println!("  NOTE: under the pointer the button's fill read {hot:?}");
+            }
+            press_left();
+            release_left();
+        })?;
+        let (centre, waited) = seen
+            .try_recv()
+            .map_err(|_| "the round button was never looked for".to_string())??;
+        println!(
+            "  the round button showed {waited} ms after the pointer came to rest, centred at {},{}",
+            centre.0, centre.1
+        );
+        let rect = match picked {
+            Outcome::Scroll { rect, .. } if rect == area => rect,
+            other => {
+                return Err(format!(
+                "a click on the round button gave {other:?} rather than the client area {area:?}"
+            ))
+            }
+        };
+        println!("  a click on it handed back the stand-in's client area exactly: {rect:?}");
+
+        let session = std::thread::spawn(move || crate::scrolling::run(rect));
+        std::thread::sleep(std::time::Duration::from_millis(900));
+
+        // The bar: a visible window where the button was, and not in a copy of the screen.
+        let bar = unsafe { FindWindowW(w!("ReconScrollBar"), PCWSTR::null()) }
+            .map_err(|_| "the bar's window does not exist".to_string())?;
+        let mut at = RECT::default();
+        unsafe { GetWindowRect(bar, &mut at).map_err(|err| err.to_string())? };
+        let visible = unsafe { IsWindowVisible(bar) }.as_bool();
+        let bottom_gap = area.y + area.height as i32 - at.bottom;
+        let off_centre = (at.left + at.right) / 2 - (area.x + area.width as i32 / 2);
+        if !visible || bottom_gap != rise || off_centre.abs() > 1 {
+            return Err(format!(
+                "the bar is visible: {visible}, {bottom_gap} px up from the area's bottom for {rise}, {off_centre} px off its middle"
+            ));
+        }
+        let under_bar = DesktopRect::from_points(at.left, at.top, at.right, at.bottom);
+        let copied = copy_rect(under_bar).map_err(|err| err.to_string())?;
+        let mut wrong = 0usize;
+        for y in 0..under_bar.height as i32 {
+            for x in 0..under_bar.width as i32 {
+                let (r, g, b) =
+                    scroll_page_pixel(under_bar.x - area.x + x, under_bar.y - area.y + y);
+                let i = ((y * under_bar.width as i32 + x) * 4) as usize;
+                if (copied[i], copied[i + 1], copied[i + 2]) != (r, g, b) {
+                    wrong += 1;
+                }
+            }
+        }
+        if wrong != 0 {
+            return Err(format!(
+                "a copy of the screen where the bar lies differs from the page in {wrong} pixels: the bar is in it"
+            ));
+        }
+        println!(
+            "  the bar is {}x{} at {},{}, {rise} px up from the area's bottom, and a copy of the screen there is the page alone",
+            at.right - at.left,
+            at.bottom - at.top,
+            at.left,
+            at.top
+        );
+
+        if ending == "Escape" {
+            press_escape();
+            match session.join() {
+                Ok(crate::scrolling::Ended::Cancelled) => {
+                    println!("  Escape ended it with nothing captured");
+                    continue;
+                }
+                Ok(_) => return Err("Escape did not cancel the scrolling capture".into()),
+                Err(_) => return Err("the scrolling capture panicked".into()),
+            }
+        }
+
+        // The wheel, a notch at a time, to the page's end and a few notches past it.
+        move_to(area.x + area.width as i32 / 2, area.y + 80);
+        let notches = (SCROLL_PAGE_ROWS - area.height as i32) / SCROLL_NOTCH_ROWS + 4;
+        for _ in 0..notches {
+            unsafe { mouse_event(MOUSEEVENTF_WHEEL, 0, 0, -120, 0) };
+            std::thread::sleep(std::time::Duration::from_millis(140));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        unsafe {
+            keybd_event(VK_RETURN.0 as u8, 0, KEYBD_EVENT_FLAGS(0), 0);
+            keybd_event(VK_RETURN.0 as u8, 0, KEYEVENTF_KEYUP, 0);
+        }
+        let tall = match session.join() {
+            Ok(crate::scrolling::Ended::Done(tall)) => tall,
+            Ok(crate::scrolling::Ended::Cancelled) => {
+                return Err("Enter cancelled the scrolling capture".into())
+            }
+            Ok(crate::scrolling::Ended::Failed(why)) => {
+                return Err(format!("the scrolling capture refused: {why}"))
+            }
+            Err(_) => return Err("the scrolling capture panicked".into()),
+        };
+        if let Ok(exe) = std::env::current_exe() {
+            let path = exe.with_file_name("s02-scrolling-capture.png");
+            if let Some(buffer) =
+                image::RgbaImage::from_raw(tall.width(), tall.height(), tall.rgba.clone())
+            {
+                if buffer.save(&path).is_ok() {
+                    println!("  the tall picture is at {}", path.display());
+                }
+            }
+        }
+        if (tall.width(), tall.height()) != (area.width, SCROLL_PAGE_ROWS as u32) {
+            return Err(format!(
+                "the tall picture is {}x{}, and the page is {}x{}",
+                tall.width(),
+                tall.height(),
+                area.width,
+                SCROLL_PAGE_ROWS
+            ));
+        }
+        // Left out of the comparison: the two bottom corners of the last rows, where Windows
+        // rounds the stand-in's own corners and blends them with what lies behind it.
+        let corner = crate::magnifier::scaled(12, scale);
+        let mut wrong = 0usize;
+        for row in 0..SCROLL_PAGE_ROWS {
+            for x in 0..area.width as i32 {
+                if row >= SCROLL_PAGE_ROWS - corner
+                    && (x < corner || x >= area.width as i32 - corner)
+                {
+                    continue;
+                }
+                let (r, g, b) = scroll_page_pixel(x, row);
+                let i = ((row * area.width as i32 + x) * 4) as usize;
+                if tall.rgba[i..i + 4] != [r, g, b, 255] {
+                    wrong += 1;
+                }
+            }
+        }
+        if wrong != 0 {
+            return Err(format!(
+                "the tall picture differs from the page in {wrong} pixels"
+            ));
+        }
+        println!(
+            "  {notches} notches of the wheel and Enter: the tall picture is {}x{}, the page pixel for pixel, every row once",
+            tall.width(),
+            tall.height()
+        );
+    }
+    Ok(())
+}
+
+/// The scrolling capture against a real window, found by a part of its title: the pointer
+/// goes to the middle of its largest part, the round button is waited for where it has to
+/// be on that part, pressed, the wheel is turned sixty notches with a breath between them,
+/// and Enter ends it. What comes back is written beside the executable to be looked at.
+fn scroll_trial(title_part: &str) -> Result<(), String> {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumChildWindows, EnumWindows, GetWindowTextW, SetForegroundWindow,
+    };
+    struct Find(String, Option<isize>);
+    unsafe extern "system" fn top(hwnd: HWND, l: LPARAM) -> windows::core::BOOL {
+        let find = unsafe { &mut *(l.0 as *mut Find) };
+        let mut text = [0u16; 256];
+        let n = unsafe { GetWindowTextW(hwnd, &mut text) }.max(0) as usize;
+        if unsafe { IsWindowVisible(hwnd) }.as_bool()
+            && String::from_utf16_lossy(&text[..n]).contains(&find.0)
+        {
+            find.1 = Some(hwnd.0 as isize);
+            return false.into();
+        }
+        true.into()
+    }
+    unsafe extern "system" fn child(hwnd: HWND, l: LPARAM) -> windows::core::BOOL {
+        let parts = unsafe { &mut *(l.0 as *mut Vec<RECT>) };
+        let mut r = RECT::default();
+        if unsafe { IsWindowVisible(hwnd) }.as_bool()
+            && unsafe { GetWindowRect(hwnd, &mut r) }.is_ok()
+        {
+            parts.push(r);
+        }
+        true.into()
+    }
+    let mut find = Find(title_part.to_string(), None);
+    let _ = unsafe { EnumWindows(Some(top), LPARAM(&mut find as *mut Find as isize)) };
+    let window = find
+        .1
+        .ok_or(format!("no visible window's title holds {title_part:?}"))?;
+    let hwnd = HWND(window as *mut _);
+    // Above everything else for the trial's length: a check has no right to the foreground,
+    // and another window over this one would be what the overlay lights.
+    unsafe {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, HWND_TOPMOST, SWP_NOMOVE, SWP_NOSIZE,
+        };
+        let _ = SetWindowPos(
+            hwnd,
+            Some(HWND_TOPMOST),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE,
+        );
+        let _ = SetForegroundWindow(hwnd);
+    }
+    std::thread::sleep(std::time::Duration::from_millis(600));
+    let mut parts: Vec<RECT> = Vec::new();
+    let _ = unsafe {
+        EnumChildWindows(
+            Some(hwnd),
+            Some(child),
+            LPARAM(&mut parts as *mut Vec<RECT> as isize),
+        )
+    };
+    // The part the overlay lights under the pointer is the smallest one there; the pointer
+    // goes to the middle of the largest, and the smallest part holding that point is it.
+    let largest = parts
+        .iter()
+        .copied()
+        .max_by_key(|r| (r.right - r.left) as i64 * (r.bottom - r.top) as i64)
+        .ok_or("the window has no parts")?;
+    let at = (
+        (largest.left + largest.right) / 2,
+        largest.top + (largest.bottom - largest.top) / 3,
+    );
+    let lit = parts
+        .iter()
+        .copied()
+        .filter(|r| at.0 >= r.left && at.0 < r.right && at.1 >= r.top && at.1 < r.bottom)
+        .min_by_key(|r| (r.right - r.left) as i64 * (r.bottom - r.top) as i64)
+        .unwrap_or(largest);
+    println!(
+        "  the part to be lit is {},{} to {},{}",
+        lit.left, lit.top, lit.right, lit.bottom
+    );
+    let scale = monitors()
+        .into_iter()
+        .find(|m| {
+            at.0 >= m.rect.x
+                && at.1 >= m.rect.y
+                && at.0 < m.rect.x + m.rect.width as i32
+                && at.1 < m.rect.y + m.rect.height as i32
+        })
+        .map(|m| m.scale_percent)
+        .ok_or("the window is on no display")?;
+    let side = crate::magnifier::scaled(crate::scrolling::draw::BUTTON_PX, scale);
+    let rise = crate::magnifier::scaled(crate::scrolling::draw::BUTTON_RISE_PX, scale);
+    let centre = ((lit.left + lit.right) / 2, lit.bottom - rise - side / 2);
+
+    let frame = WholeVirtualScreen
+        .freeze()
+        .map_err(|err| format!("freeze failed: {err}"))?;
+    let (saw, seen) = std::sync::mpsc::channel();
+    let picked = with_overlay(&frame, move || {
+        move_to(at.0, at.1);
+        let probe = DesktopRect {
+            x: centre.0 + side / 4,
+            y: centre.1 - side / 4,
+            width: 1,
+            height: 1,
+        };
+        let waited = Instant::now();
+        let shown = loop {
+            if let Ok(pixel) = copy_rect(probe) {
+                if (pixel[0], pixel[1], pixel[2]) == crate::scrolling::draw::BLUE_RGB {
+                    break true;
+                }
+            }
+            if waited.elapsed() > std::time::Duration::from_secs(6) {
+                break false;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        };
+        let _ = saw.send((shown, waited.elapsed().as_millis()));
+        if !shown {
+            press_escape();
+            return;
+        }
+        move_to(centre.0, centre.1);
+        press_left();
+        release_left();
+    })?;
+    let (shown, waited) = seen.try_recv().map_err(|_| "never looked".to_string())?;
+    if !shown {
+        return Err(format!("no round button on the part within {waited} ms"));
+    }
+    println!("  the round button showed after {waited} ms");
+    let Outcome::Scroll { rect, .. } = picked else {
+        return Err(format!("the click gave {picked:?}"));
+    };
+    println!("  the area handed over: {rect:?}");
+    let session = std::thread::spawn(move || crate::scrolling::run(rect));
+    std::thread::sleep(std::time::Duration::from_millis(900));
+    move_to(at.0, at.1);
+    for _ in 0..60 {
+        unsafe { mouse_event(MOUSEEVENTF_WHEEL, 0, 0, -120, 0) };
+        std::thread::sleep(std::time::Duration::from_millis(220));
+    }
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    unsafe {
+        keybd_event(VK_RETURN.0 as u8, 0, KEYBD_EVENT_FLAGS(0), 0);
+        keybd_event(VK_RETURN.0 as u8, 0, KEYEVENTF_KEYUP, 0);
+    }
+    match session.join() {
+        Ok(crate::scrolling::Ended::Done(tall)) => {
+            let path = std::env::current_exe()
+                .map_err(|err| err.to_string())?
+                .with_file_name("s02-scrolling-trial.png");
+            image::RgbaImage::from_raw(tall.width(), tall.height(), tall.rgba)
+                .ok_or("size mismatch")?
+                .save(&path)
+                .map_err(|err| err.to_string())?;
+            println!("  the tall picture is {}", path.display());
+            Ok(())
+        }
+        Ok(crate::scrolling::Ended::Cancelled) => Err("it came back cancelled".into()),
+        Ok(crate::scrolling::Ended::Failed(why)) => Err(why),
+        Err(_) => Err("the scrolling capture panicked".into()),
+    }
 }
 
 /// `--hold-clipboard`: opens the clipboard and holds it until this process is killed, so

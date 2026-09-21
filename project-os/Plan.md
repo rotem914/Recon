@@ -676,7 +676,7 @@ loop.
 Out of scope for v1:
 
 - macOS.
-- Video or GIF capture, scrolling capture, OCR and text extraction.
+- Video or GIF capture, OCR and text extraction.
 - One selection spanning several displays.
 - Cloud sync, hosted libraries, public sharing links.
 - Templates, preset collections, stamp libraries.
@@ -694,6 +694,9 @@ operations over a folder, does not build a browsable thumbnail grid of the file 
 does not edit an image beyond annotating it: no resize, no color adjustment in v1. Crop
 came in at Rotem's word on 2026-09-17 (S3.6), as a cut the host makes on a copy at every
 output, the source untouched. Writing back into an external file, in any format, stays out.
+
+Scrolling capture came in at Rotem's word on 2026-09-22 (S3.7), over the line above that
+kept it out of v1: the person scrolls the page and Recon joins what passes.
 
 Full-window capture and further editor tools can be judged from observed use. They do not
 block the initial loop.
@@ -2351,6 +2354,30 @@ Annotate and Copy were settled.
       Ruler, the key provisional. Saved with the notes, one step of undo, back after a
       restart. The look is provisional, in `project-os/Design.md`. Section 44 of the editor
       checks.
+- [x] S3.7 Scrolling capture, at Rotem's word on 2026-09-22, over the v1 scope line that
+      kept it out: in a capture, an area that scrolls shows a round 56 px button with an
+      arrow down, 24 px up from the frame's bottom (his numbers); a press on it starts a
+      capture in which he scrolls the page himself and Recon joins what passes into one tall
+      picture (his pick, of two, over Recon scrolling by itself). The flow after the press
+      was left to the assistant. Model: Fable 5.1, a second capture path.
+      **Built 2026-09-22.** Whether an area scrolls is asked of its application on a thread
+      of its own, by its scrollbar or through UI Automation, so the overlay never waits and
+      the button shows a moment after the area is lit. The press ends the overlay and gives
+      the page the foreground; the screen stays dimmed around the area, which is live and
+      takes the wheel and clicks; a bar where the button was says "Scroll down slowly", then
+      the picture's size so far, then "Too fast. Scroll back up a little" when the page
+      moved further than two copies share, and holds Done and a cancel X; Enter and Escape
+      do the same, taken as global keys for as long as it lasts. The area is copied thirty
+      times a second and joined by `recon_pixels::stitch`: a bar stuck to the top or the
+      bottom is in the picture once, a side menu or a video that does not move with the page
+      is outvoted, a scrollbar is cut off, a window's round corners are kept out of the
+      seams, a scroll back up adds nothing. Recon's own bar and dim are excluded from screen
+      copies by Windows, so they are never in the picture. The picture stops by itself at
+      30,000 rows or 80 million pixels. It arrives in the editor as any capture does, copied
+      and kept, and leaves by the same undo. The looks of the button beyond his numbers and
+      all of the bar's are provisional, in `project-os/Design.md`. Section I of `--selftest`,
+      and the stitcher's own tests. Not built: a way in from the keyboard, a scroll to the
+      side, a page scrolled upwards from where it started.
 - [x] S2.6 Export beyond PNG: Save As offering JPEG beside PNG, the same never-overwrite
       path, the quality fixed rather than asked. Model: Opus 5, the path exists.
       **Built 2026-09-14, on Fable at Rotem's word.** The Save As dialog offers JPEG beside

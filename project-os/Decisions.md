@@ -128,6 +128,8 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-19 · Rotem's inspector is in his own builds of Recon only, behind a build switch, never in the public release.
 - _2026-09-22 · The captured pointer is an element in the notes carrying its own picture, never pixels of the capture; Rotem's choice over a pointer burned in._ (superseded the same day, below)
 - 2026-09-22 · The pointer is drawn into the frozen pixels after all, before the overlay, so the area is chosen on the picture that is kept; Rotem's word.
+- 2026-09-22 · A scrolling capture is the person's own scroll, joined by numbers of rows in strips that vote; Rotem's pick over Recon scrolling by itself.
+- 2026-09-22 · Whether an area scrolls is asked off the overlay's thread, by its scrollbar, by what it says, or by content taller than it; and Recon's own windows stay out of the copies by Windows' exclusion.
 
 ---
 
@@ -1001,3 +1003,83 @@ notes, which the page no longer draws, as it draws nothing for a kind it does no
 pixels never held the pointer, so it now shows none. The scrolling capture another session
 is building reads the screen again after the area is chosen, so it holds no pointer.
 Revisit if a pointer is ever wanted off one capture after the fact.
+
+## 2026-09-22 · A scrolling capture is the person's own scroll, joined by numbers of rows in strips that vote
+
+### Context
+Rotem asked for a capture of a whole long page. A capture here was one frozen copy of the
+screen, and the plan kept scrolling capture out of v1 (§3.10). Two questions had to be
+settled: who scrolls the page, and how the copies are joined so that pages as they really
+are, with a bar stuck to the top, a side menu, a scrollbar, a video, come out as one picture.
+
+### Options
+1. Recon scrolls the page itself, sending the wheel until the bottom. Hands free, and it
+   breaks on bars that stay, pages that load as they scroll and applications that ignore a
+   sent wheel.
+2. The person scrolls, and Recon joins what passes. Works in anything that scrolls, and
+   the person does the scrolling.
+3. For the joining: compare whole frames pixel by pixel at every possible distance. Exact,
+   and far too slow thirty times a second on a large area, and one moving column ruins it.
+4. For the joining: reduce every row of a frame to a number, in upright strips, let each
+   strip say how far the page moved, and take what most strips say.
+
+### Decision
+Rotem picked option 2 on 2026-09-22. The assistant picked option 4 for the joining, in
+`host/pixels/src/stitch.rs`, where the per-pixel work is compiled fast in every profile.
+Rows that stand still while the rest moves are left out of the count; the still rows at
+the bottom are kept out of the middle of the picture and end it once; a column at the edge
+whose pixels neither stay nor move with the page, in two placed copies or more, is a
+scrollbar and is cut off with its flat track; the lowest 12 px of a copy are never kept
+from any copy but the last, since Windows blends a window's round corners with what
+scrolls under them. A copy that cannot be placed changes nothing, and the last placed one
+stays the one to match, so scrolling back up finds the picture again.
+
+### Consequences
+A page scrolled faster than two copies share is lost until the person scrolls back, and the
+bar says so. A side menu that stays shows as each copy's lower part had it, not once. A
+page whose content repeats exactly, a table of identical lines, can be joined at the wrong
+distance; the distance closest to the last one wins a tie. Only downward growth is kept: a
+page scrolled above where the capture began adds nothing. The picture stops at 30,000 rows
+or 80 million pixels, by itself. Revisit option 1 as an addition, never a replacement, if
+Rotem wants hands-free capture of plain pages.
+
+## 2026-09-22 · Whether an area scrolls is asked off the overlay's thread; Recon's own windows stay out of the copies by Windows' exclusion
+
+### Context
+Rotem's button shows only over an area that scrolls, and the overlay's thread is the one
+surface that must never wait (part 5). The answer lives in another application. And once
+the capture is live, Recon's dim and its bar are on the very screen being copied.
+
+### Options
+1. Show the button on every area, scrolling or not. No question to ask, and a button that
+   mostly does nothing.
+2. Ask on the overlay's thread as the pointer moves. Simple, and one slow application
+   freezes the capture.
+3. Ask on a thread of its own, once per window or part, and let the answer arrive as a
+   message: the button shows a moment after the area is lit.
+4. For the live part: keep every Recon window outside the copied area. Always possible
+   only when the area leaves room, and a page area often reaches the screen's edges.
+5. For the live part: mark Recon's windows excluded from capture, which Windows 10 2004 and
+   later honours in a GDI copy of the screen.
+
+### Decision
+Options 3 and 5, the assistant's, on 2026-09-22. Three signs say an area scrolls, tried in
+this order: a classic scrollbar whose range is longer than its page; an element on the way
+down to the pointer that says it scrolls up and down; an element holding something taller
+than itself that reaches more than 48 px past its top or bottom. Measured here: Edge 153
+never says an ordinary page scrolls, and reports the content's whole height, which is why
+the third sign exists; a Chromium page answers with an empty tree the first time it is
+asked, so an empty answer is asked again, four times, 300 ms apart. Measured here too: a
+window excluded from capture is absent from `BitBlt` with `CAPTUREBLT`, layered or not. The
+area handed to the capture is what the application says scrolls, inside the lit area, and
+the lit area whole when that is under 100 px either way.
+
+### Consequences
+An application that answers none of the three signs gets no button, and the ordinary
+capture is what there is; which applications those are is not established. Content clipped
+without being scrollable reads as scrolling, and the button there starts a capture that
+never grows, which costs a press. Being asked makes a Chromium application turn its
+accessibility tree on until it restarts. On a Windows older than 2004 the exclusion is
+refused: the bar then goes outside the area, and the capture is refused in words when
+nothing outside has room. Enter and Escape are taken as global keys while it lasts, so
+the page under it cannot be sent an Enter meanwhile.

@@ -284,6 +284,31 @@ screen is the display the pointer is on, they sit
 under the dashed frame and the panel, and the width is not scaled with the display: the line's pixel whole, the one
 on each side at 32% of it.
 
+### Scrolling capture
+
+Stated by Rotem on 2026-09-22 for the capture overlay.
+
+| Part | Value |
+|---|---|
+| Button | round, 56 by 56, an arrow pointing down, 24 px up from the bottom of the capture frame, shown in capture mode over an area that scrolls |
+| A press on it | starts the capture with scrolling: he scrolls the page himself, Recon joins what passes (his pick, of two) |
+| The flow after the press | left to the assistant, with its messages |
+
+The rest is not stated yet. Provisional in the host until it is (`host/src/scrolling/`):
+the button in the middle of the frame's width, the magnifier's lines' #2554FB as its fill
+and #4B74FF under the pointer, a 2 px ring and a 24 px arrow on a 2 px line in the
+magnifier's #F2F2F2, the hand pointer over it and the magnifier and guide lines out of its
+way, up only once the lit area has come to rest. After the press the screen keeps the
+capture's dim around the area and a 2 px #00B9F7 frame just inside it, not walking. The bar:
+a pill 56 px tall in the magnifier's fill where the button was, 24 px up from the area's
+bottom, under or over the area when the area is too small; its text Google Sans medium
+14 px in #F2F2F2, 24 px from the bar's left; the messages "Scroll down slowly", then the
+size so far as "1240x5380 so far", "Too fast. Scroll back up a little" in #FFB84D, and
+"This is as long as a picture gets" before it ends by itself; Done a 40 px tall #2554FB
+pill, 18 px of padding at its sides, and cancel a 40 px disc in #21222C with a 2 px X,
+each lighter under the pointer, 8 px between them and to the bar's right end; Enter is
+Done and Escape is cancel; every number at 100%, scaled by the display's own scale.
+
 ### Capture window glide
 
 Stated by Rotem on 2026-09-18 for the capture overlay.
