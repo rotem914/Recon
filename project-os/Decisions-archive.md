@@ -4,6 +4,77 @@ NOT read by default - consult only when digging into an old entry.
 Moved here verbatim by project-os/rotate.ps1. Movement only: nothing is rewritten, compressed, or deleted.
 
 ## Archived decisions
+## 2026-09-17 · The crop is one rect beside the notes, cut by the host on a copy at every output, and the notes keep their image coordinates
+
+### Context
+
+Rotem asked for a crop in the editor: a crop button in the sidebar, and with it in hand
+handles on the picture's edges that are dragged inward, and the picture is cut. The plan's
+v1 scope line kept crop out, so his word overrides it. Three things had to be placed: what
+a crop does to the pixels the document keeps, what it does to the coordinates every note
+already holds, and how the on-screen picture, the copy and the thumbnail agree.
+
+### Options
+
+1. The crop rewrites the document: the preserved image is cut on disk and every note is
+   shifted by the crop's origin; undo keeps a copy of the pixels.
+2. The crop is one rect in image pixels saved with the notes; the page shows, sizes and
+   pans the picture as that rect, the notes keep their coordinates, and the host cuts a
+   copy of the source at every output, as the blur is applied, the source never touched.
+3. The crop is a negative margin, so the composer and the page's margin arithmetic carry it.
+
+### Decision
+
+Option 2, by the assistant. It keeps rule 11's shape for the document as well as for the
+file: the preserved image is written once and never rewritten, so Ctrl+Z gives every pixel
+back by dropping the rect, and a document saved before this change is unchanged. The notes
+never move, so the crop is a cut and not a change to what the notes are placed on, and the
+export shifts the layer by the crop's origin in one place. Option 3 was rejected because
+the margin is recomputed from the notes at rest, and a crop folded into it would grow back
+around a note outside the crop. Inward only, a side no smaller than 8 px, the release as
+the moment of the cut, the dimmed outside and the key K are the assistant's provisional
+calls, Rotem's to change.
+
+### Consequences
+
+Every output path takes one more header, `crop`, and the composer cuts a copy: a copy of a
+large capture costs one more copy of its pixels. A note placed outside the crop takes
+margin around the crop, as one past the picture's edge does, so a cropped picture can grow
+a margin where the cut pixels were. The pan's centred value is the crop's origin rather
+than zero, so every place that reads the picture's edges reads `pictureRect()` and never
+the image's size. A saved crop that does not fit its picture is dropped at load. A crop in
+a saved document is ignored by a page before this one. Revisit if Rotem wants a crop
+dragged outward to bring pixels back, a crop at any size, or a look of his own.
+
+## 2026-09-17 · An empty bubble gives its number back
+
+### Context
+
+Numbers never change and gaps stay (2026-09-10): a deleted note leaves its number unused
+so every output agrees with every other. The callout in two clicks gives the number back
+when the bubble is dropped between the clicks. After the second click, Escape with nothing
+typed discarded the bubble through the commit, which kept the number, so the next note was
+2 with no 1 on the picture (review 4, T5).
+
+### Options
+
+1. Keep the gap: an empty bubble counts as a note that was deleted.
+2. Give the number back when the discarded bubble is the newest, as between the clicks.
+3. Give it back always, renumbering the notes above it.
+
+### Decision
+
+Option 2, at Rotem's FIX ALL on review 4. An empty bubble was never a note: nothing was
+typed, nothing was copied, nothing was saved with it, so there is no output for a gap to
+agree with. Option 3 would renumber real notes, which the 2026-09-10 decision forbids.
+
+### Consequences
+
+`commitEditing` gives the number back only when the bubble's number is the newest one; a
+bubble emptied later, after other notes were made, keeps its gap, since a note may have
+been copied with it. A text note has no number and gives nothing back. The discard adds no
+undo step either way.
+
 ## 2026-09-16 · Google Sans is bundled with the page, the medium Latin subset, for the image size only
 
 ### Context
