@@ -4221,6 +4221,57 @@ export async function runChecks(editor, invoke) {
     await editor.setMode('view');
   }
 
+  // ---------------------------------------------------------------- a capture taken with Ctrl held
+  say('');
+  say('A capture taken with Ctrl held at the selection is copied and the editor is not brought up; when the copy fails, it comes up with the reason');
+  {
+    const hud = document.getElementById('hud');
+    const visible = () => invoke('editor_window_visible');
+    await invoke('editor_store_reset');
+    await editor.refreshStrip();
+    await invoke('editor_hide');
+    for (let i = 0; i < 40 && (await visible()); i += 1) await sleep(50);
+    // The page loads and copies it by itself, from the announcement, as it does every capture.
+    const shot = await invoke('editor_capture_probe', { width: 330, height: 210, quiet: true });
+    for (let i = 0; i < 100 && !(model.image.document_id === shot.document_id && hud.textContent.includes('copied 330x210')); i += 1) await sleep(50);
+    await sleep(600);
+    const back = await invoke('editor_clipboard_readback');
+    const docs = await invoke('editor_documents');
+    check('with Ctrl: loaded and copied, the clipboard holds that 330 by 210 picture, and the window stayed hidden',
+      model.image.document_id === shot.document_id && back.png_matches === true && back.width === 330 && back.height === 210 && (await visible()) === false,
+      `document ${model.image.document_id} for ${shot.document_id}, clipboard ${back.width}x${back.height} matching ${back.png_matches}, "${hud.textContent.split('\n').pop()}"`);
+    check('it joins the timeline as any capture does', docs.length === 1 && docs[0].id === shot.document_id, JSON.stringify(docs.map((d) => d.id)));
+
+    // The clipboard is held by another application: the editor comes up with NOT COPIED, and
+    // hides back to the application the capture began in, the stand-in here.
+    let standIn = true;
+    try {
+      await invoke('editor_stand_in', { on: true });
+    } catch (err) {
+      standIn = false;
+      skipped('hidden again, the focus goes back to where that capture began', `the stand-in window could not be opened in front: ${err}`);
+    }
+    const held = await invoke('editor_hold_clipboard', { on: true });
+    const failed = await invoke('editor_capture_probe', { width: 340, height: 210, quiet: true });
+    for (let i = 0; i < 100 && !(await visible()); i += 1) await sleep(50);
+    check('with Ctrl and the clipboard held: the window comes up on that capture, saying NOT COPIED',
+      held === true && (await visible()) === true && model.image.document_id === failed.document_id && hud.textContent.includes('NOT COPIED'),
+      `visible ${await visible()}, "${hud.textContent.split('\n').pop()}"`);
+    await invoke('editor_hold_clipboard', { on: false });
+    if (standIn) {
+      const returned = await invoke('editor_hide');
+      check('hidden again, the focus goes back to where that capture began', returned.includes('focus returned') || returned.includes('refused'), returned);
+      await invoke('editor_stand_in', { on: false });
+    }
+
+    // Without Ctrl, as before: the window is brought up.
+    await invoke('editor_hide');
+    for (let i = 0; i < 40 && (await visible()); i += 1) await sleep(50);
+    await invoke('editor_capture_probe', { width: 350, height: 210 });
+    check('without Ctrl the window is brought up, as every capture was', (await visible()) === true);
+    await invoke('editor_show');
+  }
+
   say('');
   const unrun = notRun ? `, ${notRun} not run` : '';
   if (failures === 0) {

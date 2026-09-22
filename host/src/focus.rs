@@ -64,6 +64,48 @@ pub fn remember(hwnd: HWND) {
     }
 }
 
+/// The return target as it stands, read by a capture before and after it remembers its own,
+/// so that one taken with Ctrl held, which brings no editor up, can leave it as it found it.
+pub fn target() -> Option<isize> {
+    TARGET.lock().ok().and_then(|slot| *slot)
+}
+
+/// The target a capture taken with Ctrl held remembered, set aside for the one case where
+/// its editor comes up after all: the copy failed (`take_back`).
+static ASIDE: Mutex<Option<isize>> = Mutex::new(None);
+
+/// A capture taken with Ctrl held brings no editor up: the target it remembered is set aside
+/// and the one from before it put back. Unless a hide spent the target while the overlay was
+/// up, in which case nothing is put back, since a spent target is used once (review T4).
+pub fn set_aside(remembered: Option<isize>, before: Option<isize>) {
+    let Ok(mut slot) = TARGET.lock() else {
+        return;
+    };
+    let unchanged = *slot == remembered;
+    if unchanged {
+        *slot = before;
+    }
+    if let Ok(mut aside) = ASIDE.lock() {
+        *aside = if unchanged { remembered } else { None };
+    }
+}
+
+/// A new capture has begun: a target set aside by an earlier one is not the one to return to,
+/// even when that one's copy fails late.
+pub fn drop_aside() {
+    if let Ok(mut aside) = ASIDE.lock() {
+        *aside = None;
+    }
+}
+
+/// The editor came up for that capture after all: its own target is the one to return to.
+pub fn take_back() {
+    let aside = ASIDE.lock().ok().and_then(|mut aside| aside.take());
+    if let Some(raw) = aside {
+        remember(HWND(raw as *mut _));
+    }
+}
+
 /// Brings the remembered window forward, if it is still there. Never activates anything
 /// else: a background completion or a closed application must not steal focus (§3.1).
 ///

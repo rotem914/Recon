@@ -44,7 +44,9 @@ use windows::Win32::Graphics::Gdi::{
     HBITMAP, HBRUSH, HDC, HFONT, HGDIOBJ, PAINTSTRUCT, RGNDATA, RGNDATAHEADER, SRCCOPY,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, VK_ESCAPE};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    GetKeyState, ReleaseCapture, SetCapture, VK_CONTROL, VK_ESCAPE,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, EnumChildWindows,
     EnumWindows, GetClassNameW, GetCursorPos, GetForegroundWindow, GetMessageW, GetSystemMetrics,
@@ -137,6 +139,16 @@ static SELECTED_AT: std::sync::Mutex<Option<(i32, i32)>> = std::sync::Mutex::new
 /// Taken once, by the capture the selection belongs to.
 pub fn take_selected_at() -> Option<(i32, i32)> {
     SELECTED_AT.lock().ok()?.take()
+}
+
+/// Whether Ctrl was held at the selection: the capture is copied and the editor is not
+/// brought up (Rotem, 2026-09-22). Beside the outcome, as the mouse's spot is.
+static SELECTED_WITH_CTRL: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Taken once, by the capture the selection belongs to.
+pub fn take_selected_with_ctrl() -> bool {
+    SELECTED_WITH_CTRL.swap(false, std::sync::atomic::Ordering::SeqCst)
 }
 
 /// One display's overlay window and the pixels it shows.
@@ -744,12 +756,15 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 let released_at = state
                     .monitor_of(hwnd)
                     .map(|m| (m.rect.x + point.x, m.rect.y + point.y));
-                let selected = |at: Option<(i32, i32)>| {
+                // Ctrl as it stood at this release, read in step with the message.
+                let ctrl = unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0;
+                let selected = |at: Option<(i32, i32)>, with_ctrl: bool| {
                     if let Ok(mut slot) = SELECTED_AT.lock() {
                         *slot = at;
                     }
+                    SELECTED_WITH_CTRL.store(with_ctrl, std::sync::atomic::Ordering::SeqCst);
                 };
-                selected(None);
+                selected(None, false);
                 if !drag.moved {
                     // A click with no drag captures the window that was lit under it. With
                     // nothing lit, on bare desktop on a display without one, it is a
@@ -757,7 +772,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                     match state.hover {
                         Some(hover) if hover.surface == hwnd.0 as isize => {
                             state.outcome = Outcome::Selected(hover.rect);
-                            selected(released_at);
+                            selected(released_at, ctrl);
                             crate::log(&format!(
                                 "overlay: a click picked the window {}{} at {}x{} desktop {},{}",
                                 crate::platform::window_owner(HWND(hover.window as *mut _)).line(),
@@ -789,7 +804,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                     state.outcome = Outcome::Cancelled;
                 } else {
                     state.outcome = Outcome::Selected(rect);
-                    selected(released_at);
+                    selected(released_at, ctrl);
                     crate::marks::mark(crate::marks::SELECTION_COMPLETED);
                 }
                 Some(())

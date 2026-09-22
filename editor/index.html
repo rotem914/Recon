@@ -3664,11 +3664,19 @@
     // editor the pixels, tells the page, and shows the window (S0.4b).
     await window.__TAURI__.event.listen('capture-ready', async (event) => {
       const arrived = performance.now();
+      // A capture taken with Ctrl held arrives with the editor left down (Rotem, 2026-09-22):
+      // when it cannot be copied, the editor comes up, so the reason is seen, and it hides
+      // back to the application that capture began in.
+      const bringUp = () => { if (event.payload.quiet) invoke('editor_show', { takeBack: true }).catch(() => {}); };
       // A capture taken on a tab after Main joins that tab's feed too (Rotem, 2026-09-16), and so
       // does a file opened by name, which sits in the timeline like a capture (Rotem, 2026-09-18);
       // a frame stepped or a file stepped onto arrives by the same event and joins nothing.
       if ((event.payload.source === 'capture' && !event.payload.file) || event.payload.linked) captureIntoTab(event.payload.document_id);
-      await loadImage(event.payload);
+      await loadImage(event.payload).catch((err) => {
+        if (event.payload.quiet) notice(`NOT COPIED: ${err}. The capture is in the timeline; try again`, 0);
+        bringUp();
+        throw err;
+      });
       drawHud();
       console.log(`capture shown ${Math.round(performance.now() - arrived)} ms after the page heard of it`);
       // A capture is on the clipboard the moment it opens (Rotem, 2026-09-16): the same
@@ -3676,7 +3684,10 @@
       // copies by hand. A capture only: a file opened, or a frame of one stepped, arrives
       // by the same event and is never copied unasked.
       if (event.payload.source === 'capture' && !event.payload.file) {
-        copyComposed().catch((err) => console.error('the capture was not copied', err && err.stack ? err.stack : String(err)));
+        copyComposed().catch((err) => {
+          console.error('the capture was not copied', err && err.stack ? err.stack : String(err));
+          bringUp();
+        });
       }
       // S0.7's two editor marks, each sent the moment it happens and stamped by the host
       // when it arrives, so late by one crossing and never early. Painted: the second

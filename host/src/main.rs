@@ -115,6 +115,10 @@ fn begin_capture() {
         return;
     };
     marks::begin(received);
+    // What it was before this capture: a capture taken with Ctrl held brings no editor up
+    // to be hidden again, and puts it back.
+    focus::drop_aside();
+    let target_before = focus::target();
     // The application the user is in right now is where the focus goes back to when the
     // editor hides (§3.1). Read here, before the overlay takes the foreground.
     match focus::remember_foreground() {
@@ -124,6 +128,7 @@ fn begin_capture() {
         )),
         None => log("return target: unchanged, the capture began inside Recon"),
     }
+    let target_remembered = focus::target();
 
     std::thread::spawn(move || {
         // Moved into the thread so it is released when this closure ends, whether that is a
@@ -164,6 +169,9 @@ fn begin_capture() {
                 // arrow, drawn into the frozen pixels where the mouse was at the selection,
                 // before the crop, so the part of it inside the area is what is kept.
                 let selected_at = overlay::take_selected_at();
+                // Ctrl held at the selection: copied, and the editor left where it was
+                // (Rotem, 2026-09-22).
+                let with_ctrl = overlay::take_selected_with_ctrl();
                 if let (Outcome::Selected(_), Some((x, y)), true) =
                     (&outcome, selected_at, settings::capture_pointer())
                 {
@@ -220,15 +228,31 @@ fn begin_capture() {
                                         rgba: pixels,
                                         source: "capture",
                                     };
-                                    match editor::present(captured) {
-                                        Ok(show_ms) => {
-                                            marks::mark(marks::EDITOR_SHOW_RETURNED);
-                                            log(&format!(
-                                                "editor shown: {} ms from selection, the show itself {show_ms} ms",
+                                    if with_ctrl {
+                                        focus::set_aside(target_remembered, target_before);
+                                        match editor::present_quietly(captured) {
+                                            Ok(true) => log(&format!(
+                                                "Ctrl held: handed to the page to copy {} ms from selection, the editor left as it was",
                                                 selected_at.elapsed().as_millis()
-                                            ))
+                                            )),
+                                            Ok(false) => log(
+                                                "Ctrl held, but the page is not listening yet: the editor brought up as for any capture",
+                                            ),
+                                            Err(err) => {
+                                                log(&format!("NOT HANDED TO THE EDITOR: {err}"))
+                                            }
                                         }
-                                        Err(err) => log(&format!("EDITOR NOT SHOWN: {err}")),
+                                    } else {
+                                        match editor::present(captured) {
+                                            Ok(show_ms) => {
+                                                marks::mark(marks::EDITOR_SHOW_RETURNED);
+                                                log(&format!(
+                                                    "editor shown: {} ms from selection, the show itself {show_ms} ms",
+                                                    selected_at.elapsed().as_millis()
+                                                ))
+                                            }
+                                            Err(err) => log(&format!("EDITOR NOT SHOWN: {err}")),
+                                        }
                                     }
                                 }
                                 None => log("CROP REFUSED: the rectangle is not inside the frame"),

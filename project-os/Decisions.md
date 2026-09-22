@@ -133,6 +133,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - _2026-09-22 · Whether an area scrolls is asked off the overlay's thread, by its scrollbar, by what it says, or by content taller than it; and Recon's own windows stay out of the copies by Windows' exclusion._ (its clause handing the capture the area the application names is superseded the same day, below; the rest stands)
 - 2026-09-22 · A scrolling capture's area is the lit frame, whole; what the application says scrolls only decides whether the button shows.
 - 2026-09-22 · Only a row that appears once is evidence of a move, standing still is a move of its own, and a panel scrolls when its children run past it together.
+- 2026-09-22 · A capture taken with Ctrl held reaches the page as any capture does, with the window left down; a copy that fails brings it up.
 
 ---
 
@@ -960,3 +961,38 @@ wider than two strips says "Too fast" while nobody scrolls. Sections more than 4
 do not join a run, and a page that overflows by less than 64 px gets no button. A browser's
 own zoom grows a page's spacing past both, and is not known to Recon. Revisit the gap if a
 page with wide gaps between its sections shows no button.
+
+## 2026-09-22 · A capture taken with Ctrl held reaches the page as any capture does, with the window left down
+
+### Context
+Rotem asked on 2026-09-22 that Ctrl held while clicking in capture mode copy the capture
+without Recon coming up. Every capture is copied today by the editor page's own copy, after
+the page has loaded it (the entry of 2026-09-16), and the host then shows the window. The
+selection is either the click on a lit area or the release that ends a drag, and the focus
+return target is remembered at the shortcut, before either is known.
+
+### Options
+1. The host publishes the captured pixels itself, with no page involved: the editor keeps
+   what it showed, but a second copy path beside the page's, and a failure only in the log.
+2. The page is told as for any capture, loads it and copies it with its own copy, and the
+   host only leaves out the show; a copy that fails brings the window up with NOT COPIED.
+3. Ctrl read at the button's press, or at the release that makes the selection.
+
+### Decision
+Option 2, and Ctrl read at the release, by the assistant, Rotem's to veto: `GetKeyState` in
+the overlay's `WM_LBUTTONUP`, for the click and the drag alike, recorded beside the outcome
+as the mouse's spot is. The capture joins the store and the timeline as every capture does.
+The return target is put back as it was before the shortcut, since no editor came up to be
+hidden again; left set, a later close of an editor opened from the tray would bring the
+capture's application forward, which review T4 ruled out. The capture's own target is set
+aside, and taken back when the editor comes up after all: a failed copy, or a capture made
+before the page listens, which is brought up as any capture since only the page copies. A
+target a hide spent while the overlay was up is not put back.
+
+### Consequences
+One copy path still: a change to the copy reaches this one. The page runs in a window that
+is hidden, minimized or behind, as it already does at startup and in the checks; a visible
+editor switches to the new capture without coming forward. A copy that fails is seen, at
+the price of the window taking the focus then. The round button's scrolling capture ignores
+Ctrl. Revisit if a hidden page is ever throttled into a late copy, or if Ctrl is wanted for
+something else at the selection.

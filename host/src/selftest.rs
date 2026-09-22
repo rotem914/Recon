@@ -27,7 +27,7 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::System::Console::GetConsoleWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     keybd_event, mouse_event, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, MOUSEEVENTF_LEFTDOWN,
-    MOUSEEVENTF_LEFTUP, MOUSEEVENTF_WHEEL, VK_ESCAPE, VK_RETURN,
+    MOUSEEVENTF_LEFTUP, MOUSEEVENTF_WHEEL, VK_CONTROL, VK_ESCAPE, VK_RETURN,
 };
 use windows::Win32::UI::WindowsAndMessaging::ShowWindow;
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -230,6 +230,19 @@ pub fn run() -> i32 {
         Ok(()) => {}
         Err(reason) => {
             println!("scrolling capture FAILED: {reason}");
+            failures += 1;
+        }
+    }
+
+    println!();
+    println!(
+        "=== J. Ctrl held at the selection is recorded, for a copy with no editor brought up ==="
+    );
+    quiet();
+    match ctrl_test(&frame) {
+        Ok(()) => {}
+        Err(reason) => {
+            println!("Ctrl at the selection FAILED: {reason}");
             failures += 1;
         }
     }
@@ -1117,6 +1130,89 @@ fn window_pick_test(frame: &Frame) -> Result<(), String> {
         )),
         Outcome::Cancelled => Err("a drag inside the stand-in cancelled".to_string()),
         Outcome::Scroll { rect, .. } => Err(format!("the round button answered instead: {rect:?}")),
+    }
+}
+
+/// Ctrl held at the selection (Rotem, 2026-09-22): a drag and a click on a lit window, each
+/// released with Ctrl down, are recorded as such, and the record is taken once; a drag with
+/// no Ctrl is not. The overlay's half only: the editor checks prove a capture announced as
+/// taken with Ctrl, and no check drives the join between the two in `begin_capture`, which
+/// needs the real shortcut.
+fn ctrl_test(frame: &Frame) -> Result<(), String> {
+    let target = pick_test_area(frame.geometry).ok_or("no room for a test drag")?;
+    let dragged = DesktopRect {
+        x: target.x + 40,
+        y: target.y + 30,
+        width: 160,
+        height: 100,
+    };
+    for ctrl in [false, true] {
+        let outcome = with_overlay(frame, move || {
+            if ctrl {
+                hold_ctrl(true);
+            }
+            move_to(dragged.x, dragged.y);
+            press_left();
+            move_to(dragged.x + 60, dragged.y + 40);
+            move_to(
+                dragged.x + dragged.width as i32,
+                dragged.y + dragged.height as i32,
+            );
+            release_left();
+            if ctrl {
+                hold_ctrl(false);
+            }
+        })?;
+        let recorded = overlay::take_selected_with_ctrl();
+        match outcome {
+            Outcome::Selected(got) if got == dragged && recorded == ctrl => println!(
+                "  a drag {} Ctrl gave the dragged rectangle, recorded as {}",
+                if ctrl { "with" } else { "without" },
+                if ctrl { "with Ctrl" } else { "without it" }
+            ),
+            other => {
+                return Err(format!(
+                    "a drag {} Ctrl gave {other:?}, recorded with Ctrl {recorded}",
+                    if ctrl { "with" } else { "without" }
+                ))
+            }
+        }
+        if overlay::take_selected_with_ctrl() {
+            return Err("the Ctrl record was still there after it was taken".into());
+        }
+    }
+
+    // The click on a lit window, the stand-in's one part, with Ctrl down.
+    let (mut child, hwnd) = open_stand_in()?;
+    let mut origin = POINT::default();
+    if !unsafe { ClientToScreen(hwnd, &mut origin) }.as_bool() {
+        let _ = child.kill();
+        return Err("the stand-in's client origin could not be read".into());
+    }
+    let at = (
+        origin.x + STAND_IN_PART.0 + STAND_IN_PART.2 / 2,
+        origin.y + STAND_IN_PART.1 + STAND_IN_PART.3 / 2,
+    );
+    let outcome = with_overlay(frame, move || {
+        hold_ctrl(true);
+        move_to(at.0, at.1);
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        press_left();
+        release_left();
+        hold_ctrl(false);
+    });
+    let recorded = overlay::take_selected_with_ctrl();
+    let _ = unsafe { PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0)) };
+    std::thread::sleep(std::time::Duration::from_millis(400));
+    let _ = child.kill();
+    match outcome? {
+        Outcome::Selected(got) if recorded => {
+            println!("  a click with Ctrl on the lit part picked {got:?}, recorded with Ctrl");
+            Ok(())
+        }
+        other => Err(format!(
+            "a click with Ctrl on the lit part gave {other:?}, recorded with Ctrl {recorded}"
+        )),
     }
 }
 
@@ -2296,6 +2392,17 @@ pub(crate) fn press_left() {
 pub(crate) fn release_left() {
     unsafe { mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0) };
     std::thread::sleep(std::time::Duration::from_millis(60));
+}
+
+/// Ctrl down or up, for real, as a person holds it through a click.
+fn hold_ctrl(down: bool) {
+    let flags = if down {
+        KEYBD_EVENT_FLAGS(0)
+    } else {
+        KEYEVENTF_KEYUP
+    };
+    unsafe { keybd_event(VK_CONTROL.0 as u8, 0, flags, 0) };
+    std::thread::sleep(std::time::Duration::from_millis(40));
 }
 
 pub(crate) fn press_escape() {

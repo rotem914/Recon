@@ -19,7 +19,7 @@
 //! second kind lets the page ask the host to touch the screen and the disk, which is part
 //! 5's boundary broken, so a product build does not compile them (review T7).
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 
 use image::ImageEncoder;
@@ -1537,7 +1537,13 @@ pub fn create_hidden(app: &AppHandle) -> tauri::Result<()> {
         .prevent_overflow()
         .center()
         .decorations(false)
-        .visible(false);
+        .visible(false)
+        // A page loading again, after a reload, listens only once it has booted again.
+        .on_page_load(|_, payload| {
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+                PAGE_LISTENING.store(false, Ordering::SeqCst);
+            }
+        });
     #[cfg(feature = "own-extensions")]
     let window = with_own_extensions(window);
     window.build()?;
@@ -1620,7 +1626,21 @@ pub fn present(frame: Frame) -> Result<u128, String> {
     state().set_document(None);
     // Taking a capture activates history navigation (§3.4).
     state().history_active.store(true, Ordering::SeqCst);
-    present_frame(frame, None)
+    present_frame(frame, None, true)
+}
+
+/// A capture taken with Ctrl held at the selection (Rotem, 2026-09-22): the page is told and
+/// copies it as it copies every capture, and the window is left as it was, neither shown nor
+/// brought forward. The page brings it up itself when the copy cannot be made. Returns
+/// whether the window was left as it was: not when the page is not listening yet.
+pub fn present_quietly(frame: Frame) -> Result<bool, String> {
+    if !PAGE_LISTENING.load(Ordering::SeqCst) {
+        crate::focus::take_back();
+        return present(frame).map(|_| false);
+    }
+    state().set_document(None);
+    state().history_active.store(true, Ordering::SeqCst);
+    present_frame(frame, None, false).map(|_| true)
 }
 
 /// Hides the editor and returns the focus to the application the capture began in (§3.1).
@@ -1653,7 +1673,7 @@ fn set_title(app: &AppHandle, info: &ImageInfo) {
     }
 }
 
-fn present_frame(frame: Frame, reuse: Option<u64>) -> Result<u128, String> {
+fn present_frame(frame: Frame, reuse: Option<u64>, bring_up: bool) -> Result<u128, String> {
     let app = app()?;
     let is_capture = frame.source == "capture";
     let id = match reuse {
@@ -1671,11 +1691,16 @@ fn present_frame(frame: Frame, reuse: Option<u64>) -> Result<u128, String> {
             preserve(image, id, Source::Capture);
         }
     }
-    let info = editor_image_info()?;
+    let mut info = editor_image_info()?;
+    info.quiet = !bring_up;
     set_title(app, &info);
     app.emit("capture-ready", &info)
         .map_err(|err| err.to_string())?;
-    show(app)
+    if bring_up {
+        show(app)
+    } else {
+        Ok(0)
+    }
 }
 
 /// Opens a file through the one image source and shows its first frame or page on the
@@ -1747,7 +1772,7 @@ fn open_path_as(path: &std::path::Path, joins: bool) -> Result<u128, String> {
         save_links(&links);
         Some(id)
     });
-    present_frame(frame_of(decoded, name), reuse.flatten())
+    present_frame(frame_of(decoded, name), reuse.flatten(), true)
 }
 
 /// Previous, next, first or last in the folder (§3.4). A file gone since the listing is
@@ -2456,10 +2481,18 @@ pub fn editor_mark(name: String) {
     match name.as_str() {
         "page painted" => marks::mark(marks::PAGE_PAINTED),
         "page focused" => marks::mark(marks::PAGE_FOCUSED),
-        "page booted" => marks::startup(marks::PAGE_BOOTED),
+        "page booted" => {
+            PAGE_LISTENING.store(true, Ordering::SeqCst);
+            marks::startup(marks::PAGE_BOOTED)
+        }
         _ => {}
     }
 }
+
+/// The page has booted, and so listens for a capture: it says so after its listeners are in.
+/// Until then a capture taken with Ctrl held is brought up as any capture, since only the
+/// page copies it and a capture it never heard of would be copied by nobody.
+static PAGE_LISTENING: AtomicBool = AtomicBool::new(false);
 
 /// Everything the page says, on the terminal.
 ///
@@ -2504,6 +2537,9 @@ pub struct ImageInfo {
     /// No pixel the page is sent can be see-through: every pixel of the frame is solid. Never
     /// true for a vector, whose regions are drawn from the file again at each zoom.
     pub opaque: bool,
+    /// A capture taken with Ctrl held, announced with the editor left down, so the page brings
+    /// it up when the copy fails; true only on that announcement (Rotem, 2026-09-22).
+    pub quiet: bool,
 }
 
 #[tauri::command]
@@ -2593,11 +2629,17 @@ pub fn editor_image_info() -> Result<ImageInfo, String> {
         linked: link(current_document_id()).is_some(),
         edited_ago_s: standing.edited_ago_s,
         source_changed: standing.source_changed,
+        quiet: false,
     })
 }
 
+/// `take_back`: the page brings the editor up for a capture taken with Ctrl held whose copy
+/// failed, so it hides back to the application that capture began in.
 #[tauri::command]
-pub fn editor_show(app: AppHandle) -> Result<u128, String> {
+pub fn editor_show(app: AppHandle, take_back: Option<bool>) -> Result<u128, String> {
+    if take_back == Some(true) {
+        crate::focus::take_back();
+    }
     show(&app)
 }
 
@@ -4643,14 +4685,26 @@ mod checks {
 
     /// A probe through the real capture path: a new document, the previous capture
     /// retained, the page told, the window shown. What a hotkey does, minus the screen.
+    /// `quiet`, a capture taken with Ctrl held: the window is left as it was, and the return
+    /// target set aside as `begin_capture` does, for a capture begun in the application the
+    /// target names now, with none remembered before it.
     #[tauri::command]
-    pub fn editor_capture_probe(width: u32, height: u32) -> Result<ImageInfo, String> {
+    pub fn editor_capture_probe(
+        width: u32,
+        height: u32,
+        quiet: Option<bool>,
+    ) -> Result<ImageInfo, String> {
         if width == 0 || height == 0 || width > 8192 || height > 8192 {
             return Err(format!("{width}x{height} is not a probe size"));
         }
         let mut frame = detail_probe_frame(width, height);
         frame.source = "capture";
-        present(frame)?;
+        if quiet == Some(true) {
+            crate::focus::set_aside(crate::focus::target(), None);
+            present_quietly(frame)?;
+        } else {
+            present(frame)?;
+        }
         editor_image_info()
     }
 
