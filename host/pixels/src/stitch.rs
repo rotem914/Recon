@@ -15,6 +15,16 @@
 //! pixels are neither the page nor still, and a picture that kept them would carry a dark
 //! notch at both sides wherever two frames meet.
 //!
+//! Only a row that appears once in its strip is evidence. A page is full of rows that repeat,
+//! the blank ones between lines of text above all, and a distance that lines the blank rows
+//! up says nothing; counted, it let a frame that had not moved at all, with only its
+//! scrollbar fading, pass for a small scroll (Rotem's test page, 2026-09-22). And standing
+//! still is itself a distance, tried when no move has the strips behind it: a frame whose
+//! page did not move but whose scrollbar, border or caret changed is the same frame, not a
+//! lost one. Only when one or two strips say otherwise, though: more than that is a page that
+//! moved beyond recognition beside a part that stood still, which is lost, and the person is
+//! told so.
+//!
 //! The picture is whole after every frame, so it can be handed over at any moment. A frame
 //! that cannot be placed, because the page moved further than the two frames share, changes
 //! nothing: the last placed frame stays the one to match, and the person scrolls back to it.
@@ -58,11 +68,13 @@ pub enum Step {
     Full,
 }
 
-/// One frame as numbers: for every strip, one number per row, and whether the row tells
-/// anything, which a row equal to the one above it does not.
+/// One frame as numbers: for every strip, one number per row, whether the row tells
+/// anything, which a row equal to the one above it does not, and whether its number appears
+/// only once in the strip.
 struct Signature {
     rows: Vec<Vec<u64>>,
     telling: Vec<Vec<bool>>,
+    unique: Vec<Vec<bool>>,
 }
 
 pub struct Stitcher {
@@ -159,6 +171,12 @@ impl Stitcher {
             self.reference = Some((reference, reference_pixels, top));
             return Step::Lost;
         };
+        if distance == 0 {
+            // It stood still, and the last placed frame stays the one to match, so the day
+            // "stood still" is wrong nothing is placed from it.
+            self.reference = Some((reference, reference_pixels, top));
+            return Step::Unchanged;
+        }
         let still_rows = still_rows(&reference, &signature, &agreeing, self.height);
         self.note_rogue(&reference_pixels, frame, distance, &still_rows);
         let top = top + distance;
@@ -211,6 +229,7 @@ impl Stitcher {
     fn signature(&self, frame: &[u8]) -> Signature {
         let mut rows = Vec::with_capacity(self.strips.len());
         let mut telling = Vec::with_capacity(self.strips.len());
+        let mut unique = Vec::with_capacity(self.strips.len());
         for &(from, to) in &self.strips {
             let mut numbers = Vec::with_capacity(self.height);
             for y in 0..self.height {
@@ -227,15 +246,24 @@ impl Stitcher {
             let tells = (0..self.height)
                 .map(|y| y > 0 && numbers[y] != numbers[y - 1])
                 .collect();
+            let mut seen: HashMap<u64, u32> = HashMap::with_capacity(self.height);
+            for &number in &numbers {
+                *seen.entry(number).or_default() += 1;
+            }
+            unique.push(numbers.iter().map(|number| seen[number] == 1).collect());
             rows.push(numbers);
             telling.push(tells);
         }
-        Signature { rows, telling }
+        Signature {
+            rows,
+            telling,
+            unique,
+        }
     }
 
     /// How far the page moved from the reference to the new frame, in rows, down the page
-    /// being positive, with the strips that agree on it. None when no distance has enough
-    /// of the strips behind it.
+    /// being positive, with the strips that agree on it: 0 when it did not move, which is
+    /// tried only when no move has enough of the strips behind it. None when nothing has.
     fn distance(&self, reference: &Signature, new: &Signature) -> Option<(i64, Vec<bool>)> {
         let height = self.height as i64;
         let mut proposed: HashMap<i64, u32> = HashMap::new();
@@ -277,7 +305,11 @@ impl Stitcher {
                 let (mut counted, mut matched) = (0u32, 0u32);
                 for y in 0..height {
                     let at = y + distance;
-                    if at < 0 || at >= height || !new.telling[strip][y as usize] {
+                    if at < 0
+                        || at >= height
+                        || !new.telling[strip][y as usize]
+                        || !reference.unique[strip][at as usize]
+                    {
                         continue;
                     }
                     let row = new.rows[strip][y as usize];
@@ -320,7 +352,39 @@ impl Stitcher {
                 best = Some((distance, agreeing, agreed, matched_rows));
             }
         }
-        best.map(|(distance, agreeing, _, _)| (distance, agreeing))
+        if let Some((distance, agreeing, _, _)) = best {
+            return Some((distance, agreeing));
+        }
+        self.stood_still(reference, new)
+    }
+
+    /// Whether the page stood still: in the strips that have rows to tell by, most of the rows
+    /// are where they were, but for one strip in four at most, and never more than two: a
+    /// scrollbar fading, a border shimmering, a caret blinking. More strips against it are a
+    /// page that jumped beside a still part, and that is lost, not still.
+    fn stood_still(&self, reference: &Signature, new: &Signature) -> Option<(i64, Vec<bool>)> {
+        let mut agreeing = vec![false; self.strips.len()];
+        let (mut voters, mut agreed) = (0u32, 0u32);
+        for (strip, agrees) in agreeing.iter_mut().enumerate() {
+            let (mut counted, mut matched) = (0u32, 0u32);
+            for y in 0..self.height {
+                if !new.telling[strip][y] || !reference.unique[strip][y] {
+                    continue;
+                }
+                counted += 1;
+                matched += (new.rows[strip][y] == reference.rows[strip][y]) as u32;
+            }
+            if counted < MIN_ROWS {
+                continue;
+            }
+            voters += 1;
+            if matched as f64 >= counted as f64 * AGREE {
+                agreed += 1;
+                *agrees = true;
+            }
+        }
+        let allowed = (voters / 4).clamp(1, 2);
+        (voters > 0 && voters - agreed <= allowed).then_some((0, agreeing))
     }
 
     /// Counts, for the columns of the two edge bands, a pixel that neither stood still nor
@@ -676,6 +740,133 @@ mod tests {
         assert!(pixels[..(1400 - 8) * W * 4] == page[..(1400 - 8) * W * 4]);
         let last = cornered(&page, top);
         assert!(pixels[(1400 - 8) * W * 4..] == last[(H - 8) * W * 4..]);
+    }
+
+    #[test]
+    fn a_frame_that_did_not_move_but_changed_a_little_is_unchanged() {
+        // What a window does while nobody scrolls it: its scrollbar fades, its border and
+        // title bar shimmer. Two strips of ten change; the page stood still, and it is not
+        // lost.
+        let page = page(900);
+        let mut s = stitcher();
+        assert_eq!(s.push(&view(&page, 0)), Step::First);
+        let mut shimmer = view(&page, 0);
+        for y in 40..H {
+            for x in (0..3).chain(W - 18..W) {
+                let at = (y * W + x) * 4;
+                shimmer[at] ^= 0x55;
+                shimmer[at + 1] ^= 0x33;
+            }
+        }
+        for _ in 0..3 {
+            assert_eq!(s.push(&shimmer), Step::Unchanged);
+            assert_eq!(s.size(), (W as u32, H as u32));
+        }
+        assert_eq!(s.push(&view(&page, 150)), Step::Grew(150));
+        let (pixels, _, h) = s.finish();
+        assert_eq!(h as usize, H + 150);
+        assert!(pixels == page[..(H + 150) * W * 4]);
+    }
+
+    #[test]
+    fn a_page_scrolled_beside_a_still_part_wider_than_it_grows() {
+        // Three fifths of the frame stand still, a panel beside a narrow page that scrolls:
+        // the still part agrees that nothing moved, and the page's move has to win.
+        const STILL: usize = W * 3 / 5;
+        let page = page(1200);
+        let frame = |top: usize| {
+            let mut frame = view(&page, top);
+            for y in 0..H {
+                for x in 0..STILL {
+                    let at = (y * W + x) * 4;
+                    frame[at..at + 3].copy_from_slice(&[(y * 5) as u8, (x * 3 + y) as u8, 77]);
+                }
+            }
+            frame
+        };
+        let mut s = stitcher();
+        s.push(&frame(0));
+        let mut top = 0;
+        for step in [60, 110, 45, 200, 90] {
+            top += step;
+            assert_eq!(s.push(&frame(top)), Step::Grew(step as u32), "at {top}");
+        }
+        let (pixels, w, h) = s.finish();
+        assert_eq!((w as usize, h as usize), (W, H + top));
+        for y in (0..H + top).step_by(7) {
+            for x in (STILL + 3..W - 3).step_by(11) {
+                let at = (y * W + x) * 4;
+                assert_eq!(&pixels[at..at + 3], &page[at..at + 3], "{x},{y}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_jump_too_far_beside_a_still_part_changes_nothing_that_follows() {
+        // Three fifths of the frame stand still, so a page that jumped past what two frames
+        // share looks as if it stood still; nothing may be placed from it, and the way back
+        // finds the last placed frame.
+        const STILL: usize = W * 3 / 5;
+        let page = page(2400);
+        let frame = |top: usize| {
+            let mut frame = view(&page, top);
+            for y in 0..H {
+                for x in 0..STILL {
+                    let at = (y * W + x) * 4;
+                    frame[at..at + 3].copy_from_slice(&[(y * 5) as u8, (x * 3 + y) as u8, 77]);
+                }
+            }
+            frame
+        };
+        let mut s = stitcher();
+        s.push(&frame(0));
+        assert_eq!(s.push(&frame(100)), Step::Grew(100));
+        // Lost, so the bar says so: four strips of ten are against standing still.
+        assert_eq!(s.push(&frame(1200)), Step::Lost);
+        assert_eq!(s.push(&frame(1300)), Step::Lost);
+        assert_eq!(s.size().1 as usize, H + 100);
+        assert_eq!(s.push(&frame(220)), Step::Grew(120));
+        let (pixels, _, h) = s.finish();
+        assert_eq!(h as usize, H + 220);
+        for y in (0..H + 220).step_by(5) {
+            for x in (STILL + 3..W - 3).step_by(11) {
+                let at = (y * W + x) * 4;
+                assert_eq!(&pixels[at..at + 3], &page[at..at + 3], "{x},{y}");
+            }
+        }
+    }
+
+    #[test]
+    fn rows_that_repeat_at_a_pitch_never_make_a_still_frame_a_move() {
+        // Rotem's check page's shape: a frame that had not moved, with its scrollbar fading,
+        // was taken for a small scroll, because the rows that stayed were set aside and the
+        // only rows left lined up at a pitch. Here bands of rows repeat every 60 rows, five
+        // times a frame, between bands that appear once; a still frame must stay still.
+        let rows = 1200;
+        let mut page = page(rows);
+        for y in 0..rows {
+            if (y / 30) % 2 == 1 {
+                let like = 30 + y % 60 % 30;
+                let (from, to) = (like * W * 4, y * W * 4);
+                let band: Vec<u8> = page[from..from + W * 4].to_vec();
+                page[to..to + W * 4].copy_from_slice(&band);
+            }
+        }
+        let mut s = stitcher();
+        assert_eq!(s.push(&view(&page, 0)), Step::First);
+        let mut shimmer = view(&page, 0);
+        for y in 40..H {
+            for x in (0..3).chain(W - 18..W) {
+                let at = (y * W + x) * 4;
+                shimmer[at] ^= 0x55;
+            }
+        }
+        assert_eq!(s.push(&shimmer), Step::Unchanged);
+        assert_eq!(s.size(), (W as u32, H as u32));
+        assert_eq!(s.push(&view(&page, 150)), Step::Grew(150));
+        let (pixels, _, h) = s.finish();
+        assert_eq!(h as usize, H + 150);
+        assert!(pixels == page[..(H + 150) * W * 4]);
     }
 
     #[test]

@@ -132,6 +132,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-22 · A scrolling capture is the person's own scroll, joined by numbers of rows in strips that vote; Rotem's pick over Recon scrolling by itself.
 - _2026-09-22 · Whether an area scrolls is asked off the overlay's thread, by its scrollbar, by what it says, or by content taller than it; and Recon's own windows stay out of the copies by Windows' exclusion._ (its clause handing the capture the area the application names is superseded the same day, below; the rest stands)
 - 2026-09-22 · A scrolling capture's area is the lit frame, whole; what the application says scrolls only decides whether the button shows.
+- 2026-09-22 · Only a row that appears once is evidence of a move, standing still is a move of its own, and a panel scrolls when its children run past it together.
 
 ---
 
@@ -919,3 +920,43 @@ whole. The frozen screen no longer shows a pointer while the area is chosen. The
 Windows showed it at the shortcut is no longer read in the product; the read stays for the
 tests. Revisit if the arrow should be pulled inside the area after a drag, or if option 3
 is wanted after all.
+
+## 2026-09-22 · Only a row that appears once is evidence of a move, standing still is a move of its own, and a panel scrolls when its children run past it together
+
+### Context
+Two bugs on the same evening. Rotem's design system page showed no round button: its middle
+panel scrolls, and holds six sections each shorter than the panel, while the detection only
+looked for one child taller than its holder. And the check's stand-in page, captured as the
+whole lit frame since the morning's fix, came out too tall or too short three runs in three:
+recorded copy by copy, every copy was clean, and the stitcher had taken frames that had not
+moved, with only the scrollbar fading and the title bar shimmering, for scrolls of 3, 4 or
+23 rows. The rows that stood still had been skipped as a stuck bar, and all that was left
+to count were the page's blank rows, which line up at many distances.
+
+### Options
+1. Loosen the "same frame" threshold. Hides this case and breaks the next one: a page that
+   really scrolls beside a still part wider than itself would pass for the same frame.
+2. Count only rows whose number appears once in their strip, and try standing still as a
+   distance of its own when no move has the strips behind it.
+3. For detection: the extent of all children in the holder's width, from the highest top to
+   the lowest bottom. One visually hidden link at -9999 px would make anything scroll.
+4. For detection: the run of children that follows on from the ones in view, each within
+   48 px of the next and reaching 64 px past the holder, both at 100% and grown with the
+   display's scale.
+
+### Decision
+Options 2 and 4, the assistant's, on 2026-09-22, with three changes the review of that
+evening made. Standing still is accepted only when one strip in four at most, and never
+more than two, says otherwise: a scrollbar, a border, a caret; more is a page that jumped
+too far beside a still part, which is lost and says so. After a stood-still the last placed
+frame stays the one to match. And the two distances were first fixed physical pixels, 96
+and 48, which a page's spacing outgrows on a scaled display, and 48 let a "skip to content"
+link parked 40 px above a page that fits pass for scrolled content at 225%.
+
+### Consequences
+A page of identical rows, a table of the same line, gives fewer rows to vote with, and a
+strip with fewer than 8 is not heard. A page standing still with a video or an animation
+wider than two strips says "Too fast" while nobody scrolls. Sections more than 48 px apart
+do not join a run, and a page that overflows by less than 64 px gets no button. A browser's
+own zoom grows a page's spacing past both, and is not known to Recon. Revisit the gap if a
+page with wide gaps between its sections shows no button.

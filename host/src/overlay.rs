@@ -1128,9 +1128,15 @@ impl State {
         }
         self.asked.insert(key, desktop);
         self.scrolls.remove(&key);
+        let scale = self
+            .surfaces
+            .iter()
+            .find(|s| s.hwnd.0 as isize == hover.surface)
+            .map_or(100, |s| s.monitor.scale_percent);
         detect::ask(
             key,
             desktop,
+            scale,
             self.answers.0.clone(),
             hover.surface,
             WM_SCROLLS,

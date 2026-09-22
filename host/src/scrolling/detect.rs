@@ -7,9 +7,15 @@
 //! else, a browser's page, a list drawn by its application, is asked through UI Automation,
 //! walking down from the window towards the smallest element under the pointer and stopping
 //! at the first one on the way that scrolls up and down: the page rather than a box inside
-//! it. An element scrolls when it says so, or when something inside it is taller than it and
-//! reaches past its top or its bottom, which is what content that has to be scrolled looks
-//! like from outside.
+//! it. An element scrolls when it says so, or when what is inside it, taken together, is
+//! taller than it and reaches past its top or its bottom, which is what content that has to
+//! be scrolled looks like from outside. Taken together means one run of children that follow
+//! each other down the page from the ones in view, never a far one on its own: a link kept
+//! out of sight at -9999 px, or a closed menu parked below, says nothing about scrolling. And
+//! the run has to reach past the holder by more than a hidden "skip to content" link parked
+//! just above a page does. Both distances are at 100% and grow with the display's scale,
+//! since UI Automation hands rectangles over in physical pixels and a page's spacing grows
+//! with the scale; a page zoomed in its browser still has its spacing grow past them.
 //!
 //! Measured here on 2026-09-22, against Edge 153 and an Electron application: a Chromium
 //! page answers with an empty tree the first time it is asked, because being asked is what
@@ -17,7 +23,9 @@
 //! again a few times before it counts as a no. And an ordinary web page never says it
 //! scrolls, while the element holding its content reports its whole height, 9270 px inside
 //! a part 861 px tall; a list inside the Electron application did say so itself. Hence both
-//! signs.
+//! signs. And a page that scrolls a panel of its own, not the whole page, holds sections each
+//! shorter than the panel, which only reach past it together: Rotem's design system page, on
+//! 2026-09-22, six sections from 229 to 2127 in a panel from 197 to 1192.
 //! Not established here: which applications never answer at all. For those the button does
 //! not show, and the ordinary capture is what there is.
 
@@ -41,9 +49,13 @@ use crate::capture::coords::DesktopRect;
 /// How many elements one question may look at, and how deep it may go.
 const MAX_ELEMENTS: u32 = 1500;
 const MAX_DEPTH: u32 = 48;
-/// How far past its holder's top or bottom an element has to reach before the holder counts
-/// as scrolling: a focus ring or a shadow reaches a few pixels out and means nothing.
-const OVERFLOW_PX: i32 = 48;
+/// How far past its holder's top or bottom the content has to reach before the holder counts
+/// as scrolling, at 100%: a focus ring, a shadow, or a skip link parked 40 px above the page
+/// reach out and mean nothing.
+const OVERFLOW_PX: i32 = 64;
+/// Children closer than this, one under the next, are one run of content, at 100%: a page's
+/// sections have margins between them, never a screen's height.
+const RUN_GAP_PX: i32 = 48;
 /// An empty tree is asked again this many times, this far apart.
 const RETRIES: u32 = 4;
 const RETRY_MS: u64 = 300;
@@ -58,9 +70,17 @@ pub struct Answer {
 /// Asks, on a thread of its own, whether the window `key` scrolls at the desktop point
 /// `at`. The answer goes down `reply`, and `wake` gets `message` posted so its thread reads
 /// it. A window that is gone by then is a post that fails, which is fine.
-pub fn ask(key: isize, at: (i32, i32), reply: Sender<Answer>, wake: isize, message: u32) {
+/// `scale` is the display's, in percent, for the distances measured in its pixels.
+pub fn ask(
+    key: isize,
+    at: (i32, i32),
+    scale: u32,
+    reply: Sender<Answer>,
+    wake: isize,
+    message: u32,
+) {
     std::thread::spawn(move || {
-        let scrolls = classic(key).or_else(|| automation(key, at));
+        let scrolls = classic(key).or_else(|| automation(key, at, scale));
         crate::log(&match scrolls {
             Some(r) => format!(
                 "scrolling: the part under the pointer scrolls, {}x{} at {},{}",
@@ -109,14 +129,14 @@ fn classic(window: isize) -> Option<DesktopRect> {
 }
 
 /// Everything else, through UI Automation.
-fn automation(window: isize, at: (i32, i32)) -> Option<DesktopRect> {
+fn automation(window: isize, at: (i32, i32), scale: u32) -> Option<DesktopRect> {
     unsafe {
         let initialised = CoInitializeEx(None, COINIT_MULTITHREADED).is_ok();
         let found = (|| {
             let uia: IUIAutomation =
                 CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).ok()?;
             for attempt in 0..=RETRIES {
-                let (found, looked) = walk(&uia, window, at);
+                let (found, looked) = walk(&uia, window, at, scale);
                 if found.is_some() || looked > 0 || attempt == RETRIES {
                     return found;
                 }
@@ -133,7 +153,12 @@ fn automation(window: isize, at: (i32, i32)) -> Option<DesktopRect> {
 
 /// One walk down from the window: the first element on the way to the point that scrolls
 /// up and down, and how many elements under the window were looked at.
-unsafe fn walk(uia: &IUIAutomation, window: isize, at: (i32, i32)) -> (Option<DesktopRect>, u32) {
+unsafe fn walk(
+    uia: &IUIAutomation,
+    window: isize,
+    at: (i32, i32),
+    scale: u32,
+) -> (Option<DesktopRect>, u32) {
     let Ok(mut element) = (unsafe { uia.ElementFromHandle(HWND(window as *mut _)) }) else {
         return (None, 0);
     };
@@ -150,10 +175,10 @@ unsafe fn walk(uia: &IUIAutomation, window: isize, at: (i32, i32)) -> (Option<De
             break;
         };
         let count = unsafe { children.Length() }.unwrap_or(0);
-        // The smallest child under the point is the way down; any child taller than its
-        // holder and reaching past it says the holder scrolls.
+        // The smallest child under the point is the way down; the run of children in the
+        // holder's width that reaches from the ones in view says whether the holder scrolls.
         let mut next: Option<(IUIAutomationElement, u64)> = None;
-        let mut overflows = false;
+        let mut spans: Vec<(i32, i32)> = Vec::new();
         for index in 0..count {
             looked += 1;
             if looked > MAX_ELEMENTS {
@@ -165,12 +190,8 @@ unsafe fn walk(uia: &IUIAutomation, window: isize, at: (i32, i32)) -> (Option<De
             let Ok(r) = (unsafe { child.CurrentBoundingRectangle() }) else {
                 continue;
             };
-            if r.bottom - r.top > holder.bottom - holder.top
-                && r.right > holder.left
-                && r.left < holder.right
-                && (r.top < holder.top - OVERFLOW_PX || r.bottom > holder.bottom + OVERFLOW_PX)
-            {
-                overflows = true;
+            if r.right > holder.left && r.left < holder.right && r.bottom > r.top {
+                spans.push((r.top, r.bottom));
             }
             if at.0 < r.left || at.0 >= r.right || at.1 < r.top || at.1 >= r.bottom {
                 continue;
@@ -180,7 +201,7 @@ unsafe fn walk(uia: &IUIAutomation, window: isize, at: (i32, i32)) -> (Option<De
                 next = Some((child, area));
             }
         }
-        if overflows {
+        if overflows((holder.top, holder.bottom), &spans, scale) {
             let rect =
                 DesktopRect::from_points(holder.left, holder.top, holder.right, holder.bottom);
             if !rect.is_empty() {
@@ -193,6 +214,42 @@ unsafe fn walk(uia: &IUIAutomation, window: isize, at: (i32, i32)) -> (Option<De
         }
     }
     (None, looked)
+}
+
+/// Whether a holder, top and bottom as given, scrolls by the children in its width: their
+/// run is taller than it and reaches past its top or bottom by more than `OVERFLOW_PX`, both
+/// at the display's scale.
+fn overflows(holder: (i32, i32), spans: &[(i32, i32)], scale: u32) -> bool {
+    let reach = crate::magnifier::scaled(OVERFLOW_PX, scale);
+    let gap = crate::magnifier::scaled(RUN_GAP_PX, scale);
+    run_through(holder, spans, gap).is_some_and(|(top, bottom)| {
+        bottom - top > holder.1 - holder.0 && (top < holder.0 - reach || bottom > holder.1 + reach)
+    })
+}
+
+/// From the children that are in view, top and bottom as given, out along every child that
+/// follows on within `gap` above or below: how high and how low the content reaches. None
+/// when no child is in view.
+fn run_through(holder: (i32, i32), spans: &[(i32, i32)], gap: i32) -> Option<(i32, i32)> {
+    let mut run = spans
+        .iter()
+        .filter(|(top, bottom)| *bottom > holder.0 && *top < holder.1)
+        .fold(None, |run: Option<(i32, i32)>, &(top, bottom)| {
+            Some(run.map_or((top, bottom), |(t, b)| (t.min(top), b.max(bottom))))
+        })?;
+    loop {
+        let grown = spans.iter().fold(run, |(t, b), &(top, bottom)| {
+            if bottom >= t - gap && top <= b + gap {
+                (t.min(top), b.max(bottom))
+            } else {
+                (t, b)
+            }
+        });
+        if grown == run {
+            return Some(run);
+        }
+        run = grown;
+    }
 }
 
 /// The element's area when it says it scrolls up and down.
@@ -208,4 +265,81 @@ unsafe fn scrolls(element: &IUIAutomationElement) -> Option<DesktopRect> {
     let r = unsafe { element.CurrentBoundingRectangle() }.ok()?;
     let rect = DesktopRect::from_points(r.left, r.top, r.right, r.bottom);
     (!rect.is_empty()).then_some(rect)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Rotem's design system page as Edge reported it at 100%: a panel from 197 to 1192, a
+    /// headline and five sections with 32 px between them, the last three below the panel's
+    /// bottom, and the separator the panel's own height.
+    const PANEL: (i32, i32) = (197, 1192);
+    const SECTIONS: [(i32, i32); 7] = [
+        (229, 259),
+        (291, 621),
+        (653, 1215),
+        (1247, 1519),
+        (1551, 1823),
+        (1855, 2127),
+        (197, 1192),
+    ];
+
+    fn at_scale(spans: &[(i32, i32)], scale: u32) -> Vec<(i32, i32)> {
+        let s = |v: i32| v * scale as i32 / 100;
+        spans.iter().map(|&(t, b)| (s(t), s(b))).collect()
+    }
+
+    #[test]
+    fn sections_that_follow_each_other_past_the_holder_are_one_run() {
+        assert_eq!(run_through(PANEL, &SECTIONS, 48), Some((197, 2127)));
+    }
+
+    #[test]
+    fn the_design_system_page_scrolls_at_every_scale() {
+        // Its 32 px margins grow with the display, and so does the gap that joins a run.
+        for scale in [100, 125, 150, 225, 300, 400] {
+            let s = |v: i32| v * scale as i32 / 100;
+            let holder = (s(PANEL.0), s(PANEL.1));
+            assert!(
+                overflows(holder, &at_scale(&SECTIONS, scale), scale),
+                "at {scale}%"
+            );
+        }
+    }
+
+    #[test]
+    fn a_skip_link_parked_above_a_page_that_does_not_scroll_is_no_scroll() {
+        // A page that fits, header and main filling it, and a "skip to content" link parked
+        // 40 px above it: a reviewer's case, at 225%.
+        let spans = [(41, 131), (131, 275), (275, 992)];
+        assert!(!overflows((131, 992), &spans, 225));
+    }
+
+    #[test]
+    fn a_child_far_away_on_its_own_is_not_part_of_the_run() {
+        // A link kept out of sight far above, a closed menu parked far below: the content
+        // in view stays inside the holder.
+        let spans = [(-9999, -9970), (220, 900), (940, 1180), (4200, 4600)];
+        assert_eq!(run_through((200, 1200), &spans, 48), Some((220, 1180)));
+        assert!(!overflows((200, 1200), &spans, 100));
+    }
+
+    #[test]
+    fn one_child_taller_than_the_holder_is_a_run_on_its_own() {
+        // An ordinary web page: the element holding its content is its whole height.
+        assert!(overflows((131, 992), &[(187, 9457)], 100));
+        // Scrolled half way down, the content reaches above the holder too.
+        assert!(overflows((131, 992), &[(-4000, 5270)], 100));
+    }
+
+    #[test]
+    fn no_child_in_view_is_no_run() {
+        assert_eq!(
+            run_through((0, 500), &[(900, 1400), (-800, -100)], 48),
+            None
+        );
+        assert_eq!(run_through((0, 500), &[], 48), None);
+        assert!(!overflows((0, 500), &[(900, 1400)], 100));
+    }
 }
