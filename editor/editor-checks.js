@@ -2855,6 +2855,26 @@ export async function runChecks(editor, invoke) {
     await settled(() => pointerSwitch.getAttribute('aria-checked') === 'true');
     check('and a second click switches it on again', pointerSwitch.getAttribute('aria-checked') === 'true' && (await file()).capture_pointer === true, JSON.stringify(await file()));
 
+    // The checkbox for showing Recon after a screenshot (Rotem, 2026-09-27).
+    const showRow = panel.querySelector('.setting[data-check="show"]');
+    const showBox = showRow.querySelector('.box');
+    const tick = showBox.querySelector('svg');
+    const boxBox = showBox.getBoundingClientRect();
+    check('a row under it, Show Recon after a screenshot, holds an 18 by 18 checkbox on the switch\'s right edge, checked with its tick shown, and nothing in the file about it',
+      showRow.querySelector('span').textContent === 'Show Recon after a screenshot' && Math.round(showRow.getBoundingClientRect().top) > Math.round(pointerRow.getBoundingClientRect().top)
+      && showBox.getAttribute('role') === 'checkbox' && showBox.getAttribute('aria-checked') === 'true' && getComputedStyle(tick).opacity === '1'
+      && Math.round(boxBox.width) === 18 && Math.round(boxBox.height) === 18 && Math.round(boxBox.right) === Math.round(switchBox.right)
+      && !('show_after_capture' in (await file())) && (await invoke('editor_settings')).show_after_capture === true,
+      `"${showRow.querySelector('span').textContent}" ${showBox.getAttribute('role')} ${showBox.getAttribute('aria-checked')}, the row at ${Math.round(showRow.getBoundingClientRect().top)} under the switch's at ${Math.round(pointerRow.getBoundingClientRect().top)}, ${boxBox.width}x${boxBox.height} right ${Math.round(boxBox.right)} vs the switch's ${Math.round(switchBox.right)}, the tick at ${getComputedStyle(tick).opacity}, the view ${(await invoke('editor_settings')).show_after_capture}, ${JSON.stringify(await file())}`);
+    showBox.click();
+    await settled(() => showBox.getAttribute('aria-checked') === 'false' && getComputedStyle(tick).opacity === '0');
+    check('a click unchecks it, the tick gone, in the file too, and the switch and the shortcuts stay', showBox.getAttribute('aria-checked') === 'false' && getComputedStyle(tick).opacity === '0'
+      && (await file()).show_after_capture === false && (await invoke('editor_settings')).show_after_capture === false && (await file()).capture_pointer === true && (await file()).hotkey === 'Ctrl+Shift+5',
+      `the tick at ${getComputedStyle(tick).opacity}, ${JSON.stringify(await file())}`);
+    showBox.click();
+    await settled(() => showBox.getAttribute('aria-checked') === 'true');
+    check('and a second click checks it again', showBox.getAttribute('aria-checked') === 'true' && (await file()).show_after_capture === true, JSON.stringify(await file()));
+
     row('open').querySelector('.clear').click();
     await settled(() => field('open').textContent === 'None');
     check('the × beside Open Recon clears it, in the file too; Capture has no ×', field('open').textContent === 'None' && !('open_hotkey' in (await file())) && row('capture').querySelector('.clear') === null,
@@ -2903,9 +2923,11 @@ export async function runChecks(editor, invoke) {
     if (modeClosed === 'view') await editor.setMode('view');
     editor.setTool(toolClosed);
 
-    // Back to the default for the sections after this one.
+    // Back to the default for the sections after this one. The checkbox too: unchecked, every
+    // probe after this would arrive quiet and turn unrelated checks red.
     await invoke('editor_settings_set', { which: 'capture', shortcut: 'Ctrl+Shift+4' });
     await invoke('editor_settings_pretend_taken', { shortcuts: [] });
+    await invoke('editor_settings_show_after_capture', { on: true });
   }
 
   // ---------------------------------------------------------------- 37. S2.8: the timeline at scale
@@ -4223,7 +4245,7 @@ export async function runChecks(editor, invoke) {
 
   // ---------------------------------------------------------------- a capture taken with Ctrl held
   say('');
-  say('A capture taken with Ctrl held at the selection is copied and the editor is not brought up; when the copy fails, it comes up with the reason');
+  say('A capture taken with Ctrl held at the selection is copied and the editor is not brought up; when the copy fails, it comes up with the reason; Show Recon after a screenshot unchecked does the same for a capture without Ctrl');
   {
     const hud = document.getElementById('hud');
     const visible = () => invoke('editor_window_visible');
@@ -4269,6 +4291,27 @@ export async function runChecks(editor, invoke) {
     for (let i = 0; i < 40 && (await visible()); i += 1) await sleep(50);
     await invoke('editor_capture_probe', { width: 350, height: 210 });
     check('without Ctrl the window is brought up, as every capture was', (await visible()) === true);
+
+    // Show Recon after a screenshot, unchecked in Settings (Rotem, 2026-09-27): a capture
+    // without Ctrl takes the Ctrl capture's path, copied with the window left hidden.
+    await invoke('editor_settings_show_after_capture', { on: false });
+    try {
+      await invoke('editor_hide');
+      for (let i = 0; i < 40 && (await visible()); i += 1) await sleep(50);
+      const kept = await invoke('editor_capture_probe', { width: 360, height: 210 });
+      for (let i = 0; i < 100 && !(model.image.document_id === kept.document_id && hud.textContent.includes('copied 360x210')); i += 1) await sleep(50);
+      await sleep(600);
+      const keptBack = await invoke('editor_clipboard_readback');
+      check('unchecked, a capture without Ctrl is loaded and copied, the clipboard holds that 360 by 210 picture, and the window stayed hidden',
+        model.image.document_id === kept.document_id && keptBack.png_matches === true && keptBack.width === 360 && keptBack.height === 210 && (await visible()) === false,
+        `document ${model.image.document_id} for ${kept.document_id}, clipboard ${keptBack.width}x${keptBack.height} matching ${keptBack.png_matches}, visible ${await visible()}, "${hud.textContent.split('\n').pop()}"`);
+    } finally {
+      // Checked again whatever happened above: unchecked, every probe after this would arrive quiet.
+      await invoke('editor_settings_show_after_capture', { on: true });
+    }
+    await invoke('editor_capture_probe', { width: 370, height: 210 });
+    check('checked again, the window is brought up', (await visible()) === true && (await invoke('editor_settings')).show_after_capture === true,
+      `visible ${await visible()}, the view ${(await invoke('editor_settings')).show_after_capture}`);
     await invoke('editor_show');
   }
 

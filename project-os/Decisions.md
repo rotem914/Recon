@@ -134,6 +134,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-22 · A scrolling capture's area is the lit frame, whole; what the application says scrolls only decides whether the button shows.
 - 2026-09-22 · Only a row that appears once is evidence of a move, standing still is a move of its own, and a panel scrolls when its children run past it together.
 - 2026-09-22 · A capture taken with Ctrl held reaches the page as any capture does, with the window left down; a copy that fails brings it up.
+- 2026-09-27 · Show Recon after a screenshot, unchecked, is the Ctrl capture's path for every capture, the scrolling one included.
 
 ---
 
@@ -925,3 +926,34 @@ editor switches to the new capture without coming forward. A copy that fails is 
 the price of the window taking the focus then. The round button's scrolling capture ignores
 Ctrl. Revisit if a hidden page is ever throttled into a late copy, or if Ctrl is wanted for
 something else at the selection.
+
+## 2026-09-27 · Show Recon after a screenshot, unchecked, is the Ctrl capture's path for every capture, the scrolling one included
+
+### Context
+Rotem asked on 2026-09-27 for an option in Settings, "Show Recon after a screenshot", with
+a checkbox. Since 2026-09-22 a capture taken with Ctrl held is copied and the editor is left
+where it was, through the page's own copy, and the round button's scrolling capture ignores
+Ctrl. The checkbox names every screenshot, so the question was which captures it reaches
+and what Ctrl means while it is unchecked.
+
+### Options
+1. Unchecked, every capture takes the Ctrl capture's path, the scrolling one included:
+   copied, the editor left where it was; Ctrl then changes nothing.
+2. Unchecked, only the click and the drag stay down, as Ctrl does; a scrolling capture
+   still brings the editor up.
+3. Unchecked, Ctrl held inverts it and brings the editor up for that one capture.
+
+### Decision
+Option 1, the assistant's, Rotem's to veto. The label reads as every screenshot, and a
+person who unchecked it would read an editor coming up after a scrolling capture as a bug.
+One path still: the page is told, loads and copies, and a copy that fails brings the editor
+up with NOT COPIED, exactly as with Ctrl. The value is `show_after_capture` in the settings
+file, absent meaning checked, read at every capture so it holds from the next one; Settings
+stays outside Ctrl+Z, as the entry of 2026-09-18 has it.
+
+### Consequences
+Unchecking it is the way to work with Recon out of sight: every capture lands on the
+clipboard and in the timeline, and the window comes up only when the copy fails or through
+its own shortcut and the tray. Ctrl is a no-op while it is unchecked. The check-only probe
+follows the setting, so the checks prove the path without a screen. Revisit if Ctrl should
+invert the checkbox, or if a scrolling capture should be the exception after all.

@@ -1629,7 +1629,8 @@ pub fn present(frame: Frame) -> Result<u128, String> {
     present_frame(frame, None, true)
 }
 
-/// A capture taken with Ctrl held at the selection (Rotem, 2026-09-22): the page is told and
+/// A capture taken with Ctrl held at the selection (Rotem, 2026-09-22), or any capture with
+/// Show Recon after a screenshot off in Settings (Rotem, 2026-09-27): the page is told and
 /// copies it as it copies every capture, and the window is left as it was, neither shown nor
 /// brought forward. The page brings it up itself when the copy cannot be made. Returns
 /// whether the window was left as it was: not when the page is not listening yet.
@@ -1922,6 +1923,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         crate::settings::editor_settings_set,
         crate::settings::editor_settings_recording,
         crate::settings::editor_settings_pointer,
+        crate::settings::editor_settings_show_after_capture,
         editor_open_dialog,
         editor_fullscreen,
         editor_navigate,
@@ -2015,6 +2017,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         crate::settings::editor_settings_set,
         crate::settings::editor_settings_recording,
         crate::settings::editor_settings_pointer,
+        crate::settings::editor_settings_show_after_capture,
         editor_open_dialog,
         editor_fullscreen,
         editor_annotate,
@@ -4687,7 +4690,8 @@ mod checks {
     /// retained, the page told, the window shown. What a hotkey does, minus the screen.
     /// `quiet`, a capture taken with Ctrl held: the window is left as it was, and the return
     /// target set aside as `begin_capture` does, for a capture begun in the application the
-    /// target names now, with none remembered before it.
+    /// target names now, with none remembered before it. With Show Recon after a screenshot
+    /// off in Settings, every probe is quiet, as every capture is.
     #[tauri::command]
     pub fn editor_capture_probe(
         width: u32,
@@ -4699,7 +4703,7 @@ mod checks {
         }
         let mut frame = detail_probe_frame(width, height);
         frame.source = "capture";
-        if quiet == Some(true) {
+        if quiet == Some(true) || !crate::settings::show_after_capture() {
             crate::focus::set_aside(crate::focus::target(), None);
             present_quietly(frame)?;
         } else {

@@ -148,6 +148,7 @@ Stated by Rotem on 2026-09-18.
 | Opens | a modal |
 | Content | a shortcut that opens Recon itself, and the shortcut that starts a capture, each picked by pressing it; under Capture a second row, Capture 2, for a second shortcut that starts the same capture (Rotem, 2026-09-19), empty until picked, with its own × |
 | Mouse pointer in captures | a row under Capture 2 with a switch, on until switched off (Rotem, 2026-09-21); it holds from the next capture |
+| Show Recon after a screenshot | a row under Mouse pointer in captures with a checkbox, checked until unchecked (Rotem, 2026-09-27); unchecked, every capture is copied and the editor is left where it was, as with Ctrl held, from the next capture |
 
 The modal's look is not stated yet. Provisional in the page until it is: a 50% black veil,
 a 420 px panel in the icon button hover colour on 13 px corners with 24 px of padding, the
@@ -155,7 +156,9 @@ title in Google Sans 16 px medium, 14 px rows in the top bar title's #cfd4da, a 
 in the app background on the tabs' 10 px corners, a 1 px #7aa7ff ring while it waits for a
 shortcut, a refusal under its field in #ff5252, the veil fading in by A1. The switch: a 32 by
 18 track in the app background with a 12 px #8b9098 knob, the track #7aa7ff and the knob
-#f2f2f2 when on, moving by A1.
+#f2f2f2 when on, moving by A1. The checkbox: an 18 by 18 box in the app background on 4 px
+corners, its right edge on the switch's, #7aa7ff with a 12 px #f2f2f2 tick when checked, both
+by A1.
 
 ### Callout
 

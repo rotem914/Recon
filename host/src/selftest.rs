@@ -2298,6 +2298,15 @@ fn pick_test_area(frame: FrameGeometry) -> Option<DesktopRect> {
 pub fn capture_demo(app: tauri::AppHandle, begin: fn()) {
     // The page needs to have booted, or the first capture lands before its listener.
     std::thread::sleep(std::time::Duration::from_millis(1500));
+    // With Show Recon after a screenshot off in Settings no capture shows the editor, and
+    // the demo would end with nothing on screen and nothing saying why.
+    if !crate::settings::show_after_capture() {
+        println!(
+            "capture demo: Show Recon after a screenshot is off in Settings, so the editor would not come up. Check it and run again."
+        );
+        app.exit(1);
+        return;
+    }
     let geometry = match virtual_screen() {
         Ok(g) => g,
         Err(err) => {

@@ -70,6 +70,17 @@
   .setting .switch[aria-checked="true"] { background: #7aa7ff; }
   .setting .switch[aria-checked="true"]::after { transform: translateX(14px); background: #f2f2f2; }
   @media (prefers-reduced-motion: reduce) { .setting .switch, .setting .switch::after { transition: none; } }
+  /* The checkbox (Rotem, 2026-09-27), provisional like the rest of the modal: an 18 by 18 box in
+     the field's colour on 4 px corners, its right edge on the switch's, the selected ring's blue
+     with a white tick when checked, both by A1. */
+  .setting .box { justify-self: end; grid-column: 2 / -1; width: 18px; height: 18px; padding: 0; border: none; border-radius: 4px;
+                  background: var(--paper); color: #f2f2f2; cursor: pointer; display: grid; place-items: center;
+                  transition: background-color 144ms ease-out; /* A1 */ }
+  .setting .box svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+                      opacity: 0; transition: opacity 144ms ease-out; /* A1 */ }
+  .setting .box[aria-checked="true"] { background: #7aa7ff; }
+  .setting .box[aria-checked="true"] svg { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { .setting .box, .setting .box svg { transition: none; } }
   .setting .said { grid-column: 1 / -1; margin-top: 4px; color: #ff5252; display: none; }
   .setting .said.shown { display: block; }
   @media (prefers-reduced-motion: reduce) { #settings-close, .setting .clear { transition: none; } }
@@ -434,6 +445,11 @@
     <div class="setting" data-switch="pointer">
       <span id="setting-pointer-name">Mouse pointer in captures</span>
       <button class="switch" type="button" role="switch" aria-checked="true" aria-labelledby="setting-pointer-name"></button>
+      <div class="said"></div>
+    </div>
+    <div class="setting" data-check="show">
+      <span id="setting-show-name">Show Recon after a screenshot</span>
+      <button class="box" type="button" role="checkbox" aria-checked="true" aria-labelledby="setting-show-name"><svg viewBox="0 0 12 12"><path d="M2 6.5l2.5 2.5L10 3.5"/></svg></button>
       <div class="said"></div>
     </div>
   </div>
@@ -2377,6 +2393,7 @@
       if (clear) clear.classList.toggle('shown', !!label && !recording);
     }
     pointerSwitch.setAttribute('aria-checked', String(!settingsState.keys || settingsState.keys.pointer !== false));
+    showBox.setAttribute('aria-checked', String(!settingsState.keys || settingsState.keys.show_after_capture !== false));
   };
   // The switch for the mouse pointer in a capture (Rotem, 2026-09-21): on until switched off,
   // kept by the host in the settings file, and in force from the next capture.
@@ -2386,6 +2403,22 @@
     const said = pointerRow.querySelector('.said');
     try {
       settingsState.keys = await invoke('editor_settings_pointer', { on: pointerSwitch.getAttribute('aria-checked') !== 'true' });
+      said.textContent = '';
+    } catch (err) {
+      said.textContent = String(err);
+    }
+    said.classList.toggle('shown', !!said.textContent);
+    drawSettings();
+  });
+  // The checkbox for showing Recon after a screenshot (Rotem, 2026-09-27): checked until
+  // unchecked, kept by the host in the settings file, and in force from the next capture.
+  // Unchecked, every capture is copied and the editor left where it was, as with Ctrl held.
+  const showRow = settingsPanel.querySelector('.setting[data-check="show"]');
+  const showBox = showRow.querySelector('.box');
+  showBox.addEventListener('click', async () => {
+    const said = showRow.querySelector('.said');
+    try {
+      settingsState.keys = await invoke('editor_settings_show_after_capture', { on: showBox.getAttribute('aria-checked') !== 'true' });
       said.textContent = '';
     } catch (err) {
       said.textContent = String(err);
@@ -3664,9 +3697,10 @@
     // editor the pixels, tells the page, and shows the window (S0.4b).
     await window.__TAURI__.event.listen('capture-ready', async (event) => {
       const arrived = performance.now();
-      // A capture taken with Ctrl held arrives with the editor left down (Rotem, 2026-09-22):
-      // when it cannot be copied, the editor comes up, so the reason is seen, and it hides
-      // back to the application that capture began in.
+      // A capture taken with Ctrl held, or with Show Recon after a screenshot unchecked in
+      // Settings (Rotem, 2026-09-22 and 2026-09-27), arrives with the editor left down: when it
+      // cannot be copied, the editor comes up, so the reason is seen, and it hides back to the
+      // application that capture began in.
       const bringUp = () => { if (event.payload.quiet) invoke('editor_show', { takeBack: true }).catch(() => {}); };
       // A capture taken on a tab after Main joins that tab's feed too (Rotem, 2026-09-16), and so
       // does a file opened by name, which sits in the timeline like a capture (Rotem, 2026-09-18);

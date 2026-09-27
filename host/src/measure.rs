@@ -327,6 +327,16 @@ fn interval_summary(report: &mut Report, label: &str, values: &[f64], target: f6
 pub fn run(app: AppHandle, runs: usize, walk: Option<String>) {
     let mut report = Report { lines: Vec::new() };
     report.say("=== S0.7: the marks, the two intervals, and memory ===");
+    // The editor interval ends at the editor shown and the page focused; with Show Recon
+    // after a screenshot off in Settings no capture shows the editor, so there is nothing
+    // to time, and every run would wait its 8 s for marks that never come.
+    if !crate::settings::show_after_capture() {
+        crate::log(
+            "MEASURE REFUSED: Show Recon after a screenshot is off in Settings, so no capture shows the editor and the editor interval cannot be measured. Check it and run again.",
+        );
+        app.exit(1);
+        return;
+    }
 
     // ---- startup, and the floor
     let booted = Instant::now();

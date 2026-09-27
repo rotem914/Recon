@@ -173,6 +173,15 @@ pub fn capture_pointer() -> bool {
     POINTER.load(Ordering::SeqCst)
 }
 
+/// Whether Recon's editor comes up after a capture: Settings' "Show Recon after a
+/// screenshot" (Rotem, 2026-09-27). Read at every capture, so the checkbox holds from the
+/// next one; off, every capture takes the Ctrl capture's path.
+static SHOW_AFTER_CAPTURE: AtomicBool = AtomicBool::new(true);
+
+pub fn show_after_capture() -> bool {
+    SHOW_AFTER_CAPTURE.load(Ordering::SeqCst)
+}
+
 /// Whether the shortcut plugin is in this process. A check run has none, and there a
 /// registration is the parse alone, plus whatever the checks declared taken.
 static LIVE: AtomicBool = AtomicBool::new(false);
@@ -223,6 +232,7 @@ fn unregister_live(app: &tauri::AppHandle, label: &str) {
 pub fn start(app: &tauri::AppHandle, cfg: &config::Config, live: bool) -> Keys {
     LIVE.store(live, Ordering::SeqCst);
     POINTER.store(cfg.capture_pointer, Ordering::SeqCst);
+    SHOW_AFTER_CAPTURE.store(cfg.show_after_capture, Ordering::SeqCst);
     let mut keys = Keys::default();
     for (which, label) in [
         (Which::Capture, Some(cfg.hotkey.clone())),
@@ -306,6 +316,8 @@ pub struct SettingsView {
     open_active: bool,
     /// The switch: a capture takes the mouse pointer with it.
     pointer: bool,
+    /// The checkbox: Recon's editor comes up after a capture.
+    show_after_capture: bool,
 }
 
 fn view(keys: &Keys) -> SettingsView {
@@ -317,6 +329,7 @@ fn view(keys: &Keys) -> SettingsView {
         open: keys.open.label.clone(),
         open_active: keys.open.active,
         pointer: capture_pointer(),
+        show_after_capture: show_after_capture(),
     }
 }
 
@@ -328,6 +341,18 @@ pub fn editor_settings_pointer(on: bool) -> Result<SettingsView, String> {
     POINTER.store(on, Ordering::SeqCst);
     crate::log(&format!(
         "settings: the mouse pointer in a capture is {}",
+        if on { "on" } else { "off" }
+    ));
+    editor_settings()
+}
+
+/// The checkbox for showing Recon after a screenshot. The file first, as the switch is.
+#[tauri::command]
+pub fn editor_settings_show_after_capture(on: bool) -> Result<SettingsView, String> {
+    config::save_show_after_capture(on).map_err(|err| format!("NOT SAVED: {err}"))?;
+    SHOW_AFTER_CAPTURE.store(on, Ordering::SeqCst);
+    crate::log(&format!(
+        "settings: show Recon after a screenshot is {}",
         if on { "on" } else { "off" }
     ));
     editor_settings()

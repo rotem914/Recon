@@ -184,6 +184,9 @@ the editor with that region.
   minimized or behind, as it was, and the capture joins the timeline as any capture does. A
   copy that fails brings the editor up with NOT COPIED. The round button's scrolling capture
   ignores Ctrl. Added 2026-09-22 at Rotem's ask.
+- Settings has a checkbox, Show Recon after a screenshot, checked until unchecked. Unchecked,
+  every capture, the scrolling one included, takes the path of Ctrl held: copied, the editor
+  left where it was, the capture in the timeline. Added 2026-09-27 at Rotem's ask.
 
 ## 3.3 One window, two entry behaviors
 

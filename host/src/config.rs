@@ -24,6 +24,10 @@ pub struct Config {
     /// Whether a capture takes the mouse pointer with it, as an element on top (Rotem,
     /// 2026-09-21). On unless the file says `"capture_pointer": false`.
     pub capture_pointer: bool,
+    /// Whether Recon's editor comes up after a capture: Settings' "Show Recon after a
+    /// screenshot" (Rotem, 2026-09-27). On unless the file says `"show_after_capture": false`;
+    /// off, every capture takes the Ctrl capture's path, copied with the editor left as it was.
+    pub show_after_capture: bool,
     /// Where the value came from, in words, for the log.
     pub source: String,
 }
@@ -38,6 +42,7 @@ pub fn load() -> Config {
             open_hotkey: file_value().as_ref().and_then(open_of),
             second_hotkey: file_value().as_ref().and_then(second_of),
             capture_pointer: file_value().as_ref().is_none_or(pointer_of),
+            show_after_capture: file_value().as_ref().is_none_or(show_of),
         };
     }
 
@@ -47,6 +52,7 @@ pub fn load() -> Config {
             open_hotkey: None,
             second_hotkey: None,
             capture_pointer: true,
+            show_after_capture: true,
             source: "no application data directory, so the built-in default".into(),
         };
     };
@@ -57,6 +63,7 @@ pub fn load() -> Config {
             open_hotkey: None,
             second_hotkey: None,
             capture_pointer: true,
+            show_after_capture: true,
             source: format!(
                 "{} does not exist yet, so the built-in default",
                 path.display()
@@ -72,6 +79,7 @@ pub fn load() -> Config {
                 open_hotkey: None,
                 second_hotkey: None,
                 capture_pointer: true,
+                show_after_capture: true,
                 source: format!(
                     "{} could not be read ({err}), so the built-in default",
                     path.display()
@@ -87,6 +95,7 @@ pub fn load() -> Config {
                 open_hotkey: open_of(&value),
                 second_hotkey: second_of(&value),
                 capture_pointer: pointer_of(&value),
+                show_after_capture: show_of(&value),
                 source: format!("{}", path.display()),
             },
             None => Config {
@@ -94,6 +103,7 @@ pub fn load() -> Config {
                 open_hotkey: open_of(&value),
                 second_hotkey: second_of(&value),
                 capture_pointer: pointer_of(&value),
+                show_after_capture: show_of(&value),
                 source: format!(
                     "{} has no \"hotkey\" key, so the built-in default",
                     path.display()
@@ -105,6 +115,7 @@ pub fn load() -> Config {
             open_hotkey: None,
             second_hotkey: None,
             capture_pointer: true,
+            show_after_capture: true,
             source: format!(
                 "{} is not valid JSON ({err}), so the built-in default",
                 path.display()
@@ -159,6 +170,13 @@ fn pointer_of(value: &serde_json::Value) -> bool {
         .unwrap_or(true)
 }
 
+fn show_of(value: &serde_json::Value) -> bool {
+    value
+        .get("show_after_capture")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true)
+}
+
 fn named(value: &serde_json::Value, key: &str) -> Option<String> {
     value
         .get(key)
@@ -202,6 +220,18 @@ pub fn save_pointer(on: bool) -> Result<PathBuf, String> {
         _ => serde_json::Map::new(),
     };
     object.insert("capture_pointer".into(), on.into());
+    write_object(path, object)
+}
+
+/// Writes Settings' checkbox for showing Recon after a screenshot into the config file,
+/// every other key kept.
+pub fn save_show_after_capture(on: bool) -> Result<PathBuf, String> {
+    let path = config_path().ok_or("there is no application data folder to save into")?;
+    let mut object = match file_value() {
+        Some(serde_json::Value::Object(map)) => map,
+        _ => serde_json::Map::new(),
+    };
+    object.insert("show_after_capture".into(), on.into());
     write_object(path, object)
 }
 
@@ -289,6 +319,23 @@ mod tests {
         assert_eq!(load().hotkey, "Ctrl+Alt+S");
         save_pointer(true).unwrap();
         assert!(load().capture_pointer);
+
+        // Show Recon after a screenshot: on when the file says nothing, kept across a
+        // shortcut save and across the pointer switch.
+        assert!(load().show_after_capture);
+        save_show_after_capture(false).unwrap();
+        assert!(!load().show_after_capture);
+        // The checkbox's own save keeps the other keys, as the shortcut save does.
+        assert_eq!(load().hotkey, "Ctrl+Alt+S");
+        let value: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(value["kept"], 7);
+        save("Ctrl+Alt+S", None, None).unwrap();
+        save_pointer(true).unwrap();
+        assert!(!load().show_after_capture);
+        assert!(load().capture_pointer);
+        save_show_after_capture(true).unwrap();
+        assert!(load().show_after_capture);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -170,8 +170,15 @@ fn begin_capture() {
                 // before the crop, so the part of it inside the area is what is kept.
                 let selected_at = overlay::take_selected_at();
                 // Ctrl held at the selection: copied, and the editor left where it was
-                // (Rotem, 2026-09-22).
+                // (Rotem, 2026-09-22). Show Recon after a screenshot, off in Settings
+                // (Rotem, 2026-09-27): every capture takes that same path.
                 let with_ctrl = overlay::take_selected_with_ctrl();
+                let keep_down = with_ctrl || !settings::show_after_capture();
+                let why = if with_ctrl {
+                    "Ctrl held"
+                } else {
+                    "Show Recon after a screenshot is off"
+                };
                 if let (Outcome::Selected(_), Some((x, y)), true) =
                     (&outcome, selected_at, settings::capture_pointer())
                 {
@@ -228,16 +235,16 @@ fn begin_capture() {
                                         rgba: pixels,
                                         source: "capture",
                                     };
-                                    if with_ctrl {
+                                    if keep_down {
                                         focus::set_aside(target_remembered, target_before);
                                         match editor::present_quietly(captured) {
                                             Ok(true) => log(&format!(
-                                                "Ctrl held: handed to the page to copy {} ms from selection, the editor left as it was",
+                                                "{why}: handed to the page to copy {} ms from selection, the editor left as it was",
                                                 selected_at.elapsed().as_millis()
                                             )),
-                                            Ok(false) => log(
-                                                "Ctrl held, but the page is not listening yet: the editor brought up as for any capture",
-                                            ),
+                                            Ok(false) => log(&format!(
+                                                "{why}, but the page is not listening yet: the editor brought up as for any capture"
+                                            )),
                                             Err(err) => {
                                                 log(&format!("NOT HANDED TO THE EDITOR: {err}"))
                                             }
@@ -268,6 +275,20 @@ fn begin_capture() {
                     // joined into one tall picture, which arrives as a capture does. No
                     // pointer is in it: it is read off the live screen, which holds none.
                     Outcome::Scroll { rect, .. } => match scrolling::run(rect) {
+                        // Show Recon after a screenshot, off: a scrolling capture is left
+                        // down like any other, though it ignores Ctrl.
+                        scrolling::Ended::Done(tall) if !settings::show_after_capture() => {
+                            focus::set_aside(target_remembered, target_before);
+                            match editor::present_quietly(tall) {
+                                Ok(true) => log(
+                                    "Show Recon after a screenshot is off: handed to the page to copy, the editor left as it was",
+                                ),
+                                Ok(false) => log(
+                                    "Show Recon after a screenshot is off, but the page is not listening yet: the editor brought up as for any capture",
+                                ),
+                                Err(err) => log(&format!("NOT HANDED TO THE EDITOR: {err}")),
+                            }
+                        }
                         scrolling::Ended::Done(tall) => match editor::present(tall) {
                             Ok(show_ms) => {
                                 log(&format!("editor shown: the show itself {show_ms} ms"))

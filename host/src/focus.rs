@@ -74,9 +74,10 @@ pub fn target() -> Option<isize> {
 /// its editor comes up after all: the copy failed (`take_back`).
 static ASIDE: Mutex<Option<isize>> = Mutex::new(None);
 
-/// A capture taken with Ctrl held brings no editor up: the target it remembered is set aside
-/// and the one from before it put back. Unless a hide spent the target while the overlay was
-/// up, in which case nothing is put back, since a spent target is used once (review T4).
+/// A capture taken with Ctrl held, or with Show Recon after a screenshot off, brings no editor
+/// up: the target it remembered is set aside and the one from before it put back. Unless a
+/// hide spent the target while the overlay was up, in which case nothing is put back, since a
+/// spent target is used once (review T4).
 pub fn set_aside(remembered: Option<isize>, before: Option<isize>) {
     let Ok(mut slot) = TARGET.lock() else {
         return;
