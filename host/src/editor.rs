@@ -2974,6 +2974,9 @@ pub struct WindowMetrics {
     /// What Win32 itself says this window is scaled at, in dots per inch. 96 is 100%.
     /// Reported separately because the runtime and the platform disagreed here.
     pub window_dpi: u32,
+    /// Whether the window is minimized. A minimized window's size is its taskbar stub, which
+    /// no ratio may be measured from (Rotem, 2026-09-30).
+    pub minimized: bool,
 }
 
 #[tauri::command]
@@ -2986,11 +2989,14 @@ pub fn editor_window_metrics(app: AppHandle) -> Result<WindowMetrics, String> {
     let window_dpi = unsafe {
         windows::Win32::UI::HiDpi::GetDpiForWindow(windows::Win32::Foundation::HWND(hwnd.0))
     };
+    // Read in the same call as the size, so the page decides from one answer.
+    let minimized = window.is_minimized().map_err(|e| e.to_string())?;
     Ok(WindowMetrics {
         physical_width: size.width,
         physical_height: size.height,
         scale_factor: window.scale_factor().map_err(|e| e.to_string())?,
         window_dpi,
+        minimized,
     })
 }
 

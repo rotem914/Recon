@@ -135,6 +135,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-22 · Only a row that appears once is evidence of a move, standing still is a move of its own, and a panel scrolls when its children run past it together.
 - 2026-09-22 · A capture taken with Ctrl held reaches the page as any capture does, with the window left down; a copy that fails brings it up.
 - 2026-09-27 · Show Recon after a screenshot, unchecked, is the Ctrl capture's path for every capture, the scrolling one included.
+- 2026-09-30 · The pixel ratio is never measured from a minimized window; the one owed is taken at the window's next resize.
 
 ---
 
@@ -957,3 +958,39 @@ clipboard and in the timeline, and the window comes up only when the copy fails 
 its own shortcut and the tray. Ctrl is a no-op while it is unchecked. The check-only probe
 follows the setting, so the checks prove the path without a screen. Revisit if Ctrl should
 invert the checkbox, or if a scrolling capture should be the exception after all.
+
+## 2026-09-30 · The pixel ratio is never measured from a minimized window; the one owed is taken at the window's next resize
+
+### Context
+Rotem reported on 2026-09-30 that every picture suddenly looked pixelated. His screenshot
+held each pixel of the picture twice across and down: the page's physical-to-css ratio was
+0.5, the floor it is clamped to. The ratio is measured, not believed (the entry on the page's
+`devicePixelRatio` in `project-os/Code_review.md`), as the window's physical width over the
+page's css width, at startup, at every page resize and at fullscreen. Measured while the
+window is minimized, the physical width is the taskbar stub's, 144, against a page still
+1280 or 1800 wide. A restore sends the page no resize, since its own size never changed, so
+nothing measured again. What sends a resize while Recon is minimized was not reproduced; a
+change of the display's scale is the likely one, inferred: his machine moves between a 100%
+and a 225% display, and did during this session.
+
+### Options
+1. Keep the ratio when the window is minimized and owe a
+   measurement, taken when the host window next reports a size, which a restore does.
+2. Take the ratio from the host's scale factor instead of measuring it.
+3. Measure again on every focus of the window.
+4. Refuse only an implausible measurement, a ratio far from the scale factor.
+
+### Decision
+Option 1, the assistant's, Rotem's to veto. The host adds `minimized` to the window metrics,
+read in the same call as the size, so the page decides from one answer. The page keeps its
+ratio and marks it owed; the host window's `onResized`, which fires on the restore, measures
+it again. While it is owed, nothing is fitted or painted against the kept ratio, which may be
+the old display's. Option 2 would drop the reason the ratio is measured at all; option 3 misses a restore that does not activate the window;
+option 4 guesses at a threshold where the real condition can be asked.
+
+### Consequences
+A picture keeps its sharpness through a minimize, and a scale that changed while Recon was
+down is taken at its return. The measurement stays the only source of the ratio. A
+measurement from a window that is not minimized but still has no real size, if one ever
+exists, is not covered. Revisit if a resize while minimized is ever seen to leave the ratio
+from the old display after the return.

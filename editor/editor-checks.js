@@ -2715,11 +2715,26 @@ export async function runChecks(editor, invoke) {
     document.getElementById('win-min').click();
     for (let i = 0; i < 40 && !(await win.isMinimized()); i += 1) await sleep(50);
     const minimized = await win.isMinimized();
+    // Measured while minimized, the ratio stays: the window's size then is its taskbar stub,
+    // which put the ratio at 0.5 and every picture at half its pixels (Rotem, 2026-09-30).
+    const ratioShown = editor.ratioOf();
+    const whileDown = await editor.measureRatio();
+    const owedWhileDown = editor.ratioOwed();
     await invoke('editor_show');
     for (let i = 0; i < 40 && (await win.isMinimized()); i += 1) await sleep(50);
     await sleep(200);
     check('a minimized window comes back when the host shows it, as a capture does', minimized && !(await win.isMinimized()) && (await invoke('editor_window_visible')) === true,
       `minimized ${minimized}, then minimized ${await win.isMinimized()}`);
+    check('a measurement while minimized keeps the physical-to-css ratio and owes one for the return', minimized && whileDown === ratioShown && owedWhileDown,
+      `${ratioShown.toFixed(3)} before, ${whileDown} measured while minimized, owed ${owedWhileDown}`);
+    for (let i = 0; i < 40 && editor.ratioOwed(); i += 1) await sleep(50);
+    await editor.paintRegion();
+    {
+      const metrics = await invoke('editor_window_metrics');
+      const honest = metrics.physical_width / document.documentElement.clientWidth;
+      check('back from minimized, the owed ratio is measured, and it is the window\'s own', !editor.ratioOwed() && Math.abs(editor.ratioOf() - honest) < 0.002,
+        `owed ${editor.ratioOwed()}, ratio ${editor.ratioOf().toFixed(3)} against the window's ${honest.toFixed(3)}`);
+    }
 
     await editor.setFullscreen(true);
     const stageLeft = () => Math.round(stage.getBoundingClientRect().left);

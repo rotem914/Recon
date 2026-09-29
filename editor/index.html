@@ -605,8 +605,19 @@
   // A saved crop is kept only when it lies inside the picture it was saved for.
   const cropFits = (c, width, height) => !!c && c.w >= 1 && c.h >= 1 && c.x >= 0 && c.y >= 0 && c.x + c.w <= width && c.y + c.h <= height;
 
+  // A minimized window measures as its taskbar stub, 144 by 19, against a page still its whole
+  // width, so the ratio came out at its floor of 0.5 and every picture was painted with half
+  // its pixels, each one shown twice, until the window was next resized (Rotem, 2026-09-30).
+  // A measurement taken while minimized keeps the ratio, and is owed until the window is back.
+  let ratioOwed = false;
   const measureRatio = async () => {
     const metrics = await invoke('editor_window_metrics');
+    if (metrics.minimized) {
+      ratioOwed = true;
+      console.log(`window minimized, the ratio stays ${ratio.toFixed(3)} until it is back`);
+      return ratio;
+    }
+    ratioOwed = false;
     const css = viewport();
     // Against the page's whole width, not the stage's: the sidebar takes 64 px of it.
     const pageW = document.documentElement.clientWidth;
@@ -3307,6 +3318,9 @@
   // The stage changed size: the window was resized, or the strip was dragged (S2.8).
   const stageResized = async () => {
     await measureRatio();
+    // Minimized, the kept ratio may be the old display's: nothing is fitted or painted against
+    // it, and the owed measurement at the return does both.
+    if (ratioOwed) return;
     followFit();
     paintRegion();
   };
@@ -3314,6 +3328,9 @@
     if (cells.length > 0 && !model.fullscreen) setStripHeight(stripHeight); // the share of the window, and the columns
     stageResized();
   });
+  // Back from minimized, the page hears no resize, since its own size never changed; the host's
+  // window does, and a ratio owed from a measurement while it was down is taken then.
+  currentWindow.onResized(() => { if (ratioOwed) stageResized(); }).catch(() => {});
 
   // ---------------------------------------------------------------- startup and the checks
 
@@ -3617,6 +3634,7 @@
     layoutScene,
     measureRatio,
     ratioOf: () => ratio,
+    ratioOwed: () => ratioOwed,
     createCallout,
     removeCallout,
     TEXT_SIZES,
