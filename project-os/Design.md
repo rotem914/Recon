@@ -25,7 +25,8 @@ state reachable with no animation at all (`project-os/QA.md` §7).
 | Icon button hover | `#21222C` | The fill of an icon button's square under the pointer (Rotem, 2026-09-15). |
 | Icon line | `#C3C6CA` | The line of an icon button's icon in the controls sidebar (Rotem, 2026-09-16). |
 | Icon line hover | `#E7E8E9` | The line of an icon button's icon under the pointer, fading in by A1 (Rotem, 2026-09-19, from white). |
-| Scroller | `#21222C` | The thumb of the timeline's scroller, sideways in one row and vertical once its rows wrap (Rotem, 2026-09-15). |
+| Scroller | `#46485D` | The thumb of the timeline's sideways scroller, in one row (Rotem, 2026-09-30, from #21222C). |
+| Scroller, rows | `#21222C` | The thumb of the timeline's vertical scroller, once its rows wrap (Rotem, 2026-09-15). |
 
 ## Fonts
 
@@ -80,7 +81,7 @@ Stated by Rotem on 2026-09-15 for the timeline along the bottom.
 
 | Part | Value |
 |---|---|
-| Thumb | 4 px thick, fully rounded, the scroller colour |
+| Thumb | 4 px thick, fully rounded, the scroller colour sideways and the rows' scroller colour vertical |
 | Track | no fill |
 | Sideways, one row | 4 px clear of the screen's bottom edge and 4 px clear above the thumb |
 | Vertical, rows | 4 px clear of the screen's bottom edge and 4 px clear of the strip's top |
