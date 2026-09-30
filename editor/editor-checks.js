@@ -3895,9 +3895,174 @@ export async function runChecks(editor, invoke) {
       `marked ${markedInMain}, marks ${JSON.stringify(editor.picksOf())}, blue ${JSON.stringify(blue())}`);
 
     for (const tab of editor.tabsOf().list) editor.deleteTab(tab.id);
+    await sleep(300); // the saves the deletions queued land first, or one lands after the empty list and brings a tab back
     await invoke('editor_save_tabs', { tabs: { schema: 1, selected: 0, tabs: [] } });
     await editor.loadTabs();
     await editor.refreshStrip();
+
+    // Three faults the review found older than the batch (Rotem's fix all, 2026-09-30).
+    // 1. Two Ctrl+Z pressed at once while a batch comes back: the second is let go, never the same batch again; pressed once
+    // the pictures are back, Ctrl+Z reaches the deletion before it.
+    await until(() => thumbs().length === 8);
+    await editor.deleteDocument(q3);
+    await editor.deleteDocuments([q2, q1]);
+    await until(() => thumbs().length === 5);
+    editor.notice('', 0);
+    undoKey();
+    undoKey();
+    const batchBack = await until(() => thumbs().length === 7);
+    await sleep(500);
+    trash = await inTrash();
+    check('two Ctrl+Z pressed at once while a batch comes back: the batch comes back, the second press is let go, the deletion before it still in the trash, and nothing says NOT RESTORED',
+      batchBack && thumbs().length === 7 && ![q1, q2].some((id) => trash.includes(id)) && trash.includes(q3) && !hud.textContent.includes('NOT RESTORED'),
+      `thumbnails ${thumbs().length}, trash ${JSON.stringify(trash)}, "${hud.textContent.split('\n').pop()}"`);
+    undoKey();
+    check('pressed again once they are back, Ctrl+Z brings back the deletion before it', await until(() => thumbs().length === 8) && !(await inTrash()).includes(q3), `thumbnails ${thumbs().length}`);
+
+    // 1b. The same two presses with a note on each side: the second is let go, so it never takes back the note of the
+    // neighbour shown while the picture comes back, which stays on disk (review).
+    await editor.loadImage(await invoke('editor_show_document', { id: r3 }));
+    const keptNote = editor.createCallout({ x: 30, y: 30 });
+    keptNote.text = 'kept on the neighbour';
+    editor.layoutScene();
+    editor.record();
+    await editor.loadImage(await invoke('editor_show_document', { id: r2 }));
+    const takenNote = editor.createCallout({ x: 40, y: 40 });
+    takenNote.text = 'taken back on the picture';
+    editor.layoutScene();
+    editor.record();
+    await editor.saveNow();
+    await editor.deleteDocument(r2);
+    const neighbourShown = model.image.document_id === r3;
+    undoKey();
+    undoKey();
+    const cameBack = await until(() => model.image.document_id === r2);
+    await sleep(500);
+    const neighbourNotes = JSON.stringify(await invoke('editor_notes', { documentId: r3 }));
+    check('two Ctrl+Z pressed at once after a delete: the picture comes back with its note, the second press let go, and the neighbour shown meanwhile keeps its note, on disk too',
+      neighbourShown && cameBack && model.callouts.length === 1 && neighbourNotes.includes('kept on the neighbour'),
+      `neighbour shown ${neighbourShown}, on screen ${model.image.document_id} with ${model.callouts.length} notes, neighbour on disk ${neighbourNotes.slice(0, 120)}`);
+
+    // 1c. Ctrl+Z and Ctrl+Shift+Z pressed at once over a batch: the batch comes back, the Ctrl+Shift+Z is let go, nothing refused;
+    // pressed again once they are back, it deletes the batch again, one live record each.
+    await editor.deleteDocuments([q1, q2]);
+    await until(() => thumbs().length === 6);
+    editor.notice('', 0);
+    undoKey();
+    redoKey();
+    const batchAgain = await until(() => thumbs().length === 8);
+    await sleep(500);
+    trash = await inTrash();
+    const live = (id) => editor.deletionsOf().filter((d) => d.id === id && !d.undone).length;
+    check('Ctrl+Z and Ctrl+Shift+Z pressed at once over a batch: the batch comes back, the Ctrl+Shift+Z let go, nothing refused',
+      batchAgain && thumbs().length === 8 && !trash.includes(q1) && !trash.includes(q2) && live(q1) === 0 && live(q2) === 0 && !hud.textContent.includes('NOT'),
+      `thumbnails ${thumbs().length}, trash ${JSON.stringify(trash)}, live ${live(q1)} ${live(q2)}, "${hud.textContent.split('\n').pop()}"`);
+    redoKey();
+    const again = await until(() => thumbs().length === 6);
+    await sleep(300);
+    check('pressed again once they are back, Ctrl+Shift+Z deletes the batch again, one live record each', again && live(q1) === 1 && live(q2) === 1,
+      `thumbnails ${thumbs().length}, live ${live(q1)} ${live(q2)}`);
+    undoKey();
+    await until(() => thumbs().length === 8);
+
+    // 2. Done again by Ctrl+Shift+Z, a thing takes a new number: after a deletion and a tab added, both undone and both redone,
+    // Ctrl+Z takes the tab first, the last one done again.
+    const trace = [];
+    const step = (label) => trace.push(`${label}: tabs ${editor.tabsOf().list.map((t) => t.id).join('/')}, thumbs ${thumbs().length}, acts ${editor.actsOf().map((a) => `${a.seq}${a.undone ? 'u' : ''}`).join(' ')}, dels ${editor.deletionsOf().map((d) => `${d.seq}${d.undone ? 'u' : ''}`).join(' ')}, hist ${model.history.index}`);
+    const tabsBefore = editor.tabsOf().list.length;
+    await editor.deleteDocument(q3);
+    plus.click();
+    await sleep(150);
+    step('added');
+    undoKey();
+    await until(() => editor.tabsOf().list.length === tabsBefore);
+    step('undo 1');
+    undoKey();
+    await until(() => thumbs().length === 8);
+    step('undo 2');
+    redoKey();
+    await until(() => thumbs().length === 7);
+    step('redo 1');
+    redoKey();
+    await until(() => editor.tabsOf().list.length === tabsBefore + 1);
+    step('redo 2');
+    undoKey();
+    const tabGone = await until(() => editor.tabsOf().list.length === tabsBefore);
+    await sleep(300);
+    step('undo 3');
+    trash = await inTrash();
+    check('a deletion and a tab added, undone and done again: Ctrl+Z takes the tab first, the deletion stays', tabGone && trash.includes(q3),
+      `tabs ${editor.tabsOf().list.length}, trash ${JSON.stringify(trash)}; ${trace.join('; ')}`);
+    undoKey();
+    await until(() => thumbs().length === 8);
+    // The same with two Ctrl+Shift+Z pressed at once: the second is let go while the deletion lands; pressed again it adds the
+    // tab, and Ctrl+Z still takes the tab first.
+    await editor.deleteDocument(q3);
+    plus.click();
+    await sleep(150);
+    undoKey();
+    await until(() => editor.tabsOf().list.length === tabsBefore);
+    undoKey();
+    await until(() => thumbs().length === 8);
+    redoKey();
+    redoKey();
+    await until(() => thumbs().length === 7);
+    await sleep(500);
+    const tabNotYet = editor.tabsOf().list.length === tabsBefore;
+    redoKey();
+    await until(() => editor.tabsOf().list.length === tabsBefore + 1);
+    undoKey();
+    const tabGoneFast = await until(() => editor.tabsOf().list.length === tabsBefore);
+    await sleep(300);
+    trash = await inTrash();
+    check('two Ctrl+Shift+Z pressed at once: the second is let go while the deletion lands; pressed again it adds the tab, and Ctrl+Z takes the tab first, the deletion stays',
+      tabNotYet && tabGoneFast && trash.includes(q3), `let go ${tabNotYet}, tabs ${editor.tabsOf().list.length}, trash ${JSON.stringify(trash)}`);
+    undoKey();
+    await until(() => thumbs().length === 8);
+    // The same with a note: a deletion, then a note, both undone and both redone; Ctrl+Z takes the note first.
+    await editor.loadImage(await invoke('editor_show_document', { id: q4 }));
+    await editor.deleteDocument(q3);
+    const note = editor.createCallout({ x: 30, y: 30 });
+    note.text = 'a note after the delete';
+    editor.layoutScene();
+    editor.record();
+    undoKey();
+    await until(() => model.callouts.length === 0);
+    undoKey();
+    await until(() => thumbs().length === 8);
+    redoKey();
+    await until(() => thumbs().length === 7);
+    redoKey();
+    await until(() => model.callouts.length === 1);
+    undoKey();
+    const noteGone = await until(() => model.callouts.length === 0);
+    await sleep(300);
+    trash = await inTrash();
+    check('a deletion and a note, undone and done again: Ctrl+Z takes the note first, the deletion stays', noteGone && trash.includes(q3),
+      `${model.callouts.length} notes, trash ${JSON.stringify(trash)}`);
+    undoKey();
+    await until(() => thumbs().length === 8);
+
+    // 3. With the editor empty, a thumbnail's delete is done and said so, and Ctrl+Z brings it back.
+    // The editor goes empty the one way it can with pictures left: the picture on screen deleted, its neighbour unable to show.
+    const e = [];
+    for (const w of [300, 310, 320]) {
+      const shot = await invoke('editor_capture_probe', { width: w, height: 200 });
+      await editor.loadImage(shot);
+      e.push(shot.document_id);
+    }
+    const [e1, e2, e3] = e;
+    await invoke('editor_store_remove_source', { id: e2 });
+    await editor.deleteDocument(e3);
+    const empty = model.image.width === 0;
+    editor.notice('', 0);
+    const outcome = await editor.deleteDocument(e1).then(() => 'deleted', (err) => String(err));
+    trash = await inTrash();
+    check('with the editor empty a thumbnail\'s delete is done and said so: in the trash, its undo recorded, no NOT DELETED, the editor still empty',
+      empty && outcome === 'deleted' && trash.includes(e1) && !hud.textContent.includes('NOT DELETED') && model.image.width === 0 && editor.deletionsOf().some((d) => d.id === e1 && !d.undone),
+      `empty ${empty}, ${outcome}, trash ${JSON.stringify(trash)}, "${hud.textContent.split('\n').pop()}"`);
+    undoKey();
+    check('and Ctrl+Z brings it back to the timeline', await until(() => thumbs().includes(e1)) && !(await inTrash()).includes(e1), JSON.stringify(thumbs()));
   }
 
   // ---------------------------------------------------------------- 41. the callout in two clicks

@@ -138,6 +138,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-30 · The pixel ratio is never measured from a minimized window; the one owed is taken at the window's next resize.
 - 2026-09-30 · A tab's order is its own list's, and a drag moves one picture to the place under the hand.
 - 2026-09-30 · Everything with the blue line is one batch, the picture on screen included; a batch deleted is one deletion of undo, its pictures under one number.
+- 2026-09-30 · A Ctrl+Z or Ctrl+Shift+Z pressed while pictures come back, or are deleted again, is let go; a thing done again takes a new number, and undo picks the newest by number.
 
 ---
 
@@ -993,3 +994,42 @@ takes a batch as one act, each picture put back at its old place. The blue line 
 the picture on screen's class to a class of its own, `picked`, which the picture on screen
 has until it is Ctrl+clicked; `current` still says which picture is on screen. Revisit if
 Shift+click for a range is asked for, or a keyboard way to mark.
+
+## 2026-09-30 · A Ctrl+Z pressed while pictures are on their way is let go, and a thing done again takes a new number
+
+### Context
+A review of the multi-selection found three older faults, and Rotem said fix all. Two are in
+the one list of numbered acts that Ctrl+Z walks (`CLAUDE.md` rule 23). A deletion's undo waits
+on the host, one call per picture, and was marked undone only when every call came back, so
+a second Ctrl+Z meanwhile took the same batch again and said NOT RESTORED. And a deletion done
+again by Ctrl+Shift+Z took a new number while an act or a note step done again kept its old
+one, so after several redos Ctrl+Z could take the older thing first.
+
+### Options
+1. Ignore Ctrl+Z and Ctrl+Shift+Z while a deletion or its undo is on its way.
+2. Claim at once: undo marks the batch undone and puts it on the redo list before the host is
+   asked, and the next press is judged at once.
+3. The keys in the order pressed: a press while a deletion comes back, or is deleted again,
+   waits for it, and is then judged against the picture on screen.
+4. For the order: a redone deletion keeps its old number; or everything done again takes a new
+   one, and undo picks the newest by number rather than by its place in the list.
+
+### Decision
+Option 1, with the claim of option 2 kept, and the new numbers, the assistant's calls under
+Rotem's fix all. Option 2 alone was built first, and its review found the second press judged
+against the neighbour still on screen, taking back that picture's note, which the restore
+then saved without it. Option 3 was built next, and its review found the held press landing
+after the person had started typing, wiping the note being typed, or after another picture
+was opened. Both are the worst class. A press let go loses nothing: the pictures landing are
+the sign to press again. A new number for everything done again keeps the rule the list
+already had for a deletion, the last thing done first. The host's delete with the editor
+empty now answers that nothing is on screen, rather than failing on the missing picture after
+the delete was done.
+
+### Consequences
+Two Ctrl+Z pressed within the moment pictures take to come back take one thing, and the page
+logs the other as let go. A press with nothing on its way runs at once, as before, so holding
+Ctrl+Z still walks back step by step. The delete itself, by the menu or Ctrl+Delete, is not
+yet covered: a Ctrl+Z pressed before the host answers it is judged at once, a fault older than
+this and put to Rotem. Picking by number costs a pass over the list per Ctrl+Z, which holds a
+few hundred things at most. Revisit if the list ever holds thousands.

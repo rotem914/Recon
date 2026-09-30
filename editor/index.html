@@ -1141,22 +1141,24 @@
   // coming back is the message. A refused restore says why and leaves the undo path, so
   // the next Ctrl+Z reaches what was done before it instead of the same refusal.
   // Several deleted in one press (Rotem, 2026-09-30) share one number and come back together.
-  const undoDeletions = async (batch) => {
-    const back = [];
-    for (const deletion of [...batch].reverse()) {
+  // The entry is claimed by undo before this runs; one that cannot come back leaves it here.
+  const undoDeletions = async (entry) => {
+    for (const deletion of [...entry.batch].reverse()) {
       try {
         await invoke('editor_trash_rejoin', { id: deletion.id });
-        back.unshift(deletion);
       } catch (err) {
         console.error('undo of a deletion', err);
         deletions = deletions.filter((d) => d !== deletion);
+        entry.batch = entry.batch.filter((d) => d !== deletion);
         notice(`NOT RESTORED: ${err}`, 0);
       }
     }
-    if (!back.length) return false;
-    for (const deletion of back) deletion.undone = true;
-    undoneStack.push({ kind: 'delete', batch: back });
-    const shown = back.find((d) => d.shown);
+    if (!entry.batch.length) {
+      const at = undoneStack.indexOf(entry);
+      if (at >= 0) undoneStack.splice(at, 1);
+      return false;
+    }
+    const shown = entry.batch.find((d) => d.shown);
     if (shown) await loadImage(await invoke('editor_show_document', { id: shown.id }));
     await refreshStrip();
     drawHud();
@@ -1166,13 +1168,21 @@
   const undo = () => {
     const h = model.history;
     const stepSeq = h.index > 0 && h.seq ? h.seq[h.index] : -1;
-    const deletion = deletions.filter((d) => !d.undone).pop();
-    const act = acts.filter((a) => !a.undone).pop();
+    // The newest by its number, not by its place in the list: a thing done again by redo takes
+    // a new number, and a deletion done again lands in the list only once the host has it (review).
+    const newest = (list) => list.filter((x) => !x.undone).reduce((a, b) => (!a || b.seq > a.seq ? b : a), null);
+    const deletion = newest(deletions);
+    const act = newest(acts);
     const actSeq = act ? act.seq : -1;
     if (deletion && deletion.seq > stepSeq && deletion.seq > actSeq) {
+      // Claimed at once, before the restore is on its way, so a second Ctrl+Z pressed meanwhile
+      // reaches what was done before it, never the same batch again (review).
       const batch = deletions.filter((d) => !d.undone && d.seq === deletion.seq);
-      undoDeletions(batch).catch((err) => console.error('undo', err));
-      return true;
+      for (const d of batch) d.undone = true;
+      const entry = { kind: 'delete', batch };
+      undoneStack.push(entry);
+      entry.settled = undoDeletions(entry).catch((err) => console.error('undo', err));
+      return entry.settled; // on its way: a Ctrl+Z meanwhile is let go (unlessBusy)
     }
     if (act && act.seq > stepSeq) {
       act.undone = true;
@@ -1192,13 +1202,20 @@
     // and a step of a document no longer on screen is passed over for the next.
     while (undoneStack.length) {
       const top = undoneStack.pop();
+      // Done again, a thing takes a new number, so the next Ctrl+Z takes the last one done again
+      // first (review). A deletion's number is taken now, though the host deletes after it, and
+      // a restore still on its way ends before the batch is deleted again.
       if (top.kind === 'delete') {
-        deletions = deletions.filter((d) => !top.batch.includes(d));
-        deleteDocuments(top.batch.map((d) => d.id), true).catch((err) => console.error('redo', err));
-        return true;
+        const seq = (actionSeq += 1);
+        return Promise.resolve(top.settled).then(() => {
+          if (!top.batch.length) return undefined;
+          deletions = deletions.filter((d) => !top.batch.includes(d));
+          return deleteDocuments(top.batch.map((d) => d.id), seq);
+        }).catch((err) => console.error('redo', err)); // on its way: a Ctrl+Z meanwhile is let go (unlessBusy)
       }
       if (top.kind === 'act') {
         top.act.undone = false;
+        top.act.seq = (actionSeq += 1);
         top.act.redo();
         return true;
       }
@@ -1207,8 +1224,25 @@
     const h = model.history;
     if (h.index >= h.steps.length - 1) return false;
     h.index += 1;
+    if (!h.seq) h.seq = [];
+    h.seq[h.index] = (actionSeq += 1);
     restore(h.steps[h.index]);
     return true;
+  };
+
+  // A Ctrl+Z or Ctrl+Shift+Z pressed while pictures come back, or are deleted again, is let go
+  // (review): judged at once it would meet the picture still on screen and could take back that
+  // one's note, and held for later it would meet whatever the person did meanwhile, a note being
+  // typed among them. The pictures landing are the sign to press again. Nothing on its way, a
+  // press runs at once, as it always did.
+  let undoBusy = false;
+  const unlessBusy = (fn) => {
+    if (undoBusy) { console.log('Ctrl+Z let go: pictures are still on their way'); return; }
+    const out = fn();
+    if (out && typeof out.then === 'function') {
+      undoBusy = true;
+      out.catch((err) => console.error('undo', err)).then(() => { undoBusy = false; });
+    }
   };
 
   // Lay the notes out, then give them the margin they need, then paint if that changed.
@@ -2520,8 +2554,9 @@
       notice(`NOT DELETED: ${refused}`, 0);
       throw refused;
     }
-    // Done again by redo, it is not a new action, so what else was undone stays redoable.
-    const seq = again ? (actionSeq += 1) : newAction(); // newAction replaces the list, so it goes first
+    // Done again by redo, it is not a new action, so what else was undone stays redoable; redo
+    // hands the number it took when Ctrl+Shift+Z was pressed.
+    const seq = again === true ? (actionSeq += 1) : again || newAction(); // newAction replaces the list, so it goes first
     for (const id of done) deletions.push({ id, seq, shown: id === current, undone: false });
     if (info) {
       await loadImage(info);
@@ -3350,12 +3385,12 @@
       // Between a callout's two clicks the last thing done is the first click: Ctrl+Z takes
       // it back, the unplaced bubble goes, and there is nothing of it to redo.
       if (model.placing && !event.shiftKey) { cancelPlacing(); event.preventDefault(); return; }
-      if (event.shiftKey) redo(); else undo();
+      unlessBusy(event.shiftKey ? redo : undo);
       event.preventDefault();
       return;
     }
     if (event.ctrlKey && !event.shiftKey && !event.altKey && event.code === 'KeyY') {
-      redo();
+      unlessBusy(redo);
       event.preventDefault();
       return;
     }
@@ -3896,6 +3931,7 @@
     cellRect,
     deleteDocument,
     deletionsOf: () => deletions,
+    actsOf: () => acts.map((a) => ({ seq: a.seq, undone: a.undone })),
     renderTrash,
     tabbar,
     tabsOf,

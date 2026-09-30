@@ -1283,6 +1283,11 @@ pub fn editor_delete_document(id: u64) -> Result<Option<ImageInfo>, String> {
         documents.retain(|d| d.id != id);
     }
     if !was_current {
+        // An empty editor has no picture to report back: the delete is done all the same, and
+        // the page stays empty rather than reading the missing picture as a refusal (review).
+        if state().image().is_none() {
+            return Ok(None);
+        }
         return Ok(Some(editor_image_info()?));
     }
     // The neighbour: the newer one, else the older, else the empty state.
