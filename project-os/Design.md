@@ -25,7 +25,7 @@ state reachable with no animation at all (`project-os/QA.md` §7).
 | Icon button hover | `#21222C` | The fill of an icon button's square under the pointer (Rotem, 2026-09-15). |
 | Icon line | `#C3C6CA` | The line of an icon button's icon in the controls sidebar (Rotem, 2026-09-16). |
 | Icon line hover | `#E7E8E9` | The line of an icon button's icon under the pointer, fading in by A1 (Rotem, 2026-09-19, from white). |
-| Scroller | `#46485D` | The thumb of the timeline's sideways scroller, in one row (Rotem, 2026-09-30, from #21222C). |
+| Scroller | `#53566E` | The thumb of the timeline's sideways scroller, in one row (Rotem, 2026-09-30, from #46485D the same day, #21222C before). |
 | Scroller, rows | `#21222C` | The thumb of the timeline's vertical scroller, once its rows wrap (Rotem, 2026-09-15). |
 
 ## Fonts
