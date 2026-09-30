@@ -147,6 +147,9 @@
                      background: transparent; color: #f2f2f2; font: 14px/32px ui-sans-serif, "Segoe UI", system-ui, sans-serif;
                      cursor: pointer; transition: background-color 144ms ease-out; /* A1 */ }
   #tab-menu button:hover, #tab-menu button:focus-visible { background: #c0392b; color: #fff; outline: none; }
+  /* Remove from tab takes nothing out of the library, so it is not Delete's red under the pointer.
+     Provisional until Rotem states one: the thumbnail hover border's #323A43. */
+  #tab-menu button.remove:hover, #tab-menu button.remove:focus-visible { background: #323A43; color: #f2f2f2; }
   @media (prefers-reduced-motion: reduce) { #tab-add, .tab, #tab-menu button { transition: none; } }
   /* Above the sidebar, so a strip dragged taller covers it (Rotem, 2026-09-15); the handle above both.
      No colour and no top line of its own (Rotem, 2026-09-19): the thumbnails sit on the app's background,
@@ -1838,9 +1841,11 @@
       });
       // The delete (§3.8, S2.5): into Recon's trash for thirty days; no dialog. A right press
       // on the thumbnail opens the tabs' menu with Delete; no × on it (Rotem, 2026-09-19).
+      // In a tab after Main, Remove from tab sits above Delete (Rotem, 2026-09-30).
       el.addEventListener('contextmenu', (event) => {
         event.preventDefault();
-        openTabMenu(doc.id, event.clientX, event.clientY, (id) => deleteDocument(id).catch((err) => console.error('delete', err)));
+        const remove = cell.tab ? (id) => removeFromTab(cell.tab.id, id) : null;
+        openTabMenu(doc.id, event.clientX, event.clientY, (id) => deleteDocument(id).catch((err) => console.error('delete', err)), remove);
       });
       if (cell.tab) {
         // The done mark, in a tab after Main only (Rotem, 2026-09-16).
@@ -2038,29 +2043,62 @@
   };
   // The tab's menu: Delete, which deletes the tab at once, its captures staying in Main and
   // Ctrl+Z bringing it back. A press anywhere else, Escape, or the window losing focus closes it.
-  // A thumbnail opens the same menu, and Delete then deletes its document instead.
+  // A thumbnail opens the same menu, and Delete then deletes its document instead; in a tab
+  // after Main, Remove from tab is put above Delete, and every other time the menu is Delete alone.
   const tabMenu = document.getElementById('tab-menu');
+  const tabMenuDelete = tabMenu.firstElementChild;
+  const tabMenuRemove = document.createElement('button');
+  tabMenuRemove.type = 'button';
+  tabMenuRemove.className = 'remove';
+  tabMenuRemove.setAttribute('role', 'menuitem');
+  tabMenuRemove.textContent = 'Remove from tab';
   let tabMenuFor = null;
   let tabMenuAct = null;
-  const closeTabMenu = () => { tabMenuFor = null; tabMenu.classList.remove('open'); };
-  const openTabMenu = (id, x, y, act = deleteTab) => {
+  let tabMenuRemoveAct = null;
+  const closeTabMenu = () => { tabMenuFor = null; tabMenuRemoveAct = null; tabMenuRemove.remove(); tabMenu.classList.remove('open'); };
+  const openTabMenu = (id, x, y, act = deleteTab, remove = null) => {
     tabMenuFor = id;
     tabMenuAct = act;
+    tabMenuRemoveAct = remove;
+    if (remove) tabMenu.insertBefore(tabMenuRemove, tabMenuDelete); else tabMenuRemove.remove();
     tabMenu.classList.add('open');
+    // Measured from the window's left edge: left where its last opening put it, near the right
+    // edge, the menu would be measured narrower and wrap Remove from tab (review).
+    tabMenu.style.left = '0px';
+    tabMenu.style.top = '0px';
     const box = tabMenu.getBoundingClientRect();
     tabMenu.style.left = `${Math.max(0, Math.min(window.innerWidth - box.width, x))}px`;
     tabMenu.style.top = `${Math.max(0, y - box.height)}px`;
     tabMenu.firstElementChild.focus();
   };
-  tabMenu.firstElementChild.addEventListener('click', () => {
+  tabMenuDelete.addEventListener('click', () => {
     const id = tabMenuFor;
     closeTabMenu();
     if (id != null) tabMenuAct(id);
+  });
+  tabMenuRemove.addEventListener('click', () => {
+    const id = tabMenuFor;
+    const act = tabMenuRemoveAct;
+    closeTabMenu();
+    if (id != null && act) act(id);
+  });
+  // The item under the pointer takes the focus, so one item is lit at a time, never the focused
+  // one beside the one under the pointer, and Enter acts on the one lit.
+  tabMenu.addEventListener('pointerover', (event) => {
+    const item = event.target.closest('button');
+    if (item && document.activeElement !== item) item.focus();
   });
   tabMenu.addEventListener('contextmenu', (event) => event.preventDefault());
   tabMenu.addEventListener('keydown', (event) => {
     event.stopPropagation(); // the editor's keys stay out while the menu is open
     if (event.key === 'Escape') { event.preventDefault(); closeTabMenu(); }
+    // With two items the arrows move between them, round at either end (review).
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const items = [...tabMenu.querySelectorAll('button')];
+      const at = Math.max(0, items.indexOf(document.activeElement));
+      items[(at + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
+    }
   });
   window.addEventListener('pointerdown', (event) => { if (tabMenuFor != null && !tabMenu.contains(event.target)) closeTabMenu(); }, true);
   window.addEventListener('blur', closeTabMenu);
@@ -2165,6 +2203,28 @@
     set(on);
     recordAct(() => set(!on), () => set(on));
     return on;
+  };
+  // Remove from tab (Rotem, 2026-09-30): the picture leaves that tab's feed, its done mark there
+  // with it, and stays in the library, so in Main. Ctrl+Z puts it back in its place, marked as
+  // it was; Ctrl+Shift+Z takes it out again.
+  const removeFromTab = (tabId, documentId) => {
+    const tab = tabs.list.find((t) => t.id === tabId);
+    const at = tab ? tab.docs.indexOf(documentId) : -1;
+    if (!tab || at < 0) return false;
+    const doneAt = tab.done.indexOf(documentId);
+    const set = (inTab) => {
+      tab.docs = tab.docs.filter((d) => d !== documentId);
+      tab.done = tab.done.filter((d) => d !== documentId);
+      if (inTab) {
+        tab.docs.splice(Math.min(at, tab.docs.length), 0, documentId);
+        if (doneAt >= 0) tab.done.splice(Math.min(doneAt, tab.done.length), 0, documentId);
+      }
+      saveTabs();
+      refreshStrip().catch(() => {});
+    };
+    set(false);
+    recordAct(() => set(true), () => set(false));
+    return true;
   };
   // A capture taken while a tab other than Main is selected joins that tab's feed as well.
   const captureIntoTab = (documentId) => {
@@ -3679,6 +3739,7 @@
     moveTab,
     renameTab,
     toggleDone,
+    removeFromTab,
     setTool,
     rectOfShape,
     createShape,

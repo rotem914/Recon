@@ -3388,6 +3388,102 @@ export async function runChecks(editor, invoke) {
     tabEls()[1].click();
     await until(() => thumbs().length === 1);
 
+    // Remove from tab (Rotem, 2026-09-30): in a tab after Main a thumbnail's menu holds Remove from tab above Delete; it takes the picture
+    // out of that tab's feed, its done mark there with it, and the picture stays in the library, so in Main. Ctrl+Z puts it back in its
+    // place, marked as it was; Ctrl+Shift+Z takes it out again. In Main the menu is Delete alone. A second capture on the tab gives the
+    // feed an order, so the place can be told: c first, then d.
+    {
+      const menu = document.getElementById('tab-menu');
+      const escape = () => menu.querySelector('button').dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Escape', code: 'Escape' }));
+      const thumbOf = (id) => document.querySelector(`#strip .thumb[data-id="${id}"]`);
+      const rightPressThumb = (el) => {
+        const box = el.getBoundingClientRect();
+        return { took: !el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: box.left + 12, clientY: box.top + 16 })), y: box.top + 16 };
+      };
+      const feed = () => editor.tabsOf().list[0];
+      const d = await invoke('editor_capture_probe', { width: 300, height: 200 });
+      await editor.loadImage(d);
+      const two = await until(() => thumbs().length === 2);
+      editor.toggleDone(t1.id, c.document_id);
+      await sleep(100);
+      check('a second capture on the tab joins its feed after the first, and the first is marked done', two && feed().docs.join() === `${c.document_id},${d.document_id}` && feed().done.join() === String(c.document_id),
+        `feed ${JSON.stringify(feed().docs)}, done ${JSON.stringify(feed().done)}`);
+
+      // As if its last opening had been at the window's right edge: the menu is still measured whole (review).
+      menu.style.left = `${window.innerWidth - 30}px`;
+      const opened = rightPressThumb(thumbOf(c.document_id));
+      const items = [...menu.querySelectorAll('button')];
+      const menuBox = menu.getBoundingClientRect();
+      const lines = document.createRange();
+      lines.selectNodeContents(items[0]);
+      check('after a last opening at the right edge the menu is measured whole: Remove from tab on one line, inside its item', lines.getClientRects().length === 1 && items[0].scrollHeight === items[0].clientHeight,
+        `${lines.getClientRects().length} line(s), scroll ${items[0].scrollHeight} for ${items[0].clientHeight}, menu ${Math.round(menuBox.width)} wide`);
+      check('in a tab a right press on a thumbnail opens the menu with Remove from tab above Delete, the first focused, above the pointer, removing nothing',
+        opened.took && getComputedStyle(menu).display === 'block' && items.map((i) => i.textContent).join('|') === 'Remove from tab|Delete'
+          && items[0].getBoundingClientRect().bottom <= items[1].getBoundingClientRect().top && document.activeElement === items[0]
+          && Math.abs(menuBox.bottom - opened.y) < 1 && thumbs().length === 2,
+        `took ${opened.took}, ${getComputedStyle(menu).display}, "${items.map((i) => i.textContent).join('|')}", focus on "${document.activeElement && document.activeElement.textContent}", bottom ${menuBox.bottom} for ${opened.y}`);
+      const rules = [...document.styleSheets].flatMap((s) => [...s.cssRules]);
+      const removeHover = rules.find((r) => r.selectorText && r.selectorText.startsWith('#tab-menu button.remove:hover'));
+      const deleteHover = rules.find((r) => r.selectorText && r.selectorText.startsWith('#tab-menu button:hover'));
+      check('under the pointer and focused alike Remove from tab takes #323A43, and Delete keeps its red', !!removeHover && removeHover.selectorText.includes('#tab-menu button.remove:focus-visible') && removeHover.style.backgroundColor === 'rgb(50, 58, 67)'
+          && !!deleteHover && deleteHover.style.backgroundColor === 'rgb(192, 57, 43)',
+        `${removeHover && removeHover.selectorText}: ${removeHover && removeHover.style.backgroundColor}, ${deleteHover && deleteHover.style.backgroundColor}`);
+      items[1].dispatchEvent(new PointerEvent('pointerover', { bubbles: true, cancelable: true, pointerId: 7 }));
+      check('the item under the pointer takes the focus, so the first is not lit beside it', document.activeElement === items[1],
+        `focus on "${document.activeElement && document.activeElement.textContent}"`);
+      const arrow = (key) => document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key, code: key }));
+      arrow('ArrowDown');
+      const wrapped = document.activeElement === items[0];
+      arrow('ArrowUp');
+      check('the arrows move between the two, round at either end', wrapped && document.activeElement === items[1] && getComputedStyle(menu).display === 'block',
+        `after ArrowDown on Delete ${wrapped ? 'Remove from tab' : 'elsewhere'}, then "${document.activeElement && document.activeElement.textContent}"`);
+      escape();
+      check('Escape closes it and removes nothing, and Remove from tab leaves the menu with it', getComputedStyle(menu).display === 'none' && menu.querySelectorAll('button').length === 1 && thumbs().length === 2);
+
+      rightPressThumb(thumbOf(c.document_id));
+      menu.querySelector('button.remove').click();
+      const out = await until(() => thumbs().length === 1 && thumbs()[0] === d.document_id);
+      saved = await invoke('editor_tabs');
+      check('Remove from tab takes the picture out of the tab\'s feed, its done mark with it, on disk too, the menu closed',
+        out && feed().docs.join() === String(d.document_id) && feed().done.length === 0 && !!saved && saved.tabs[0].docs.join() === String(d.document_id) && (saved.tabs[0].done || []).length === 0
+          && getComputedStyle(menu).display === 'none' && menu.querySelectorAll('button').length === 1,
+        `thumbnails ${JSON.stringify(thumbs())}, feed ${JSON.stringify(feed().docs)}, done ${JSON.stringify(feed().done)}, disk ${JSON.stringify(saved && saved.tabs[0])}`);
+      const library = await invoke('editor_documents');
+      const trashed = await invoke('editor_trash_list');
+      check('the picture stays in the library, nothing goes to the trash, and the tab is still selected', library.some((doc) => doc.id === c.document_id) && !trashed.some(([id]) => id === c.document_id) && selectedName() === 'New tab',
+        `library ${JSON.stringify(library.map((doc) => doc.id))}, trash ${JSON.stringify(trashed)}`);
+      tabEls()[0].click();
+      check('Main still shows it, with the rest of the library', await until(() => thumbs().length === 4 && thumbs().includes(c.document_id)), JSON.stringify(thumbs()));
+      const inMain = rightPressThumb(thumbOf(c.document_id));
+      check('in Main a thumbnail\'s menu is Delete alone', inMain.took && getComputedStyle(menu).display === 'block' && menu.querySelectorAll('button').length === 1 && menu.textContent.trim() === 'Delete',
+        `"${menu.textContent.trim()}"`);
+      escape();
+      tabEls()[1].click();
+      await until(() => thumbs().length === 1);
+
+      undoKey();
+      const back = await until(() => thumbs().length === 2);
+      saved = await invoke('editor_tabs');
+      check('Ctrl+Z puts it back in the tab, in its place before the second, marked done as it was, on disk too',
+        back && feed().docs.join() === `${c.document_id},${d.document_id}` && feed().done.join() === String(c.document_id) && !!saved && saved.tabs[0].docs.join() === `${c.document_id},${d.document_id}`
+          && (saved.tabs[0].done || []).join() === String(c.document_id) && !!thumbOf(c.document_id) && thumbOf(c.document_id).classList.contains('checked'),
+        `feed ${JSON.stringify(feed().docs)}, done ${JSON.stringify(feed().done)}, disk ${JSON.stringify(saved && saved.tabs[0])}`);
+      redoKey();
+      check('Ctrl+Shift+Z takes it out again', await until(() => thumbs().length === 1) && feed().docs.join() === String(d.document_id) && feed().done.length === 0,
+        `feed ${JSON.stringify(feed().docs)}, done ${JSON.stringify(feed().done)}`);
+
+      // Back as the checks after this expect: c alone in the tab, unmarked; d out of the tab and in the trash.
+      undoKey();
+      await until(() => thumbs().length === 2);
+      editor.toggleDone(t1.id, c.document_id);
+      editor.removeFromTab(t1.id, d.document_id);
+      await editor.deleteDocument(d.document_id);
+      await until(() => thumbs().length === 1);
+      check('the tab holds the first capture alone again, unmarked', feed().docs.join() === String(c.document_id) && feed().done.length === 0 && thumbs().join() === String(c.document_id),
+        `feed ${JSON.stringify(feed().docs)}, done ${JSON.stringify(feed().done)}`);
+    }
+
     // A reload of the list from disk: the same tabs, the same feed, the same selection.
     await editor.loadTabs();
     await editor.refreshStrip();

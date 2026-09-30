@@ -351,4 +351,11 @@ Stated by Rotem on 2026-09-16.
 | Air around the thumbnails | 12 px left of the first, 12 px right of the last, 12 px between them (Rotem, 2026-09-17, from 8) |
 | Thumbnail corners | 8 px radius, on the picture and on its cell (Rotem, 2026-09-17, from 13 the same evening, 4 before) |
 | Thumbnail delete | a right press on a thumbnail opens the tabs' dropdown with Delete, which deletes it; no × on the thumbnail (Rotem, 2026-09-19, from a × shown on hover) |
+| Remove from tab | in a tab after Main, the thumbnail's dropdown also holds Remove from tab, which takes the picture out of that tab only; it stays in Main (Rotem, 2026-09-30) |
 | Thumbnail hover | a thumbnail that is not the selected one takes the selected one's 2 px border under the pointer, in `#323A43`, fading in by A1 (Rotem, 2026-09-19, after #414C58 and #536070 the same evening) |
+
+Not stated yet, so provisional in the page until it is: Remove from tab above Delete, and
+`#323A43` under the pointer, the thumbnail hover border's, where Delete keeps its red; the
+picture's done mark in that tab leaves with it, and Ctrl+Z brings both back; the item under
+the pointer takes the focus, so the dropdown lights one item at a time, and the arrow keys
+move between the two.
