@@ -74,6 +74,7 @@ Mistakes in HOW you worked:
 | 2026-09-18 | Ran the editor's whole automated run seven times for the ruler's magnifier: once was the change's proof, the other six chased a run that stopped early over a leftover tab file of the checks' own, nothing of the change's, until Rotem stopped it | The whole run once; a stop that is not the change's is named in one line and left, never chased with more whole runs | `project-os/Workflow.md` step 8 | 1 |
 | 2026-09-19 | Committed History rows at 00:17 without reading `git diff --cached` first, and swept in another session's staged rows and rotation | `CLAUDE.md` rule 22: read the index before every commit and stage nothing I did not write | `CLAUDE.md` rule 22 | 1 |
 | 2026-09-20 | Took Rotem's answers to three of the recording plan's calls as a go to build its first step, and began reading the code for it; he had asked for a plan only | Answers to a plan's open calls are written into the plan; building starts at his word, never inferred from an answer | `project-os/Workflow.md` step 16 | 1 |
+| 2026-09-30 | Ran a probe meant for the checks build's demo window twice on the product build, which the plain `cargo build` of the four checks had put in its place; it opened Rotem's own library for a minute each, and stopped only because its first call exists in the checks build alone | The checks build rebuilt after the four checks, and a probe that reads which build it started before its first call | `project-os/Workflow.md` step 9 | 1 |
 
 ## Promoted
 

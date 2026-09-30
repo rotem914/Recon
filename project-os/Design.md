@@ -353,10 +353,16 @@ Stated by Rotem on 2026-09-16.
 | Thumbnail corners | 8 px radius, on the picture and on its cell (Rotem, 2026-09-17, from 13 the same evening, 4 before) |
 | Thumbnail delete | a right press on a thumbnail opens the tabs' dropdown with Delete, which deletes it; no × on the thumbnail (Rotem, 2026-09-19, from a × shown on hover) |
 | Remove from tab | in a tab after Main, the thumbnail's dropdown also holds Remove from tab, which takes the picture out of that tab only; it stays in Main (Rotem, 2026-09-30) |
+| Reorder | in a tab after Main, a thumbnail pressed and dragged moves to another place in that tab (Rotem, 2026-09-30); Main keeps the library's order |
+| Press and drag | no longer scrolls the timeline; the wheel and the scroller do (Rotem, 2026-09-30, from a press anywhere on the one row and a move sideways, 2026-09-15) |
 | Thumbnail hover | a thumbnail that is not the selected one takes the selected one's 2 px border under the pointer, in `#323A43`, fading in by A1 (Rotem, 2026-09-19, after #414C58 and #536070 the same evening) |
 
 Not stated yet, so provisional in the page until it is: Remove from tab above Delete, and
 `#323A43` under the pointer, the thumbnail hover border's, where Delete keeps its red; the
 picture's done mark in that tab leaves with it, and Ctrl+Z brings both back; the item under
 the pointer takes the focus, so the dropdown lights one item at a time, and the arrow keys
-move between the two.
+move between the two. The reorder: past 4 px a press is a drag; the picture follows the hand
+along its row, and down too once the rows wrap, above the others, with no look of its own; it
+takes the place of the picture under the hand, and the ones between move over by one at once,
+with no motion, as the tabs do, rather than the two trading places; a new capture on the tab
+still joins it first; Ctrl+Z puts the picture back where it was.

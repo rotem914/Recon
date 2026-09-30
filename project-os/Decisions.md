@@ -136,6 +136,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-22 · A capture taken with Ctrl held reaches the page as any capture does, with the window left down; a copy that fails brings it up.
 - 2026-09-27 · Show Recon after a screenshot, unchecked, is the Ctrl capture's path for every capture, the scrolling one included.
 - 2026-09-30 · The pixel ratio is never measured from a minimized window; the one owed is taken at the window's next resize.
+- 2026-09-30 · A tab's order is its own list's, and a drag moves one picture to the place under the hand.
 
 ---
 
@@ -926,3 +927,32 @@ down is taken at its return. The measurement stays the only source of the ratio.
 measurement from a window that is not minimized but still has no real size, if one ever
 exists, is not covered. Revisit if a resize while minimized is ever seen to leave the ratio
 from the old display after the return.
+
+## 2026-09-30 · A tab's order is its own list's, and a drag moves one picture to the place under the hand
+
+### Context
+Rotem asked to reorder the pictures in a tab he made, by pressing one and dragging it, and
+to drop the timeline's scroll by a press and a drag. A tab already saved its pictures' ids in
+`tabs.json`, in the order they joined, but the strip ignored that order: it showed the
+library's order, newest first, keeping the ids the tab held. A tab had no order of its own.
+
+### Options
+1. The tab's own list is its order: the strip shows it from its end, the last to join first,
+   and a drag moves an id inside it.
+2. A separate order field in each tab, used only once that tab has been dragged.
+3. The picture dropped trades places with the one under the hand, rather than moving there
+   with the ones between shifting over.
+
+### Decision
+Option 1, with the picture moving to the place under the hand, as a tab is dragged in the
+bar above it. The assistant's calls, Rotem's to change. Option 2 keeps two orders for one
+feed; option 3 is not what the tabs do, and a long move would scramble two places.
+
+### Consequences
+`tabs.json` keeps its shape and the host never reads it. Before any drag a tab shows its
+pictures in the order they joined it, which is the library's order except in two cases: a
+file opened by name again that joined the tab later now sits first, and an annotated file
+whose place in the library moved keeps its place in the tab. A new capture joins a tab
+first, as before. Main never reorders. The drag is one act of Ctrl+Z. The strip does not
+scroll by itself when a dragged picture reaches its end; the wheel turned during the drag
+scrolls under the hand. Revisit if a far move proves awkward.

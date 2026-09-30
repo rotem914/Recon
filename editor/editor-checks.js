@@ -3036,29 +3036,29 @@ export async function runChecks(editor, invoke) {
     check('the strip is on the app\'s own background with no line along its top, and its thumbnails start 16 px under the tabs', stripLook.backgroundColor === getComputedStyle(document.body).backgroundColor && stripLook.borderTopWidth === '0px' && tabsToCells === 16,
       `the strip ${stripLook.backgroundColor} on ${getComputedStyle(document.body).backgroundColor}, a ${stripLook.borderTopWidth} top line, ${tabsToCells} px from the tabs to the first thumbnail`);
 
-    // Rotem, 2026-09-15: a press anywhere on the one-row strip and a move sideways scrolls it,
-    // and the click that ends the scroll shows no document; a press that does not move still does.
+    // Rotem, 2026-09-30, from 2026-09-15: a press on the one-row strip and a move sideways no longer
+    // scrolls it, and outside a tab it moves no picture; a press that does not move still shows one.
     strip.scrollLeft = 0;
     await sleep(100);
-    const pressAt = (target, type, x) => target.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: strip.getBoundingClientRect().top + 40, button: 0, pointerId: 2, bubbles: true, cancelable: true }));
+    const pressAt = (target, type, x) => target.dispatchEvent(new PointerEvent(type, { clientX: x, clientY: strip.getBoundingClientRect().top + 40, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 2, bubbles: true, cancelable: true }));
     const pressed = strip.querySelector('.thumb:not(.current)');
-    const shownBefore = model.image.document_id;
+    const orderBefore = editor.stripCells().map((cell) => cell.key).join();
     pressAt(pressed, 'pointerdown', 600);
     pressAt(pressed, 'pointermove', 450);
     pressAt(pressed, 'pointermove', 300);
+    const during = { left: strip.scrollLeft, dragging: !!strip.querySelector('.thumb.dragging') };
     pressAt(pressed, 'pointerup', 300);
-    pressed.click();
     await sleep(400);
-    const dragged = { left: strip.scrollLeft, shown: model.image.document_id };
+    const dragged = { left: strip.scrollLeft, order: editor.stripCells().map((cell) => cell.key).join() };
     const clicked = [...strip.querySelectorAll('.thumb:not(.current)')].find((t) => t.getBoundingClientRect().left > 60);
     const clickedId = Number(clicked.dataset.id);
     pressAt(clicked, 'pointerdown', 700);
     pressAt(clicked, 'pointerup', 702);
     clicked.click();
     for (let i = 0; i < 40 && model.image.document_id !== clickedId; i += 1) await sleep(50);
-    check('a press on a thumbnail and a move sideways scrolls the strip by the move and shows nothing; a press that barely moves shows the thumbnail',
-      dragged.left === 300 && dragged.shown === shownBefore && model.image.document_id === clickedId,
-      `scrolled ${dragged.left} for a move of 300, shown ${dragged.shown} (was ${shownBefore}); the still press showed ${model.image.document_id}, wanted ${clickedId}`);
+    check('a press on a thumbnail and a move sideways scrolls the strip by nothing and, with no tab, moves no picture; a press that barely moves shows the thumbnail',
+      during.left === 0 && !during.dragging && dragged.left === 0 && dragged.order === orderBefore && model.image.document_id === clickedId,
+      `scrolled ${during.left} during a move of 300 and ${dragged.left} after it, a picture dragging ${during.dragging}, the order ${dragged.order === orderBefore ? 'kept' : 'changed'}; the still press showed ${model.image.document_id}, wanted ${clickedId}`);
 
     // Rotem, 2026-09-16: over the one-row strip the wheel scrolls it sideways, down to the right;
     // once the rows wrap the page leaves the wheel to the strip's own vertical scroll.
@@ -3408,6 +3408,78 @@ export async function runChecks(editor, invoke) {
       await sleep(100);
       check('a second capture on the tab joins its feed after the first, and the first is marked done', two && feed().docs.join() === `${c.document_id},${d.document_id}` && feed().done.join() === String(c.document_id),
         `feed ${JSON.stringify(feed().docs)}, done ${JSON.stringify(feed().done)}`);
+
+      // A picture dragged to another place in the tab (Rotem, 2026-09-30): past 4 px the press is a drag, the picture follows the
+      // hand and takes the place under it, the other making room; the click that ends it shows nothing; the order is on disk, the
+      // tab listing its feed oldest first; Ctrl+Z puts it back, Ctrl+Shift+Z moves it again. In Main a drag moves nothing. The strip
+      // shows d, then c; the feed ends as it began, c then d, for the checks after.
+      {
+        const strip = editor.strip;
+        const order = () => thumbs().join();
+        const cd = `${c.document_id},${d.document_id}`;
+        const dc = `${d.document_id},${c.document_id}`;
+        const drag = (el, type, x, y) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 9, button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: x, clientY: y }));
+        const shownBefore = model.image.document_id;
+        const cEl = thumbOf(c.document_id);
+        const cBox = cEl.getBoundingClientRect();
+        const dBox = thumbOf(d.document_id).getBoundingClientRect();
+        const y = cBox.top + 40;
+        drag(cEl, 'pointerdown', cBox.left + 30, y);
+        drag(cEl, 'pointermove', cBox.left + 27, y + 2);
+        const under = !cEl.classList.contains('dragging') && order() === dc && feed().docs.join() === cd;
+        drag(cEl, 'pointermove', dBox.left + 30, y + 30);
+        const box = cEl.getBoundingClientRect();
+        const during = { order: order(), dragging: cEl.classList.contains('dragging'), left: Math.round(box.left - dBox.left), top: Math.round(box.top - cBox.top), first: strip.querySelector('.thumb') === cEl, z: getComputedStyle(cEl).zIndex };
+        drag(cEl, 'pointerup', dBox.left + 30, y + 30);
+        cEl.click();
+        await sleep(300);
+        saved = await invoke('editor_tabs');
+        check('in a tab a press on a thumbnail and a move under 4 px drags nothing', under, `order ${order()}, feed ${JSON.stringify(feed().docs)}`);
+        check('past 4 px the picture follows the hand along its row, above the others, and takes the place under the hand, the other making room',
+          during.dragging && during.order === cd && during.left === 0 && during.top === 0 && during.first && during.z === '1',
+          JSON.stringify(during));
+        check('released, it holds the place with its done mark, the click that ends the drag shows nothing, and the order is on disk, the tab listing it last',
+          order() === cd && !cEl.classList.contains('dragging') && cEl.style.transform === '' && Math.round(cEl.getBoundingClientRect().left) === Math.round(dBox.left) && cEl.classList.contains('checked')
+            && model.image.document_id === shownBefore && feed().docs.join() === dc && !!saved && saved.tabs[0].docs.join() === dc,
+          `order ${order()}, at ${Math.round(cEl.getBoundingClientRect().left)} for ${Math.round(dBox.left)}, shown ${model.image.document_id} (was ${shownBefore}), feed ${JSON.stringify(feed().docs)}, disk ${JSON.stringify(saved && saved.tabs[0].docs)}`);
+        undoKey();
+        const undone = await until(() => order() === dc);
+        saved = await invoke('editor_tabs');
+        check('Ctrl+Z puts it back in its place, on disk too', undone && feed().docs.join() === cd && !!saved && saved.tabs[0].docs.join() === cd,
+          `order ${order()}, feed ${JSON.stringify(feed().docs)}, disk ${JSON.stringify(saved && saved.tabs[0].docs)}`);
+        redoKey();
+        check('Ctrl+Shift+Z moves it again', await until(() => order() === cd) && feed().docs.join() === dc, `order ${order()}, feed ${JSON.stringify(feed().docs)}`);
+
+        // Once the rows wrap, the picture follows the hand down as well as along.
+        editor.setStripHeight(424);
+        await sleep(100);
+        const dEl = thumbOf(d.document_id);
+        const dFrom = dEl.getBoundingClientRect();
+        const cAt = thumbOf(c.document_id).getBoundingClientRect();
+        drag(dEl, 'pointerdown', dFrom.left + 30, dFrom.top + 40);
+        drag(dEl, 'pointermove', cAt.left + 30, cAt.top + 60);
+        const rowsBox = dEl.getBoundingClientRect();
+        const inRows = { rows: editor.stripLayout().rows, order: order(), left: Math.round(rowsBox.left - cAt.left), top: Math.round(rowsBox.top - dFrom.top) };
+        drag(dEl, 'pointerup', cAt.left + 30, cAt.top + 60);
+        await sleep(200);
+        editor.setStripHeight(96);
+        check('in rows too a drag puts the picture in the place under the hand, following it down by the move', inRows.rows > 1 && inRows.order === dc && inRows.left === 0 && inRows.top === 20 && feed().docs.join() === cd,
+          `${JSON.stringify(inRows)}, feed ${JSON.stringify(feed().docs)}`);
+
+        tabEls()[0].click();
+        await until(() => thumbs().length === 4);
+        const mainOrder = order();
+        const firstEl = strip.querySelector('.thumb');
+        const firstBox = firstEl.getBoundingClientRect();
+        drag(firstEl, 'pointerdown', firstBox.left + 30, firstBox.top + 40);
+        drag(firstEl, 'pointermove', firstBox.left + 400, firstBox.top + 40);
+        const mainDragging = firstEl.classList.contains('dragging');
+        drag(firstEl, 'pointerup', firstBox.left + 400, firstBox.top + 40);
+        await sleep(100);
+        check('in Main a press and a move drags no picture: the library keeps its order', !mainDragging && order() === mainOrder && firstEl.style.transform === '', `dragging ${mainDragging}, order ${order()} for ${mainOrder}`);
+        tabEls()[1].click();
+        await until(() => thumbs().length === 2);
+      }
 
       // As if its last opening had been at the window's right edge: the menu is still measured whole (review).
       menu.style.left = `${window.innerWidth - 30}px`;

@@ -183,6 +183,7 @@
   .thumb:not(.current):hover { border-color: #323A43; transition: border-color 144ms ease-out; } /* the hover of one not selected, his colour, fading in by A1 (Rotem, 2026-09-19) */
   @media (prefers-reduced-motion: reduce) { .thumb:not(.current):hover { transition: none; } }
   .thumb.current { border-color: #7aa7ff; }
+  .thumb.dragging { z-index: 1; } /* the picture being moved in a tab, above the others it passes (2026-09-30) */
   /* The done mark (Rotem, 2026-09-16): in a tab after Main, a round 24 by 24 button at the
      thumbnail's top left, a 1 px white border, a 20 by 20 tick inside it,
      shown on hover; once pressed it stays shown and the tick fades in by A1, to say this
@@ -1844,6 +1845,7 @@
       // In a tab after Main, Remove from tab sits above Delete (Rotem, 2026-09-30).
       el.addEventListener('contextmenu', (event) => {
         event.preventDefault();
+        if (thumbDrag && thumbDrag.moving) return; // a right press while a picture is dragged opens nothing (review)
         const remove = cell.tab ? (id) => removeFromTab(cell.tab.id, id) : null;
         openTabMenu(doc.id, event.clientX, event.clientY, (id) => deleteDocument(id).catch((err) => console.error('delete', err)), remove);
       });
@@ -1855,7 +1857,7 @@
         done.innerHTML = '<svg viewBox="0 0 20 20"><path class="tick" d="M5 10.5l3.5 3.5 6.5-8.5"/></svg>';
         done.setAttribute('aria-label', 'Done with this picture');
         done.title = 'Done with this picture, in this tab; press again to clear';
-        done.addEventListener('pointerdown', (event) => event.stopPropagation()); // no strip scroll from it
+        done.addEventListener('pointerdown', (event) => event.stopPropagation()); // no drag of the picture from it
         done.addEventListener('click', (event) => {
           event.stopPropagation();
           toggleDone(cell.tab.id, doc.id);
@@ -1899,39 +1901,104 @@
   };
   strip.addEventListener('scroll', renderStrip);
 
-  // A press anywhere on the one-row strip and a move sideways scrolls it (Rotem, 2026-09-15).
-  // Past a few pixels the press is a scroll, and the click that ends it shows nothing.
-  const STRIP_SCROLL_SLOP = 4;
-  let stripScroll = null;
-  let stripScrolled = false;
+  // In a tab after Main, a press on a thumbnail and a move drags it to another place in that tab
+  // (Rotem, 2026-09-30): past a few pixels the press is a drag, the picture follows the hand, and
+  // it takes the place of the picture under the hand, the others making room; the click that ends
+  // the drag shows nothing. Main keeps the library's order. A press and a move no longer scrolls
+  // the strip (Rotem, 2026-09-30, from 2026-09-15); the wheel and the scroller still do.
+  const THUMB_DRAG_SLOP = 4;
+  let thumbDrag = null;
+  let thumbDragged = false;
+  // A point on the page as a point in the strip's content, where the cells are laid out.
+  const stripPoint = (clientX, clientY) => {
+    const box = strip.getBoundingClientRect();
+    return { x: clientX - box.left - strip.clientLeft + strip.scrollLeft, y: clientY - box.top - strip.clientTop + strip.scrollTop };
+  };
+  // The place of the cell under a point, among the first `count` cells.
+  const placeUnder = (p, count) => {
+    const { rows, cols, w, h } = layout;
+    const col = Math.floor((p.x - STRIP_PAD + STRIP_GAP / 2) / (w + STRIP_GAP));
+    if (rows === 1) return Math.max(0, Math.min(count - 1, col));
+    const row = Math.max(0, Math.floor((p.y - STRIP_TOP + STRIP_GAP / 2) / (h + STRIP_GAP)));
+    return Math.max(0, Math.min(count - 1, row * cols + Math.max(0, Math.min(cols - 1, col))));
+  };
   strip.addEventListener('pointerdown', (event) => {
-    stripScrolled = false;
-    // The one row only, and never a press on the strip's own scroller below its content.
+    thumbDragged = false;
+    if (event.button !== 0) return;
+    const el = event.target.closest('.thumb');
+    const at = el ? cells.findIndex((c) => c.kind === 'doc' && c.tab && c.doc.id === Number(el.dataset.id)) : -1;
+    if (at >= 0) {
+      const p = stripPoint(event.clientX, event.clientY);
+      thumbDrag = { key: cells[at].key, id: cells[at].doc.id, tabId: cells[at].tab.id, start: cellRect(at), x: p.x, y: p.y,
+        cx: event.clientX, cy: event.clientY, pointer: event.pointerId, moving: false };
+      event.preventDefault(); // a thumbnail's picture would otherwise start the system's own drag
+      return;
+    }
+    // The same for a press on the one row anywhere else, never on the strip's own scroller below its content.
     const contentBottom = strip.getBoundingClientRect().top + strip.clientTop + strip.clientHeight;
-    if (event.button !== 0 || layout.rows !== 1 || event.clientY >= contentBottom) return;
-    stripScroll = { x: event.clientX, left: strip.scrollLeft, id: event.pointerId, moving: false };
-    event.preventDefault(); // a thumbnail's picture would otherwise start the system's own drag
+    if (layout.rows === 1 && event.clientY < contentBottom) event.preventDefault();
   });
+  const dragThumb = () => {
+    const from = cells.findIndex((c) => c.key === thumbDrag.key);
+    if (from < 0) return; // the feed was refreshed from under the hand without this picture
+    const p = stripPoint(thumbDrag.cx, thumbDrag.cy);
+    const to = placeUnder(p, cells.filter((c) => c.kind === 'doc').length);
+    if (to !== from) {
+      cells.splice(to, 0, ...cells.splice(from, 1));
+      renderStrip();
+    }
+    // The picture follows the hand from where it was pressed, whatever place it now holds; in the
+    // one row it stays in the row.
+    const el = rendered.get(thumbDrag.key);
+    if (!el) return;
+    const slot = cellRect(to);
+    const dx = thumbDrag.start.x + p.x - thumbDrag.x - slot.x;
+    const dy = layout.rows === 1 ? 0 : thumbDrag.start.y + p.y - thumbDrag.y - slot.y;
+    el.classList.add('dragging');
+    el.style.transform = `translate(${dx}px, ${dy}px)`;
+  };
+  // Only a heard release is followed by a click, the one to swallow; a cancel or a release never
+  // heard leaves none, and a flag left up would swallow the next press on a done mark (review).
+  const endThumbDrag = (heard) => {
+    const drag = thumbDrag;
+    thumbDrag = null;
+    if (!drag.moving) return;
+    thumbDragged = heard;
+    const el = rendered.get(drag.key);
+    if (el) { el.classList.remove('dragging'); el.style.transform = ''; }
+    // The tab lists its feed oldest first and the strip shows it newest first, so the picture is
+    // put right after the one now shown after it, or right before the one shown before it.
+    const tab = tabs.list.find((t) => t.id === drag.tabId);
+    const shown = cells.filter((c) => c.kind === 'doc');
+    const at = shown.findIndex((c) => c.key === drag.key);
+    if (!tab || at < 0) return;
+    const rest = tab.docs.filter((d) => d !== drag.id);
+    const older = shown[at + 1];
+    const newer = shown[at - 1];
+    const to = older ? rest.indexOf(older.doc.id) + 1 : newer ? rest.indexOf(newer.doc.id) : -1;
+    if (to >= 0) moveInTab(tab.id, drag.id, to);
+  };
   strip.addEventListener('pointermove', (event) => {
-    if (!stripScroll || event.pointerId !== stripScroll.id) return;
-    const dx = event.clientX - stripScroll.x;
-    if (!stripScroll.moving) {
-      if (Math.abs(dx) < STRIP_SCROLL_SLOP) return;
-      stripScroll.moving = true;
+    if (!thumbDrag || event.pointerId !== thumbDrag.pointer) return;
+    if (!(event.buttons & 1)) { endThumbDrag(false); return; } // the release was never heard, outside the window
+    thumbDrag.cx = event.clientX;
+    thumbDrag.cy = event.clientY;
+    if (!thumbDrag.moving) {
+      const p = stripPoint(event.clientX, event.clientY);
+      if (Math.max(Math.abs(p.x - thumbDrag.x), Math.abs(p.y - thumbDrag.y)) < THUMB_DRAG_SLOP) return;
+      thumbDrag.moving = true;
       try { strip.setPointerCapture(event.pointerId); } catch (_) { /* a synthetic pointer has no capture */ }
     }
-    strip.scrollLeft = stripScroll.left - dx;
+    dragThumb();
   });
-  const endStripScroll = (event) => {
-    if (!stripScroll || event.pointerId !== stripScroll.id) return;
-    stripScrolled = stripScroll.moving;
-    stripScroll = null;
-  };
-  strip.addEventListener('pointerup', endStripScroll);
-  strip.addEventListener('pointercancel', endStripScroll);
+  const releaseThumb = (event) => { if (thumbDrag && event.pointerId === thumbDrag.pointer) endThumbDrag(event.type === 'pointerup'); };
+  strip.addEventListener('pointerup', releaseThumb);
+  strip.addEventListener('pointercancel', releaseThumb);
+  // The wheel turned during a drag scrolls the strip under the hand, and the place follows.
+  strip.addEventListener('scroll', () => { if (thumbDrag && thumbDrag.moving) dragThumb(); });
   strip.addEventListener('click', (event) => {
-    if (!stripScrolled) return;
-    stripScrolled = false;
+    if (!thumbDragged) return;
+    thumbDragged = false;
     event.stopPropagation();
     event.preventDefault();
   }, true);
@@ -2226,6 +2293,24 @@
     recordAct(() => set(true), () => set(false));
     return true;
   };
+  // A picture dragged to another place in a tab (Rotem, 2026-09-30): `to` is its place in the feed,
+  // oldest first. Ctrl+Z puts it back where it was; Ctrl+Shift+Z moves it again.
+  const moveInTab = (tabId, documentId, to) => {
+    const tab = tabs.list.find((t) => t.id === tabId);
+    const from = tab ? tab.docs.indexOf(documentId) : -1;
+    if (!tab || from < 0) return false;
+    to = Math.max(0, Math.min(tab.docs.length - 1, to)); // a place past the end is the end (review)
+    if (to === from) return false;
+    const set = (at, redraw) => {
+      tab.docs = tab.docs.filter((d) => d !== documentId);
+      tab.docs.splice(Math.max(0, Math.min(at, tab.docs.length)), 0, documentId);
+      saveTabs();
+      if (redraw) refreshStrip().catch(() => {});
+    };
+    set(to, false); // the strip already shows it there: the hand put it there
+    recordAct(() => set(from, true), () => set(to, true));
+    return true;
+  };
   // A capture taken while a tab other than Main is selected joins that tab's feed as well.
   const captureIntoTab = (documentId) => {
     const tab = selectedTab();
@@ -2289,11 +2374,12 @@
     document.body.classList.toggle('strip', stripWanted && !model.fullscreen);
     if (followFit()) paintRegion(); // the stage changed height (Rotem, 2026-09-15)
     // Newest first, at the left (Rotem's word, 2026-09-14); the host lists oldest first.
-    // A tab after Main shows its own feed; Main, or no tab yet, shows the whole library.
+    // A tab after Main shows its own feed in the tab's own order, the last to join first, which a
+    // drag changes (Rotem, 2026-09-30); Main, or no tab yet, shows the whole library.
     const tab = selectedTab();
-    const feed = tab ? new Set(tab.docs) : null;
-    cells = [...docs].reverse().filter((doc) => !feed || feed.has(doc.id))
-      .map((doc) => ({ key: tab ? `doc:${tab.id}:${doc.id}` : `doc:${doc.id}`, kind: 'doc', doc, tab }));
+    const byId = new Map(docs.map((doc) => [doc.id, doc]));
+    const shown = tab ? [...new Set(tab.docs)].reverse().map((id) => byId.get(id)).filter(Boolean) : [...docs].reverse();
+    cells = shown.map((doc) => ({ key: tab ? `doc:${tab.id}:${doc.id}` : `doc:${doc.id}`, kind: 'doc', doc, tab }));
     if (trashed.length > 0) {
       cells.push({ key: 'chip:trash', kind: 'chip', chip: {
         id: 'trash-chip', text: `Trash · ${trashed.length}`, title: 'What was deleted in the last 30 days',
@@ -2303,6 +2389,9 @@
     dropCellsNotIn(cells);
     layoutStrip();
     scrollToCurrent();
+    // A refresh while a picture is dragged, a capture landing, rebuilt the order from the tab: the
+    // picture is put back under the hand, or the drop would be lost (review).
+    if (thumbDrag && thumbDrag.moving) dragThumb();
   };
 
   const renderTrash = async () => {
@@ -3740,6 +3829,7 @@
     renameTab,
     toggleDone,
     removeFromTab,
+    moveInTab,
     setTool,
     rectOfShape,
     createShape,
