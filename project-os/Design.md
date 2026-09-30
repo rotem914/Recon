@@ -355,7 +355,9 @@ Stated by Rotem on 2026-09-16.
 | Remove from tab | in a tab after Main, the thumbnail's dropdown also holds Remove from tab, which takes the picture out of that tab only; it stays in Main (Rotem, 2026-09-30) |
 | Reorder | in a tab after Main, a thumbnail pressed and dragged moves to another place in that tab (Rotem, 2026-09-30); Main keeps the library's order |
 | Press and drag | no longer scrolls the timeline; the wheel and the scroller do (Rotem, 2026-09-30, from a press anywhere on the one row and a move sideways, 2026-09-15) |
-| Thumbnail hover | a thumbnail that is not the selected one takes the selected one's 2 px border under the pointer, in `#323A43`, fading in by A1 (Rotem, 2026-09-19, after #414C58 and #536070 the same evening) |
+| Thumbnail hover | a thumbnail that is not the selected one takes the selected one's border under the pointer, in `#323A43`, fading in by A1 (Rotem, 2026-09-19, after #414C58 and #536070 the same evening) |
+| Thumbnail line | 3 px on every thumbnail, the blue one and the grey hover alike (Rotem, 2026-09-30, from 2) |
+| Several at once | Ctrl+click on a thumbnail marks it with the blue line of the picture on screen, and the picture on screen stays; everything with the blue line is one batch, the picture on screen included, and a right press on any of them deletes, or removes from the tab, all of them; Ctrl+click on the picture on screen takes it out of the batch (Rotem, 2026-09-30) |
 
 Not stated yet, so provisional in the page until it is: Remove from tab above Delete, and
 `#323A43` under the pointer, the thumbnail hover border's, where Delete keeps its red; the
@@ -365,4 +367,9 @@ move between the two. The reorder: past 4 px a press is a drag; the picture foll
 along its row, and down too once the rows wrap, above the others, with no look of its own; it
 takes the place of the picture under the hand, and the ones between move over by one at once,
 with no motion, as the tabs do, rather than the two trading places; a new capture on the tab
-still joins it first; Ctrl+Z puts the picture back where it was.
+still joins it first; Ctrl+Z puts the picture back where it was. Several at once: a Ctrl+click
+marks and a second one unmarks; a plain click on a thumbnail, another picture on screen,
+another tab or the trash ends the marking; a right press on a thumbnail without the blue line
+acts on it alone and the marks stay; the dropdown keeps its words, and the notice says how
+many went, a picture of Recon's own and an opened file said apart; one Ctrl+Z brings the whole
+batch back.

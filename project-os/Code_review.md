@@ -289,6 +289,8 @@ the same argument, and the owner pays for it every time.
 One row each: what not to flag · the reason in the owner's own words · where it
 was raised.
 
+- Ctrl+Z of an act on a tab's pictures (Remove from tab, the done mark), pressed from Main or another tab, leaves that tab unshown · Rotem: "no need" · the Remove from tab review, 2026-09-30.
+
 ## Calibration loop
 
 After every review, take the verdict and fold it back into this file. The verdict

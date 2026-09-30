@@ -3701,6 +3701,205 @@ export async function runChecks(editor, invoke) {
     editor.layoutScene();
   }
 
+  // ---------------------------------------------------------------- 40b. several thumbnails at once, by Ctrl
+  say('');
+  say('Several at once (Rotem, 2026-09-30): Ctrl+click marks a thumbnail with the blue line of the picture on screen, which stays; everything with the blue line is one batch, which a right press deletes, or removes from the tab, in one step of undo; every thumbnail\'s line is 3 px');
+  {
+    const tabbar = editor.tabbar;
+    const plus = document.getElementById('tab-add');
+    const menu = document.getElementById('tab-menu');
+    const hud = document.getElementById('hud');
+    const until = async (test) => { for (let i = 0; i < 80 && !test(); i += 1) await sleep(50); return test(); };
+    const thumbs = () => editor.stripCells().filter((c) => c.kind === 'doc').map((c) => c.doc.id);
+    const thumbOf = (id) => document.querySelector(`#strip .thumb[data-id="${id}"]`);
+    const blue = () => [...document.querySelectorAll('#strip .thumb')].filter((el) => getComputedStyle(el).borderTopColor === 'rgb(122, 167, 255)').map((el) => Number(el.dataset.id)).sort();
+    const same = (list, ids) => !!list && [...list].sort().join() === [...ids].sort().join();
+    const ctrlClick = (id) => thumbOf(id).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true }));
+    const rightPress = (id) => { const b = thumbOf(id).getBoundingClientRect(); thumbOf(id).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: b.left + 12, clientY: b.top + 16 })); };
+    const menuItem = (text) => [...menu.querySelectorAll('button')].find((b) => b.textContent === text);
+    const inTrash = async () => (await invoke('editor_trash_list')).map(([id]) => id);
+    const press = (init) => window.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
+    const undoKey = () => press({ key: 'z', code: 'KeyZ', ctrlKey: true });
+    const redoKey = () => press({ key: 'Z', code: 'KeyZ', ctrlKey: true, shiftKey: true });
+    await invoke('editor_store_reset');
+    await invoke('editor_save_tabs', { tabs: { schema: 1, selected: 0, tabs: [] } });
+    await editor.loadTabs();
+    editor.setStripHeight(96);
+    const q = [];
+    for (const w of [320, 330, 340, 350]) {
+      const s = await invoke('editor_capture_probe', { width: w, height: 200 });
+      await editor.loadImage(s);
+      q.push(s.document_id);
+    }
+    await editor.refreshStrip();
+    const [q1, q2, q3, q4] = q;
+    await until(() => thumbs().length === 4 && !!thumbOf(q1));
+
+    // The line: 3 px on every thumbnail, blue on the picture on screen, the grey hover on the others.
+    const lineOf = (id) => getComputedStyle(thumbOf(id)).borderTopWidth;
+    const hoverRule = [...document.styleSheets].flatMap((s) => [...s.cssRules]).find((r) => r.selectorText === '.thumb:not(.picked):hover');
+    check('every thumbnail\'s line is 3 px, blue on the picture on screen alone, and the grey hover is for those without the blue line',
+      [q1, q2, q3, q4].every((id) => lineOf(id) === '3px') && same(blue(), [q4]) && model.image.document_id === q4 && !!hoverRule && hoverRule.style.borderColor === 'rgb(50, 58, 67)',
+      `${[q1, q2, q3, q4].map(lineOf).join(' ')}, blue ${JSON.stringify(blue())}, hover ${hoverRule && hoverRule.style.borderColor}`);
+
+    // Ctrl+click marks, and marks off; the picture on screen stays.
+    ctrlClick(q2);
+    await sleep(100);
+    check('Ctrl+click puts the blue line on the thumbnail, beside the picture on screen, which stays on screen', same(blue(), [q4, q2]) && model.image.document_id === q4 && same(editor.picksOf(), [q4, q2]),
+      `blue ${JSON.stringify(blue())}, on screen ${model.image.document_id}`);
+    ctrlClick(q2);
+    await sleep(100);
+    check('Ctrl+click on it again takes the line off', same(blue(), [q4]) && model.image.document_id === q4, `blue ${JSON.stringify(blue())}`);
+
+    // Three with the line, a right press on one of them: Delete takes all three, in one step of undo.
+    ctrlClick(q2);
+    ctrlClick(q1);
+    await sleep(100);
+    rightPress(q1);
+    check('a right press on a thumbnail with the blue line opens the menu, in Main Delete alone', getComputedStyle(menu).display === 'block' && menu.querySelectorAll('button').length === 1 && menu.textContent.trim() === 'Delete');
+    menuItem('Delete').click();
+    const gone = await until(() => thumbs().length === 1) && await until(() => hud.textContent.includes('3 deleted'));
+    let trash = await inTrash();
+    const seqs = editor.deletionsOf().filter((d) => [q1, q2, q4].includes(d.id) && !d.undone).map((d) => d.seq);
+    check('Delete takes every thumbnail with the blue line into the trash, the picture on screen among them, and the one left comes on screen',
+      gone && same(thumbs(), [q3]) && [q1, q2, q4].every((id) => trash.includes(id)) && model.image.document_id === q3 && hud.textContent.includes('3 deleted; Recon keeps them in its trash for 30 days'),
+      `thumbnails ${JSON.stringify(thumbs())}, trash ${JSON.stringify(trash)}, on screen ${model.image.document_id}, "${hud.textContent.split('\n').pop()}"`);
+    check('the three are one deletion, one number for all', seqs.length === 3 && new Set(seqs).size === 1, JSON.stringify(seqs));
+    undoKey();
+    const back = await until(() => thumbs().length === 4 && model.image.document_id === q4);
+    trash = await inTrash();
+    check('one Ctrl+Z brings all three back, the picture that was on screen on screen again', back && ![q1, q2, q4].some((id) => trash.includes(id)),
+      `thumbnails ${JSON.stringify(thumbs())}, on screen ${model.image.document_id}, trash ${JSON.stringify(trash)}`);
+    redoKey();
+    check('one Ctrl+Shift+Z deletes all three again', await until(() => thumbs().length === 1) && same(thumbs(), [q3]), JSON.stringify(thumbs()));
+    undoKey();
+    await until(() => thumbs().length === 4 && model.image.document_id === q4);
+
+    // A right press on a thumbnail without the line acts on it alone.
+    ctrlClick(q2);
+    await sleep(100);
+    rightPress(q3);
+    menuItem('Delete').click();
+    await until(() => thumbs().length === 3);
+    trash = await inTrash();
+    check('a right press on a thumbnail without the blue line deletes it alone, the marked ones untouched and still marked', same(thumbs(), [q1, q2, q4]) && trash.includes(q3) && !trash.includes(q2) && !trash.includes(q4) && model.image.document_id === q4
+        && same(editor.picksOf(), [q4, q2]) && same(blue(), [q4, q2]),
+      `thumbnails ${JSON.stringify(thumbs())}, trash ${JSON.stringify(trash)}, marks ${JSON.stringify(editor.picksOf())}`);
+    document.getElementById('trash-chip').click();
+    await until(() => document.body.classList.contains('trash'));
+    document.getElementById('trash-back').click();
+    await until(() => thumbs().length === 3);
+    check('the trash, opened and left by Back, ends the marking: the blue line on the picture on screen alone', editor.picksOf() === null && same(blue(), [q4]),
+      `marks ${JSON.stringify(editor.picksOf())}, blue ${JSON.stringify(blue())}`);
+    undoKey();
+    await until(() => thumbs().length === 4);
+
+    // Ctrl+click on the picture on screen takes it out of the batch; it stays on screen.
+    ctrlClick(q4);
+    ctrlClick(q2);
+    await sleep(100);
+    check('Ctrl+click on the picture on screen takes its line off, and it stays on screen', same(blue(), [q2]) && model.image.document_id === q4 && thumbOf(q4).classList.contains('current'),
+      `blue ${JSON.stringify(blue())}, on screen ${model.image.document_id}`);
+    rightPress(q2);
+    menuItem('Delete').click();
+    await until(() => thumbs().length === 3);
+    check('then Delete takes the marked one only, and the picture on screen stays, its blue line back', same(thumbs(), [q1, q3, q4]) && model.image.document_id === q4 && same(blue(), [q4]),
+      `thumbnails ${JSON.stringify(thumbs())}, blue ${JSON.stringify(blue())}`);
+    undoKey();
+    await until(() => thumbs().length === 4);
+
+    // A plain click ends the marking, on the picture already on screen too.
+    ctrlClick(q1);
+    await sleep(100);
+    const markedBefore = same(blue(), [q4, q1]);
+    thumbOf(q4).click();
+    await sleep(200);
+    check('a plain click on the picture on screen ends the marking: the blue line on it alone', markedBefore && editor.picksOf() === null && same(blue(), [q4]) && model.image.document_id === q4,
+      `before ${markedBefore}, marks ${JSON.stringify(editor.picksOf())}, blue ${JSON.stringify(blue())}`);
+    ctrlClick(q1);
+    await sleep(100);
+    thumbOf(q2).click();
+    const plain = await until(() => model.image.document_id === q2);
+    await sleep(200);
+    check('a plain click shows its picture and ends the marking: the blue line on it alone', plain && same(blue(), [q2]) && editor.picksOf() === null, `blue ${JSON.stringify(blue())}`);
+
+    // A batch with an opened file in it: the file is never touched, only taken off the timeline, and the notice says each kind apart.
+    const folder = await invoke('editor_make_folder');
+    const filePath = `${folder}\\img2.png`;
+    const printBefore = await invoke('editor_file_print', { path: filePath });
+    const opened = await invoke('editor_open_file', { path: filePath });
+    await editor.loadImage(opened);
+    await editor.refreshStrip();
+    const f = opened.document_id;
+    await until(() => thumbs().length === 5 && !!thumbOf(f));
+    ctrlClick(q1);
+    await sleep(100);
+    rightPress(q1);
+    menuItem('Delete').click();
+    const both = await until(() => thumbs().length === 3) && await until(() => hud.textContent.includes('taken off the timeline'));
+    trash = await inTrash();
+    const printAfter = await invoke('editor_file_print', { path: filePath });
+    check('a batch of a capture and an opened file: the capture into the trash, the file only off the timeline and byte for byte as it was, each said apart',
+      both && trash.includes(q1) && !trash.includes(f) && printAfter === printBefore
+        && hud.textContent.includes('1 deleted; Recon keeps it in its trash for 30 days; 1 taken off the timeline; the file itself is untouched'),
+      `thumbnails ${JSON.stringify(thumbs())}, trash ${JSON.stringify(trash)}, file ${printBefore} then ${printAfter}, "${hud.textContent.split('\n').pop()}"`);
+    undoKey();
+    check('one Ctrl+Z brings both back, the opened file on screen again', await until(() => thumbs().length === 5 && model.image.document_id === f) && !(await inTrash()).includes(q1),
+      `thumbnails ${JSON.stringify(thumbs())}, on screen ${model.image.document_id}`);
+
+    // In a tab: Remove from tab takes every one with the line out of the tab in one step; Main keeps them.
+    plus.click();
+    await sleep(150);
+    const r = [];
+    for (const w of [300, 310, 320]) {
+      const s = await invoke('editor_capture_probe', { width: w, height: 200 });
+      await editor.loadImage(s);
+      r.push(s.document_id);
+    }
+    const feed = () => editor.tabsOf().list[0];
+    await until(() => thumbs().length === 3);
+    const [r1, r2, r3] = r;
+    ctrlClick(r1);
+    await sleep(100);
+    rightPress(r1);
+    check('in a tab the menu on a thumbnail with the line holds Remove from tab above Delete', [...menu.querySelectorAll('button')].map((b) => b.textContent).join('|') === 'Remove from tab|Delete');
+    menuItem('Remove from tab').click();
+    const out = await until(() => thumbs().length === 1);
+    const saved = await invoke('editor_tabs');
+    const library = await invoke('editor_documents');
+    check('Remove from tab takes every one with the blue line out of the tab, on disk too, and they stay in the library',
+      out && same(thumbs(), [r2]) && feed().docs.join() === String(r2) && !!saved && saved.tabs[0].docs.join() === String(r2) && [r1, r3].every((id) => library.some((d) => d.id === id)),
+      `thumbnails ${JSON.stringify(thumbs())}, feed ${JSON.stringify(feed().docs)}`);
+    undoKey();
+    check('one Ctrl+Z puts both back in the tab, in their places', await until(() => thumbs().length === 3) && feed().docs.join() === [r1, r2, r3].join(), JSON.stringify(feed().docs));
+    redoKey();
+    check('one Ctrl+Shift+Z takes both out again', await until(() => thumbs().length === 1) && feed().docs.join() === String(r2), JSON.stringify(feed().docs));
+    undoKey();
+    await until(() => thumbs().length === 3);
+
+    // Another tab ends the marking.
+    ctrlClick(r1);
+    await sleep(100);
+    const marked = same(blue(), [r1, r3]);
+    tabbar.querySelector('.tab[data-tab="0"]').click();
+    await until(() => thumbs().length === 8);
+    check('another tab ends the marking: in Main the blue line is on the picture on screen alone', marked && same(blue(), [r3]) && editor.picksOf() === null, `marked ${marked}, blue ${JSON.stringify(blue())}`);
+    ctrlClick(q2);
+    await sleep(100);
+    const markedInMain = same(blue(), [r3, q2]);
+    plus.click();
+    await until(() => thumbs().length === 0);
+    tabbar.querySelector('.tab[data-tab="0"]').click();
+    await until(() => thumbs().length === 8);
+    check('a tab with no picture ends the marking too: back in Main the blue line is on the picture on screen alone', markedInMain && editor.picksOf() === null && same(blue(), [r3]),
+      `marked ${markedInMain}, marks ${JSON.stringify(editor.picksOf())}, blue ${JSON.stringify(blue())}`);
+
+    for (const tab of editor.tabsOf().list) editor.deleteTab(tab.id);
+    await invoke('editor_save_tabs', { tabs: { schema: 1, selected: 0, tabs: [] } });
+    await editor.loadTabs();
+    await editor.refreshStrip();
+  }
+
   // ---------------------------------------------------------------- 41. the callout in two clicks
   say('');
   say('The callout in two clicks (Rotem, 2026-09-16): the first click marks the end of the line, the bubble follows the pointer, the second click locks it and the typing begins; Escape, Ctrl+Z or another tool between them drops the unplaced bubble');

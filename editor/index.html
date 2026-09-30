@@ -177,12 +177,13 @@
   body.fullscreen #strip-handle { display: none; }
   .thumb, .chip-cell { position: absolute; box-sizing: border-box; }
   .thumb { border-radius: 8px; overflow: hidden; /* 8 px corners (Rotem, 2026-09-17, from 13 the same evening, 4 before) */
-           border: 2px solid transparent; background: #1b1f24; cursor: pointer;
+           border: 3px solid transparent; /* 3 px, every thumbnail's line (Rotem, 2026-09-30, from 2) */ background: #1b1f24; cursor: pointer;
            display: grid; place-items: center; color: #6b7480; font-size: 11px; }
   .thumb img { max-width: 100%; max-height: 100%; display: block; border-radius: 8px; /* the picture's own corners, 8 px (Rotem, 2026-09-17, from 13) */ }
-  .thumb:not(.current):hover { border-color: #323A43; transition: border-color 144ms ease-out; } /* the hover of one not selected, his colour, fading in by A1 (Rotem, 2026-09-19) */
-  @media (prefers-reduced-motion: reduce) { .thumb:not(.current):hover { transition: none; } }
-  .thumb.current { border-color: #7aa7ff; }
+  .thumb:not(.picked):hover { border-color: #323A43; transition: border-color 144ms ease-out; } /* the hover of one not selected, his colour, fading in by A1 (Rotem, 2026-09-19) */
+  @media (prefers-reduced-motion: reduce) { .thumb:not(.picked):hover { transition: none; } }
+  /* The blue line: the picture on screen, and every thumbnail Ctrl+clicked with it (Rotem, 2026-09-30). */
+  .thumb.picked { border-color: #7aa7ff; }
   .thumb.dragging { z-index: 1; } /* the picture being moved in a tab, above the others it passes (2026-09-30) */
   /* The done mark (Rotem, 2026-09-16): in a tab after Main, a round 24 by 24 button at the
      thumbnail's top left, a 1 px white border, a 20 by 20 tick inside it,
@@ -1074,7 +1075,7 @@
   // Everything else undo reaches, numbered on the same counter (Rotem, 2026-09-16: every new
   // feature joins undo and redo, CLAUDE.md rule 23): today a tab added, deleted or renamed.
   let acts = [];           // { seq, undone, undo(), redo() }
-  const undoneStack = [];  // { kind: 'note', id }, { kind: 'delete', deletion } or { kind: 'act', act }
+  const undoneStack = [];  // { kind: 'note', id }, { kind: 'delete', batch: [deletion] } or { kind: 'act', act }
   const newAction = () => {
     deletions = deletions.filter((d) => !d.undone);
     acts = acts.filter((a) => !a.undone);
@@ -1139,18 +1140,24 @@
   // and their undo were kept in the stash, so loadImage finds them. No notice: the picture
   // coming back is the message. A refused restore says why and leaves the undo path, so
   // the next Ctrl+Z reaches what was done before it instead of the same refusal.
-  const undoDeletion = async (deletion) => {
-    try {
-      await invoke('editor_trash_rejoin', { id: deletion.id });
-    } catch (err) {
-      console.error('undo of a deletion', err);
-      deletions = deletions.filter((d) => d !== deletion);
-      notice(`NOT RESTORED: ${err}`, 0);
-      return false;
+  // Several deleted in one press (Rotem, 2026-09-30) share one number and come back together.
+  const undoDeletions = async (batch) => {
+    const back = [];
+    for (const deletion of [...batch].reverse()) {
+      try {
+        await invoke('editor_trash_rejoin', { id: deletion.id });
+        back.unshift(deletion);
+      } catch (err) {
+        console.error('undo of a deletion', err);
+        deletions = deletions.filter((d) => d !== deletion);
+        notice(`NOT RESTORED: ${err}`, 0);
+      }
     }
-    deletion.undone = true;
-    undoneStack.push({ kind: 'delete', deletion });
-    if (deletion.shown) await loadImage(await invoke('editor_show_document', { id: deletion.id }));
+    if (!back.length) return false;
+    for (const deletion of back) deletion.undone = true;
+    undoneStack.push({ kind: 'delete', batch: back });
+    const shown = back.find((d) => d.shown);
+    if (shown) await loadImage(await invoke('editor_show_document', { id: shown.id }));
     await refreshStrip();
     drawHud();
     return true;
@@ -1163,7 +1170,8 @@
     const act = acts.filter((a) => !a.undone).pop();
     const actSeq = act ? act.seq : -1;
     if (deletion && deletion.seq > stepSeq && deletion.seq > actSeq) {
-      undoDeletion(deletion).catch((err) => console.error('undo', err));
+      const batch = deletions.filter((d) => !d.undone && d.seq === deletion.seq);
+      undoDeletions(batch).catch((err) => console.error('undo', err));
       return true;
     }
     if (act && act.seq > stepSeq) {
@@ -1185,8 +1193,8 @@
     while (undoneStack.length) {
       const top = undoneStack.pop();
       if (top.kind === 'delete') {
-        deletions = deletions.filter((d) => d !== top.deletion);
-        deleteDocument(top.deletion.id, true).catch((err) => console.error('redo', err));
+        deletions = deletions.filter((d) => !top.batch.includes(d));
+        deleteDocuments(top.batch.map((d) => d.id), true).catch((err) => console.error('redo', err));
         return true;
       }
       if (top.kind === 'act') {
@@ -1768,6 +1776,7 @@
     if (el.dataset.id) dropThumb(Number(el.dataset.id));
   };
   const renderStrip = () => {
+    currentPicks(); // the trash or a tab with no thumbnail ends the marking too, not only a render of it (review)
     const [from, to] = cellRange();
     const keep = new Set();
     for (let i = from; i < to; i += 1) keep.add(cells[i].key);
@@ -1790,6 +1799,7 @@
         const when = new Date(cell.doc.created_ms);
         el.title = `${cell.doc.file || 'capture'}  ${cell.doc.width}x${cell.doc.height}  ${when.toLocaleString()}`;
         el.classList.toggle('current', !!cell.doc.current);
+        el.classList.toggle('picked', isPicked(cell.doc));
         if (cell.tab) el.classList.toggle('checked', cell.tab.done.includes(cell.doc.id));
       } else if (cell.kind === 'chip') {
         el.firstChild.textContent = cell.chip.text;
@@ -1813,6 +1823,33 @@
       for (const node of [...el.childNodes]) if (node.nodeType === Node.TEXT_NODE) node.remove();
     }).catch((err) => console.warn(String(err)));
   };
+  // Ctrl+click on a thumbnail (Rotem, 2026-09-30) marks it, or unmarks it, with the blue line of
+  // the picture on screen, and the picture on screen stays. Everything with the blue line is one
+  // batch, the picture on screen too until it is Ctrl+clicked itself: a right press on any of
+  // them deletes, or removes from the tab, all of them at once. A plain click on a thumbnail,
+  // another picture on screen, another tab or the trash ends the marking.
+  let picks = null; // { doc, tab, ids: Set } once a Ctrl+click marked; null: the picture on screen alone
+  let showing = null; // the picture a plain click asked for, until it is on screen (review)
+  const onScreen = () => (showing != null ? showing : model.image.document_id);
+  const currentPicks = () => {
+    if (picks && (picks.doc !== onScreen() || picks.tab !== tabs.selected || stripMode !== 'documents')) picks = null;
+    return picks;
+  };
+  const isPicked = (doc) => { const p = currentPicks(); return p ? p.ids.has(doc.id) : !!doc.current; };
+  const togglePick = (id) => {
+    const screen = onScreen();
+    const p = currentPicks() || { doc: screen, tab: tabs.selected,
+      ids: new Set(cells.filter((c) => c.kind === 'doc' && c.doc.id === screen).map((c) => c.doc.id)) };
+    if (p.ids.has(id)) p.ids.delete(id); else p.ids.add(id);
+    picks = p;
+    renderStrip();
+  };
+  // What a right press acts on: the batch when the thumbnail has the blue line, the thumbnail
+  // alone when not; only pictures the timeline shows.
+  const batchFor = (id) => {
+    const batch = cells.filter((c) => c.kind === 'doc' && isPicked(c.doc)).map((c) => c.doc.id);
+    return batch.includes(id) ? batch : [id];
+  };
   const makeCell = (cell) => {
     if (cell.kind === 'chip') {
       const wrap = document.createElement('div');
@@ -1833,8 +1870,13 @@
     el.dataset.id = String(doc.id);
     el.textContent = `${doc.width}x${doc.height}`;
     if (cell.kind === 'doc') {
-      el.addEventListener('click', () => {
-        invoke('editor_show_document', { id: doc.id }).then((info) => loadImage(info)).catch((err) => {
+      el.addEventListener('click', (event) => {
+        if (event.ctrlKey) { togglePick(doc.id); return; }
+        if (picks) { picks = null; renderStrip(); }
+        showing = doc.id;
+        const shown = () => { if (showing === doc.id) showing = null; };
+        invoke('editor_show_document', { id: doc.id }).then((info) => loadImage(info)).then(shown, (err) => {
+          shown();
           console.error('timeline', err);
           // An opened file that is gone from where it lived: said, and its thumbnail leaves.
           if (doc.linked) { notice(`NOT OPENED: ${err}`, 0); refreshStrip().catch(() => {}); }
@@ -1846,8 +1888,13 @@
       el.addEventListener('contextmenu', (event) => {
         event.preventDefault();
         if (thumbDrag && thumbDrag.moving) return; // a right press while a picture is dragged opens nothing (review)
-        const remove = cell.tab ? (id) => removeFromTab(cell.tab.id, id) : null;
-        openTabMenu(doc.id, event.clientX, event.clientY, (id) => deleteDocument(id).catch((err) => console.error('delete', err)), remove);
+        // On a thumbnail with the blue line, the menu acts on every one that has it (Rotem, 2026-09-30).
+        // The marking ends with the batch it made; a thumbnail without the line leaves it as it is (review).
+        const batch = batchFor(doc.id);
+        const marked = isPicked(doc);
+        const remove = cell.tab ? () => { if (marked) picks = null; removeFromTab(cell.tab.id, batch); } : null;
+        openTabMenu(doc.id, event.clientX, event.clientY, () => deleteDocuments(batch).then(() => { if (marked) { picks = null; renderStrip(); } })
+          .catch((err) => console.error('delete', err)), remove);
       });
       if (cell.tab) {
         // The done mark, in a tab after Main only (Rotem, 2026-09-16).
@@ -2274,17 +2321,21 @@
   // Remove from tab (Rotem, 2026-09-30): the picture leaves that tab's feed, its done mark there
   // with it, and stays in the library, so in Main. Ctrl+Z puts it back in its place, marked as
   // it was; Ctrl+Shift+Z takes it out again.
-  const removeFromTab = (tabId, documentId) => {
+  // Several Ctrl+clicked are taken out in one press and put back by one Ctrl+Z (Rotem, 2026-09-30).
+  const removeFromTab = (tabId, documentIds) => {
     const tab = tabs.list.find((t) => t.id === tabId);
-    const at = tab ? tab.docs.indexOf(documentId) : -1;
-    if (!tab || at < 0) return false;
-    const doneAt = tab.done.indexOf(documentId);
+    const ids = tab ? [].concat(documentIds).filter((id, i, all) => tab.docs.includes(id) && all.indexOf(id) === i) : [];
+    if (!ids.length) return false;
+    // Each one's place before it left, put back lowest first, so the order is the one it was.
+    const placesIn = (list) => ids.map((id) => [id, list.indexOf(id)]).filter(([, at]) => at >= 0).sort((a, b) => a[1] - b[1]);
+    const docsAt = placesIn(tab.docs);
+    const doneAt = placesIn(tab.done);
     const set = (inTab) => {
-      tab.docs = tab.docs.filter((d) => d !== documentId);
-      tab.done = tab.done.filter((d) => d !== documentId);
+      tab.docs = tab.docs.filter((d) => !ids.includes(d));
+      tab.done = tab.done.filter((d) => !ids.includes(d));
       if (inTab) {
-        tab.docs.splice(Math.min(at, tab.docs.length), 0, documentId);
-        if (doneAt >= 0) tab.done.splice(Math.min(doneAt, tab.done.length), 0, documentId);
+        for (const [id, at] of docsAt) tab.docs.splice(Math.min(at, tab.docs.length), 0, id);
+        for (const [id, at] of doneAt) tab.done.splice(Math.min(at, tab.done.length), 0, id);
       }
       saveTabs();
       refreshStrip().catch(() => {});
@@ -2444,21 +2495,34 @@
   // neighbour shows or the editor is empty. The host says what remains.
   // The deletion is recorded for Ctrl+Z (S2.9), and the document's stash is kept, not
   // dropped, so it comes back with its notes and their undo.
-  const deleteDocument = async (id, again = false) => {
-    const shown = id === model.image.document_id;
-    const linked = cells.some((c) => c.kind === 'doc' && c.doc.id === id && c.doc.linked);
+  // Several at once (Rotem, 2026-09-30): the thumbnails Ctrl+clicked, deleted in one press and
+  // brought back by one Ctrl+Z, all under one number. The one on screen goes last, so the
+  // neighbour the host shows in its place is one that stays.
+  const deleteDocuments = async (ids, again = false) => {
+    const current = model.image.document_id;
+    const order = [...ids.filter((id) => id !== current), ...ids.filter((id) => id === current)];
+    const linked = new Set(cells.filter((c) => c.kind === 'doc' && c.doc.linked).map((c) => c.doc.id));
+    const done = [];
     let info;
-    try {
-      info = await invoke('editor_delete_document', { id });
-    } catch (err) {
-      // The host keeps the document when its move to the trash failed (review T10): said
-      // on screen, and the timeline is as it was.
-      notice(`NOT DELETED: ${err}`, 0);
-      throw err;
+    let refused = null;
+    for (const id of order) {
+      try {
+        info = await invoke('editor_delete_document', { id });
+        done.push(id);
+      } catch (err) {
+        // The host keeps the document when its move to the trash failed (review T10): said
+        // on screen, and what was deleted before it stays deleted, in the one step of undo.
+        refused = err;
+        break;
+      }
+    }
+    if (!done.length) {
+      notice(`NOT DELETED: ${refused}`, 0);
+      throw refused;
     }
     // Done again by redo, it is not a new action, so what else was undone stays redoable.
     const seq = again ? (actionSeq += 1) : newAction(); // newAction replaces the list, so it goes first
-    deletions.push({ id, seq, shown, undone: false });
+    for (const id of done) deletions.push({ id, seq, shown: id === current, undone: false });
     if (info) {
       await loadImage(info);
       await refreshStrip();
@@ -2466,8 +2530,22 @@
       stashCurrent(false); // the folder is in the trash already, so there is nothing to save into
       await showEmpty();
     }
-    notice(linked ? 'taken off the timeline; the file itself is untouched' : 'deleted; Recon keeps it in its trash for 30 days', 4000);
+    if (refused) {
+      notice(`${done.length} of ${ids.length} gone, Ctrl+Z brings them back; NOT DELETED: ${refused}`, 0);
+      throw refused;
+    }
+    // Each kind said apart: a picture of Recon's own goes to its trash, an opened file only leaves the timeline (review).
+    const opened = done.filter((id) => linked.has(id)).length;
+    const kept = done.length - opened;
+    if (done.length === 1) notice(opened ? 'taken off the timeline; the file itself is untouched' : 'deleted; Recon keeps it in its trash for 30 days', 4000);
+    else {
+      const said = [];
+      if (kept) said.push(`${kept} deleted; Recon keeps ${kept === 1 ? 'it' : 'them'} in its trash for 30 days`);
+      if (opened) said.push(`${opened} taken off the timeline; ${opened === 1 ? 'the file itself is' : 'the files themselves are'} untouched`);
+      notice(said.join('; '), 4000);
+    }
   };
+  const deleteDocument = (id, again = false) => deleteDocuments([id], again);
 
   const showEmpty = async () => {
     model.image = { width: 0, height: 0, source: '' };
@@ -3830,6 +3908,8 @@
     toggleDone,
     removeFromTab,
     moveInTab,
+    deleteDocuments,
+    picksOf: () => { const p = currentPicks(); return p ? [...p.ids] : null; },
     setTool,
     rectOfShape,
     createShape,

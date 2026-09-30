@@ -137,6 +137,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-27 · Show Recon after a screenshot, unchecked, is the Ctrl capture's path for every capture, the scrolling one included.
 - 2026-09-30 · The pixel ratio is never measured from a minimized window; the one owed is taken at the window's next resize.
 - 2026-09-30 · A tab's order is its own list's, and a drag moves one picture to the place under the hand.
+- 2026-09-30 · Everything with the blue line is one batch, the picture on screen included; a batch deleted is one deletion of undo, its pictures under one number.
 
 ---
 
@@ -956,3 +957,39 @@ whose place in the library moved keeps its place in the tab. A new capture joins
 first, as before. Main never reorders. The drag is one act of Ctrl+Z. The strip does not
 scroll by itself when a dragged picture reaches its end; the wheel turned during the drag
 scrolls under the hand. Revisit if a far move proves awkward.
+
+## 2026-09-30 · Everything with the blue line is one batch, the picture on screen included; a batch deleted is one deletion of undo
+
+### Context
+Rotem asked for multi-selection with Ctrl in the timeline, to delete or remove from a tab
+several pictures at once. His calls: a Ctrl+click only marks, the picture on screen stays;
+a marked thumbnail wears the picture on screen's own blue line; and, asked what Delete takes
+with a picture on screen and two marked, all three. Until now the blue line meant only the
+picture on screen, and undo knew one deletion per number.
+
+### Options
+1. The batch is what wears the blue line: the picture on screen from the start, the marked
+   ones with it; a Ctrl+click on the picture on screen takes it out, its line going while it
+   stays on screen.
+2. The batch is the Ctrl+clicked ones alone, the picture on screen never in it though it
+   wears the same line.
+3. For the undo: each picture of a batch a deletion of its own, one Ctrl+Z each; or the batch
+   one act beside the deletions, with its own restore; or the deletions of a batch sharing
+   one number, gathered by undo and put back together.
+
+### Decision
+Option 1, Rotem's, as Windows Explorer does, since option 2 deletes fewer than the screen
+shows. For the undo, the deletions sharing one number, the assistant's call: the restore,
+the notes kept in the stash and the refusal that says NOT RESTORED stay one path for one
+picture or ten, where a separate act would be a second copy of it. The one on screen is
+deleted last, so the neighbour Recon shows in its place is one that stays. The marking lives
+in the page only and ends at a plain click, another picture on screen, another tab or the
+trash, so no mark is ever acted on unseen.
+
+### Consequences
+A single deletion is a batch of one and behaves as before. A delete refused partway keeps
+what went before it as one step of undo and says NOT DELETED for the rest. Remove from tab
+takes a batch as one act, each picture put back at its old place. The blue line moved from
+the picture on screen's class to a class of its own, `picked`, which the picture on screen
+has until it is Ctrl+clicked; `current` still says which picture is on screen. Revisit if
+Shift+click for a range is asked for, or a keyboard way to mark.
