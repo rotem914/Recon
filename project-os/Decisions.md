@@ -140,6 +140,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-30 · Everything with the blue line is one batch, the picture on screen included; a batch deleted is one deletion of undo, its pictures under one number.
 - 2026-09-30 · A Ctrl+Z or Ctrl+Shift+Z pressed while pictures come back, or are deleted again, is let go; a thing done again takes a new number, and undo picks the newest by number.
 - 2026-10-01 · A Ctrl+Z pressed while a delete is on its way is let go too; the delete holds the same count the undo and redo of a deletion hold.
+- 2026-10-01 · Each line of a bubble left automatic takes its own direction, by `unicode-bidi: plaintext`; an override still sets the whole bubble. (Supersedes §3.5's "applies to the whole bubble" for automatic.)
 
 ---
 
@@ -1057,3 +1058,32 @@ are on their way. `undoBusy` became a count, raised by `deleteDocuments` for its
 A Ctrl+Z pressed in the moment a delete takes does nothing, and the next one brings the picture
 back with its notes. The 2026-09-30 entry's sentence that the delete is not yet covered no
 longer holds; the rest of it stands.
+
+## 2026-10-01 · Each line of a bubble left automatic takes its own direction, by `unicode-bidi: plaintext`; an override still sets the whole bubble
+
+### Context
+§3.5 resolved a bubble's direction once, from its first strong character, and applied it to the
+whole bubble (F36). Rotem's note began in Hebrew and held English lines below it, and every
+English line sat on the right. He asked that each line take the alignment of its own language.
+
+### Options
+1. `unicode-bidi: plaintext` with `text-align: start` on the text box and on the blocks the engine
+   makes while a note is typed, for a bubble left automatic: the engine resolves each line, on
+   screen and in the export, which inlines the computed styles.
+2. Each line made an element of its own with a direction set by the page, so a line with no
+   letter could follow the bubble: a second shape of the text beside the engine's editing one.
+3. Keep one direction per bubble.
+
+### Decision
+Option 1, the assistant's call under Rotem's ask. F36's reason for leaving plaintext still holds
+for the override, which plaintext ignores, so plaintext is applied to automatic only and the
+override keeps setting the whole bubble. The text tool's notes keep one direction until Rotem
+says otherwise, since he asked about the bubble.
+
+### Consequences
+A line is one broken by Ctrl+Enter; a long line that wraps keeps one direction. A line with no
+letter, an empty one or one of numbers only, resolves left to right by the Unicode rule, so in a
+Hebrew bubble it sits on the left, and a new empty line's caret starts there until a Hebrew
+letter is typed; option 2, or a style for an empty block, would change that, and both wait for
+Rotem. The stored resolved value is still the bubble's first strong character. A single-line
+bubble lays out exactly as before: the six S0.6 references are identical.

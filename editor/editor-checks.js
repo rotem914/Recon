@@ -127,7 +127,7 @@ export async function runChecks(editor, invoke) {
 
   // ---------------------------------------------------------------- 4. direction, three modes
   say('');
-  say('text direction: three explicit modes, resolved once per bubble');
+  say('text direction: three explicit modes, an override for the whole bubble, automatic line by line');
   {
     const hebrew = editor.createCallout({ x: 100, y: 100 });
     hebrew.text = 'שלום, this line starts in Hebrew';
@@ -142,6 +142,35 @@ export async function runChecks(editor, invoke) {
     check('an override wins over the heuristic', editor.resolveDirection(overridden) === 'rtl');
     check('the resolved value reaches the element',
       el(overridden).style.direction === 'rtl' && el(english).style.direction === 'ltr');
+    // Each line of an automatic bubble aligns by its own language (Rotem, 2026-10-01); on the
+    // code before it the English line sat on the right of a Hebrew bubble, as the override's does.
+    const lines = editor.createCallout({ x: 100, y: 400 });
+    lines.text = 'שלום עולם\nHello world';
+    const pinned = editor.createCallout({ x: 100, y: 500 });
+    pinned.text = 'שלום עולם\nHello world';
+    pinned.dirMode = 'rtl';
+    editor.layoutScene();
+    const edges = (callout) => {
+      const textEl = el(callout).querySelector('.t');
+      const node = textEl.firstChild;
+      const cut = node.data.indexOf('\n');
+      const box = textEl.getBoundingClientRect();
+      const first = document.createRange();
+      first.setStart(node, 0);
+      first.setEnd(node, cut);
+      const second = document.createRange();
+      second.setStart(node, cut + 1);
+      second.setEnd(node, node.length);
+      const a = first.getBoundingClientRect();
+      const b = second.getBoundingClientRect();
+      return { hebrewRight: box.right - a.right, englishLeft: b.left - box.left, englishRight: box.right - b.right };
+    };
+    const auto = edges(lines);
+    check('auto: the Hebrew line sits on the right and the English line on the left',
+      auto.hebrewRight < 1 && auto.englishLeft < 1 && auto.englishRight > 1, JSON.stringify(auto));
+    const fixed = edges(pinned);
+    check('an override still sets the whole bubble: the English line on the right too',
+      fixed.englishRight < 1 && fixed.englishLeft > 1, JSON.stringify(fixed));
     model.callouts = [];
     editor.layoutScene();
   }
@@ -570,6 +599,9 @@ export async function runChecks(editor, invoke) {
       ['hebrew', 'הכפתור הזה לא עושה כלום כשהחיבור איטי, והמשתמש לוחץ שוב'],
       ['english', 'This label shows the group status, not the item status, and it wraps'],
       ['mixed', 'הכיתוב Save changes צריך להיות בעברית, and the English part too'],
+      // Two lines in two languages, each aligned by its own (Rotem, 2026-10-01): typed, the
+      // second line is a block of the engine's, and the output has to place it the same.
+      ['lines', 'הכפתור הזה לא עושה כלום\nThis label shows the status'],
     ];
     const origin = await invoke('editor_window_origin');
     for (const [name, text] of cases) {

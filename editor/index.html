@@ -250,6 +250,10 @@
      third remedy). Its height is 36 px at the default size, and it grows with the lines. */
   .callout .t { flex: 1 1 auto; min-width: 1ch; min-height: 1.8em; outline: none; white-space: pre-wrap;
                 word-break: break-word; }
+  /* Each line of a bubble left automatic takes its direction from its own first strong
+     character and aligns to it (Rotem, 2026-10-01): an English line in a Hebrew bubble sits
+     on the left. A line is a newline when the note is shown and a block while it is typed. */
+  .callout.per-line .t, .callout.per-line .t > div { unicode-bidi: plaintext; text-align: start; }
   .anchor { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px;
             border-radius: 50%; background: #7aa7ff; border: 2px solid #0d1014;
             cursor: grab; }
@@ -1414,6 +1418,8 @@
       el.style.fontSize = `${callout.textSize || model.textSize}px`;
       el.style.direction = callout.resolvedDir;
       el.style.textAlign = callout.resolvedDir === 'rtl' ? 'right' : 'left';
+      // An override still sets the whole bubble; the text tool's notes keep one direction.
+      el.classList.toggle('per-line', callout.kind !== 'text' && callout.dirMode !== 'ltr' && callout.dirMode !== 'rtl');
       el.classList.toggle('selected', model.selected === callout);
       el.querySelector('.n').textContent = callout.number == null ? '' : String(callout.number);
       const textEl = el.querySelector('.t');

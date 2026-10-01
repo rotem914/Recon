@@ -356,9 +356,11 @@ several bubbles before improving the heuristic.
 - Hebrew, English and mixed-direction text are supported in the first callout
   implementation. A bubble's direction is one of three explicit modes, automatic,
   left-to-right or right-to-left, and the resolved value is stored with it. Automatic
-  resolves from the bubble's first strong character and applies to the whole bubble, not per
-  paragraph. Alignment follows the resolved direction, and the anchor-side edge stays fixed
-  while the opposite edge grows.
+  resolves each line of the bubble from that line's own first strong character, so an English
+  line in a Hebrew bubble sits on the left (Rotem, 2026-10-01, from the whole bubble taking
+  its first line's direction); a line is one broken by Ctrl+Enter, and a long line that wraps
+  keeps one direction. An override sets the whole bubble. Alignment follows the resolved
+  direction, and the anchor-side edge stays fixed while the opposite edge grows.
 - **A note's text size is 20 image pixels by default, and it is the user's to change.** The
   size is stored per note and stepped along a fixed ladder from 10 to 80, and the size last
   used is what the next note gets. The bubble's padding, its number badge and its corner
@@ -916,6 +918,12 @@ The text is not drawn into a canvas. It is DOM, and the export is that same DOM.
   and applies it to the whole bubble; an override sets an explicit direction configuration
   instead. Alignment follows the resolved direction, and the export carries the same resolved
   value rather than re-detecting anything.
+  **Superseded in part on 2026-10-01, at Rotem's word:** automatic is per line after all. A
+  bubble left automatic takes `unicode-bidi: plaintext` with `text-align: start`, so each line
+  takes its own direction and aligns to it, on screen and in the export alike, which carries
+  those styles inline; the override is untouched and still sets the whole bubble, which is why
+  plaintext applies to automatic alone. The stored resolved value is still the bubble's first
+  strong character.
 - **Display zoom is a CSS transform on the container**, so layout is computed before the
   transform exists and zoom cannot re-wrap anything. That is R6's worst failure removed by
   construction rather than by discipline.
@@ -990,7 +998,7 @@ Explorer closely enough to feel predictable is checked in S1.4, not assumed here
 
 | Decision | Answer |
 |---|---|
-| Text direction | Detected from the first strong character, with a manual override (§3.5). |
+| Text direction | Detected from each line's first strong character, with a manual override for the whole bubble (§3.5). |
 | Undo | Specified as observable behavior, not a stack count, with the acceptance sequence in §3.6. |
 | Numbering | Stable numbers and gaps in every output. Renumbering rejected. Recorded in `project-os/Decisions.md`. |
 | Stage 1 navigation | A position indicator, plus shortcuts to the first and last (S1.4, S1.9). |

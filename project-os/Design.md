@@ -175,6 +175,7 @@ size of 20; the bubble's padding, corners and text box are proportions of the te
 | Line | 4 px thick, ending in an arrow at the point the note refers to: an open head of two strokes, never filled |
 | Enter | keeps the text and leaves the typing, as a click outside the bubble does |
 | Ctrl+Enter | breaks the line inside the text box |
+| Lines | each line takes the direction of its own language and aligns to it: an English line on the left, a Hebrew line on the right, in one bubble (Rotem, 2026-10-01, from the whole bubble following its first line) |
 
 Not stated yet, so provisional in the page until it is: the line's and the head's #7aa7ff,
 the head 16 px long and 7 px to each side (the arrow shape's numbers), the text's #f2f2f2, the
