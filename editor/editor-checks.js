@@ -3770,8 +3770,10 @@ export async function runChecks(editor, invoke) {
     trash = await inTrash();
     check('one Ctrl+Z brings all three back, the picture that was on screen on screen again', back && ![q1, q2, q4].some((id) => trash.includes(id)),
       `thumbnails ${JSON.stringify(thumbs())}, on screen ${model.image.document_id}, trash ${JSON.stringify(trash)}`);
+    editor.notice('', 0);
     redoKey();
-    check('one Ctrl+Shift+Z deletes all three again', await until(() => thumbs().length === 1) && same(thumbs(), [q3]), JSON.stringify(thumbs()));
+    // The deletion's own notice is its end: the strip can show one thumbnail a moment before, while a Ctrl+Z is still let go (review).
+    check('one Ctrl+Shift+Z deletes all three again', await until(() => thumbs().length === 1) && await until(() => hud.textContent.includes('3 deleted')) && same(thumbs(), [q3]), JSON.stringify(thumbs()));
     undoKey();
     await until(() => thumbs().length === 4 && model.image.document_id === q4);
 
@@ -4063,6 +4065,26 @@ export async function runChecks(editor, invoke) {
       `empty ${empty}, ${outcome}, trash ${JSON.stringify(trash)}, "${hud.textContent.split('\n').pop()}"`);
     undoKey();
     check('and Ctrl+Z brings it back to the timeline', await until(() => thumbs().includes(e1)) && !(await inTrash()).includes(e1), JSON.stringify(thumbs()));
+
+    // 4. A Ctrl+Z pressed while a delete is still on its way is let go: it never takes back a note of the picture being
+    // deleted, whose redo the delete would drop; pressed once the picture has gone, it brings it back with that note (review).
+    const g = await invoke('editor_capture_probe', { width: 330, height: 200 });
+    await editor.loadImage(g);
+    const gNote = editor.createCallout({ x: 30, y: 30 });
+    gNote.text = 'kept through a fast Ctrl+Z';
+    editor.layoutScene();
+    editor.record();
+    const deleting = editor.deleteDocument(g.document_id);
+    undoKey();
+    await deleting;
+    trash = await inTrash();
+    const goneWithIt = trash.includes(g.document_id);
+    undoKey();
+    const gBack = await until(() => model.image.document_id === g.document_id);
+    await sleep(300);
+    check('a Ctrl+Z pressed while a delete is on its way is let go: the picture goes, and the next Ctrl+Z brings it back with its note',
+      goneWithIt && gBack && model.callouts.length === 1 && model.callouts[0].text === 'kept through a fast Ctrl+Z',
+      `in the trash ${goneWithIt}, back ${gBack}, ${model.callouts.length} notes, "${model.callouts[0] ? model.callouts[0].text : ''}"`);
   }
 
   // ---------------------------------------------------------------- 41. the callout in two clicks

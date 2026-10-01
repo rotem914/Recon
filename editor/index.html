@@ -1230,18 +1230,18 @@
     return true;
   };
 
-  // A Ctrl+Z or Ctrl+Shift+Z pressed while pictures come back, or are deleted again, is let go
+  // A Ctrl+Z or Ctrl+Shift+Z pressed while pictures are deleted, come back, or are deleted again, is let go
   // (review): judged at once it would meet the picture still on screen and could take back that
   // one's note, and held for later it would meet whatever the person did meanwhile, a note being
   // typed among them. The pictures landing are the sign to press again. Nothing on its way, a
   // press runs at once, as it always did.
-  let undoBusy = false;
+  let undoBusy = 0; // deletions, and their undos and redos, still on their way
   const unlessBusy = (fn) => {
     if (undoBusy) { console.log('Ctrl+Z let go: pictures are still on their way'); return; }
     const out = fn();
     if (out && typeof out.then === 'function') {
-      undoBusy = true;
-      out.catch((err) => console.error('undo', err)).then(() => { undoBusy = false; });
+      undoBusy += 1;
+      out.catch((err) => console.error('undo', err)).then(() => { undoBusy -= 1; });
     }
   };
 
@@ -2532,7 +2532,17 @@
   // Several at once (Rotem, 2026-09-30): the thumbnails Ctrl+clicked, deleted in one press and
   // brought back by one Ctrl+Z, all under one number. The one on screen goes last, so the
   // neighbour the host shows in its place is one that stays.
+  // While a delete is on its way a Ctrl+Z is let go too (unlessBusy, review): judged at once it
+  // would take back a note of the picture being deleted, whose redo the delete then drops.
   const deleteDocuments = async (ids, again = false) => {
+    undoBusy += 1;
+    try {
+      return await deleteNow(ids, again);
+    } finally {
+      undoBusy -= 1;
+    }
+  };
+  const deleteNow = async (ids, again) => {
     const current = model.image.document_id;
     const order = [...ids.filter((id) => id !== current), ...ids.filter((id) => id === current)];
     const linked = new Set(cells.filter((c) => c.kind === 'doc' && c.doc.linked).map((c) => c.doc.id));

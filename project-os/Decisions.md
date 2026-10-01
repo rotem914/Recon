@@ -139,6 +139,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-30 · A tab's order is its own list's, and a drag moves one picture to the place under the hand.
 - 2026-09-30 · Everything with the blue line is one batch, the picture on screen included; a batch deleted is one deletion of undo, its pictures under one number.
 - 2026-09-30 · A Ctrl+Z or Ctrl+Shift+Z pressed while pictures come back, or are deleted again, is let go; a thing done again takes a new number, and undo picks the newest by number.
+- 2026-10-01 · A Ctrl+Z pressed while a delete is on its way is let go too; the delete holds the same count the undo and redo of a deletion hold.
 
 ---
 
@@ -1033,3 +1034,26 @@ Ctrl+Z still walks back step by step. The delete itself, by the menu or Ctrl+Del
 yet covered: a Ctrl+Z pressed before the host answers it is judged at once, a fault older than
 this and put to Rotem. Picking by number costs a pass over the list per Ctrl+Z, which holds a
 few hundred things at most. Revisit if the list ever holds thousands.
+
+## 2026-10-01 · A Ctrl+Z pressed while a delete is on its way is let go too
+
+### Context
+The entry of 2026-09-30 left one case open: a Ctrl+Z pressed while a delete by the thumbnail's
+menu or Ctrl+Delete is still on its way was judged at once. It took back a note of the picture
+being deleted, and the delete, landing, dropped that note's redo, so the note was lost. A
+review found it, older than the let-go rule, and Rotem said fix.
+
+### Options
+1. The delete raises the same count the undo and redo of a deletion raise, so the press is
+   let go, as theirs are.
+2. The press waits for the delete and is judged after it, which the review of 2026-09-30
+   found unsafe for a press held back.
+
+### Decision
+Option 1, the assistant's call under Rotem's fix: one rule for every press made while pictures
+are on their way. `undoBusy` became a count, raised by `deleteDocuments` for its whole run.
+
+### Consequences
+A Ctrl+Z pressed in the moment a delete takes does nothing, and the next one brings the picture
+back with its notes. The 2026-09-30 entry's sentence that the delete is not yet covered no
+longer holds; the rest of it stands.
