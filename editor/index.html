@@ -138,6 +138,9 @@
   .tab.selected { background: #21222C; color: #f2f2f2; }
   .tab.dragging { z-index: 1; transition: none; }
   .tab .name[contenteditable] { outline: none; min-width: 1ch; }
+  /* A name is cut at 240 px with an ellipsis, the whole name as the tab's tooltip, so a long one
+     cannot push Main and the plus out of the bar (Visual QA 2026-10-06, T3); provisional. */
+  .tab .name { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
   /* The tab's menu (Rotem, 2026-09-18, in place of the × on the tab): a right press on a tab
      after Main opens it at the pointer, above the bar, with Delete in it. Outside the bar,
      which clips. Provisional look until Rotem states one: the tabs' fill, text and corners. */
@@ -2157,6 +2160,15 @@
     if (renaming !== name) return;
     renaming = null;
     name.contentEditable = 'false';
+    tabbar.scrollLeft = 0; // the caret at the end of a long name scrolled the bar, Main out of it (Visual QA 2026-10-06, T3)
+    // The box that was just edited keeps the layout of an editable one, which draws no ellipsis
+    // and shows the tail of a long name; hidden and shown again it is laid out afresh, as a
+    // name set from the file is (seen on WebView2 154, 2026-10-06).
+    name.scrollLeft = 0; // the caret at the end of a long name scrolled the box itself too, and the new layout keeps the offset
+    name.style.display = 'none';
+    void name.offsetWidth;
+    name.style.display = '';
+    name.scrollLeft = 0;
     const text = name.textContent.replace(/\s+/g, ' ').trim();
     if (text && text !== tab.name) renameTab(tab.id, text);
     name.textContent = tab.name;
@@ -2269,6 +2281,7 @@
       el.setAttribute('aria-selected', tab.id === tabs.selected ? 'true' : 'false');
       const nameEl = el.querySelector('.name');
       if (renaming !== nameEl && nameEl.textContent !== tab.name) nameEl.textContent = tab.name;
+      if (el.title !== tab.name) el.title = tab.name; // the whole name, where a long one is cut (Visual QA 2026-10-06, T3)
       if (previous.nextSibling !== el) tabbar.insertBefore(el, previous.nextSibling);
       previous = el;
     }
@@ -3108,11 +3121,14 @@
       commitEditing();
       return;
     }
+    // A selection is cleared on the way and the click goes on to the tool in hand. With a
+    // return here the first click after a finished note, which stays selected, only cleared
+    // it: a note started at the second click, a ruler at the second drag (Visual QA
+    // 2026-10-06, T2).
     if (model.selected || model.selectedShape) {
       model.selected = null;
       model.selectedShape = null;
       layoutScene();
-      return;
     }
     // The crop tool makes nothing by a click on the picture: only its handles cut, and a
     // drag on the picture pans, as with no tool in hand.

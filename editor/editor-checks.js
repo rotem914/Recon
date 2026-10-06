@@ -3615,6 +3615,31 @@ export async function runChecks(editor, invoke) {
     redoKey();
     await sleep(100);
     check('Ctrl+Shift+Z renames it again', tabNames()[1] === 'Acme remarks', `"${tabNames()[1]}"`);
+    // A long name is cut with an ellipsis and never scrolls Main or the plus out of the bar
+    // (Visual QA 2026-10-06, T3).
+    {
+      const longName = 'LongNameWithoutAnySpaces'.repeat(6);
+      tabEls()[1].click(); // a name is edited on the selected tab only, and Main was selected above
+      await sleep(50);
+      const longEl = tabEls()[1].querySelector('.name');
+      longEl.click();
+      longEl.textContent = longName;
+      longEl.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Enter', code: 'Enter' }));
+      await sleep(100);
+      const bar = document.getElementById('tabbar');
+      const barBox = bar.getBoundingClientRect();
+      const plusBox = plus.getBoundingClientRect();
+      const nameBox = tabEls()[1].querySelector('.name').getBoundingClientRect();
+      const nameScroll = tabEls()[1].querySelector('.name').scrollLeft;
+      check('a 144-character name is cut at 240 px, the bar unscrolled, Main and the plus still inside it, the whole name the tooltip',
+        editor.tabsOf().list[0].name === longName && nameBox.width <= 240 && bar.scrollLeft === 0 && nameScroll === 0 && plusBox.right <= barBox.right + 0.5 && tabEls()[0].getBoundingClientRect().left >= barBox.left - 0.5 && tabEls()[1].title === longName,
+        `name ${Math.round(nameBox.width)} px, the bar's scrollLeft ${bar.scrollLeft}, the name's ${nameScroll}, plus right ${Math.round(plusBox.right)} against the bar's ${Math.round(barBox.right)}, Main left ${Math.round(tabEls()[0].getBoundingClientRect().left)}, title ${tabEls()[1].title.length} chars`);
+      undoKey();
+      await sleep(100);
+      check('Ctrl+Z gives the short name back', tabNames()[1] === 'Acme remarks', `"${tabNames()[1]}"`);
+      tabEls()[0].click(); // Main selected again, as the checks below found it
+      await sleep(50);
+    }
 
     // Two more presses, then a drag of the last one to right after Main, by the pointer.
     plus.click();
@@ -4168,6 +4193,18 @@ export async function runChecks(editor, invoke) {
     check('Ctrl+Z takes the note back', model.callouts.length === 0 && model.nextNumber === 1);
     press({ key: 'Z', code: 'KeyZ', ctrlKey: true, shiftKey: true });
     check('Ctrl+Shift+Z brings it back where it was locked', model.callouts.length === 1 && model.callouts[0].box.x === start.x + 160 && model.callouts[0].text === 'placed in two clicks');
+
+    // A finished note stays selected. The first click with the tool in hand clears the
+    // selection AND starts the next note; it only cleared before (Visual QA 2026-10-06, T2).
+    model.selected = model.callouts[0];
+    editor.layoutScene();
+    editor.setTool('callout');
+    click(120, 300);
+    check('the first click after a finished note starts the next one, the selection cleared on the way',
+      model.callouts.length === 2 && model.placing === model.callouts[1] && model.selected === null,
+      `${model.callouts.length} notes, placing ${!!model.placing}, selected ${model.selected ? model.selected.id : 'none'}`);
+    press({ key: 'Escape', code: 'Escape' });
+    check('Escape between the clicks drops it, the number given back', model.callouts.length === 1 && model.placing === null && model.nextNumber === 2, `${model.callouts.length} notes, next ${model.nextNumber}`);
 
     // Nothing typed after the second click (review 4, T5): the bubble goes and its number
     // comes back, as it does between the clicks, and no step is added.

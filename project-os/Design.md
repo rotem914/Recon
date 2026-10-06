@@ -122,7 +122,9 @@ The rest of the tabs' look is not stated yet. Provisional in the page until it i
 the top bar title's #cfd4da, 8 px between, the icon button hover colour as the selected tab's
 fill and as the hover; the dropdown in the same fill on the tabs' 10 px corners, 14 px text,
 Delete red under the pointer, opening above the bar at the pointer; the
-bar stops at the middle of the window less 80 px, short of the size text.
+bar stops at the middle of the window less 80 px, short of the size text; a name is cut at 240 px with an
+ellipsis, the whole name as the tab's tooltip, so a long one cannot push Main and the plus out of
+the bar (Visual QA 2026-10-06, T3).
 
 ### Done mark
 

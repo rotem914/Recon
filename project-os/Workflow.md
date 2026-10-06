@@ -158,6 +158,14 @@ Drive the running app with a browser-automation tool and check:
 - persisted state survives a reload,
 - network responses are what the UI expects.
 
+**The checks build is rebuilt after the four checks, before any probe.** `cargo build` with no
+feature, the third of the four checks, writes the PRODUCT build to `host/target/debug/`, the
+same path the checks build has. A probe started there afterwards runs Rotem's own Recon on his
+own library. So: after the four checks, `cargo build --features stage0-checks` again before a
+demo probe; and every probe reads which build it started, the demo's "stays open" line, before
+its first call, and stops when the line is not there. Written on 2026-10-06, the second time
+the product build was started by a probe (`project-os/Mistakes.md`, Promoted).
+
 ### Verification gate — mandatory before "done"
 
 Before calling any visible change done, complete one of these two paths and say which one in the delivery summary.

@@ -181,12 +181,18 @@ it**, and a pointer to the record. Group the rows under the dimensions above.
 - 🟠 **A note is readable at the zoom the user is at.** Look at the fit view of a wide
   capture; if the text is unreadable, that is the finding, whatever the checks say.
   (Source: `project-os/Plan.md`, F46.)
+- 🟠 **A long tab name leaves Main and the plus in reach.** Rename a tab to 150 characters with no
+  space, Enter: the name is cut with an ellipsis, the bar is not scrolled, the plus still adds a tab.
+  (Source: `notes/2026-10-06-visual-qa.md`, T3.)
 
 ### States & interaction
 
 - 🔴 **The first frame is current.** After the hidden editor is shown, the screen itself,
   not the page, holds what the page painted; sample it 40 ms and 300 ms after the show.
   (Source: `host/src/editor.rs`, `editor_show_and_look`.)
+- 🟠 **The first click after a finished note starts the next one.** Finish a note with Enter, pick
+  Callout, click once: the bubble appears and follows the pointer. With a note selected, pick Ruler:
+  one drag draws. The selection used to swallow that click. (Source: `notes/2026-10-06-visual-qa.md`, T2.)
 - 🟠 **A check that cannot fail is not a check.** Before trusting a green run, ask what
   would have turned each line red; three S0.4 checks were green while measuring the
   wrong thing. (Source: `project-os/QA.md` §12.)
@@ -244,6 +250,8 @@ re-reports the same non-bug, and the owner pays for it every time.
 
 One row each: what not to report · the reason in the owner's own words · where it
 was raised.
+
+- The notices, "copied", "deleted", NOT COPIED, NOT SAVED, drawn under the timeline and never seen while the library holds a picture · Rotem: "drop", 2026-10-06 · `notes/2026-10-06-visual-qa.md`, T1.
 
 ## Calibration loop
 

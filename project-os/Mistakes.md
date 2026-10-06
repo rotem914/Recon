@@ -74,12 +74,12 @@ Mistakes in HOW you worked:
 | 2026-09-18 | Ran the editor's whole automated run seven times for the ruler's magnifier: once was the change's proof, the other six chased a run that stopped early over a leftover tab file of the checks' own, nothing of the change's, until Rotem stopped it | The whole run once; a stop that is not the change's is named in one line and left, never chased with more whole runs | `project-os/Workflow.md` step 8 | 1 |
 | 2026-09-19 | Committed History rows at 00:17 without reading `git diff --cached` first, and swept in another session's staged rows and rotation | `CLAUDE.md` rule 22: read the index before every commit and stage nothing I did not write | `CLAUDE.md` rule 22 | 1 |
 | 2026-09-20 | Took Rotem's answers to three of the recording plan's calls as a go to build its first step, and began reading the code for it; he had asked for a plan only | Answers to a plan's open calls are written into the plan; building starts at his word, never inferred from an answer | `project-os/Workflow.md` step 16 | 1 |
-| 2026-09-30 | Ran a probe meant for the checks build's demo window twice on the product build, which the plain `cargo build` of the four checks had put in its place; it opened Rotem's own library for a minute each, and stopped only because its first call exists in the checks build alone | The checks build rebuilt after the four checks, and a probe that reads which build it started before its first call | `project-os/Workflow.md` step 9 | 1 |
 
 ## Promoted
 
 | Date | The slip | Where its rule now lives |
 |---|---|---|
+| 2026-09-30 | Ran a probe meant for the checks build's demo window on the product build twice, the plain `cargo build` of the four checks having put it in that path: first for a minute into Rotem's own library (2026-09-30), then on 2026-10-06, where the probe's own guard stopped it before a call | `project-os/Workflow.md` step 9, the checks build rebuilt after the four checks |
 | 2026-09-10 | Designed a fidelity check that could not detect the failure it targeted, twice in two passes | `project-os/QA.md` §12 |
 | 2026-09-10 | Split the plan into two documents twice: first a review beside the plan, then a product plan beside the build plan | `CLAUDE.md` rule 13, one plan file |
 | 2026-09-10 | Argued from claims that were not established, twice: a platform behavior stated as documented, then what competing technologies cannot do | `project-os/QA.md` §13 |
