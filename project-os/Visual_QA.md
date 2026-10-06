@@ -37,6 +37,20 @@ screenshot only tells you it looks grey.
 They fight over focus and windows, and the pass turns into debugging the harness
 instead of the product.
 
+**Here, the way that worked on 2026-10-06.** The checks build's demo window, on the demo's own
+store beside the executable and never Rotem's library: `host/target/debug/recon-host.exe
+--editor-demo` with `RECON_EXTENSIONS` naming an empty folder, so it stays open, and
+`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9342`, then real mouse and
+key events through that port. Three traps it sprang: the plain `cargo build` of the four
+checks leaves a PRODUCT build at that path, so rebuild with `--features stage0-checks` and
+refuse to go on unless the log says "stays open"; with the display locked or asleep the
+demo's start-up screenshot fails and ends the run, so attach before the first document and
+answer `editor_wants_demo` and `editor_wants_checks` with "no" from a script on the page's
+Tauri bridge (`.tmp/visual-qa/probe.mjs` is the harness); and never press anything that
+writes the clipboard, Ctrl+C, Copy and Return, the colour picker, since it is Rotem's.
+Click by an element's VISIBLE rect: a tab clipped by its bar has its centre off screen, and
+a click there lands on the picture and reads as a defect that is not there.
+
 **Search for a tool before concluding you have none.** Tooling is often loaded on
 demand and invisible until you look for it, and a wrongly declared absence cancels
 the whole pass without anyone noticing. `project-os/Workflow.md` holds the gate
