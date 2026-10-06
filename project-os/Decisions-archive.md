@@ -2030,3 +2030,24 @@ machine's displays are, and that record is the trigger for revisiting this.
 Revisit if the test machine turns out to be wide gamut and the shift is visible.
 
 ---
+
+## 2026-09-18 · The Open Recon shortcut minimizes only the window in front
+
+### Context
+Rotem asked that a second press of the Open Recon shortcut minimize the window: press, it
+opens; press again, it minimizes. A press can also arrive while Recon's window is open
+behind another application, where "again" is not what the person means.
+
+### Options
+1. Minimize whenever the window is open, wherever it sits.
+2. Minimize only when Recon is the window in front; in every other state bring it forward.
+
+### Decision
+Option 2, the assistant's, Rotem's to veto. With option 1 a press meant to reach Recon from
+another application would make it vanish instead of arrive, and a second press would be
+needed every time. In the tray, minimized, or behind another window, the press shows it.
+
+### Consequences
+It minimizes to the taskbar, as the minimize button does, never hides to the tray: Rotem's
+word was minimize. The rule is one pure function, `settings::open_press`, under a unit
+test. The tray icon's click and a capture still only ever show the window.

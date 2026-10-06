@@ -14,10 +14,10 @@ The owner-curated open-items list. One place to see what is still open.
 - Plain words, no jargon. This list is read by the owner, not by you.
 - **Scan the Open table at task pickup.** If the current task touches an open
   item, say so in chat before you start.
-- When an item is done, **move its row to Done with the closing date**. Never
+- When an item is done, **move its row to the bottom of Done with the closing date**. Never
   delete a row — the record of what was decided is part of the value.
 - Full detail stays in the source it came from. This file stays one line per item.
-- **Done rotates, Open never does.** `project-os/rotate.ps1` keeps the
+- **Done rotates, Open never does.** `project-os/Archive-old-rows.mjs` (or its `.ps1` twin) keeps the
   newest 40 Done rows live at `Go commit` and moves older ones verbatim into
   `Backlog-archive.md`. Open is the part read at every pickup and is never
   touched. Nothing is deleted; the row just moves out of the live read.
@@ -34,6 +34,9 @@ The owner-curated open-items list. One place to see what is still open.
 | 2026-09-14 | Everything to do with Rogers: Stage 4, Send to Rogers, the target shown in the editor, the submission record, retry under one identifier, Ctrl+Shift+Enter, and the look at Rogers that comes first (plan §3.9 and part 10) | Rotem's Backlog on 2026-09-14 |
 
 ## Done
+
+Newest at the bottom: add a row under the table's last row.
+`project-os/Archive-old-rows.mjs` (or its `.ps1` twin) moves rows from the top.
 
 | Added | Closed | Item | Source |
 |---|---|---|---|

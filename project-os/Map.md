@@ -106,13 +106,20 @@ Recon/
     ├── BugAtlas.md                 # recurring bug classes
     ├── Mistakes.md                 # the assistant's corrected slips
     ├── Hooks.md                    # what is enforced mechanically
-    ├── hooks-settings.json         # the hooks the installer merges in
-    ├── install-hooks.mjs           # installs those hooks
-    ├── rotate.ps1                  # archives the growing docs at Go commit
-    ├── backup.ps1                  # the Go backup snapshot
+    ├── Hooks-settings.json         # the hooks the installer merges in
+    ├── Install-project-hooks.mjs   # installs those hooks
+    ├── Check-command.json          # the quick check the plugin runs when a turn ends
+    ├── Archive-old-rows.mjs        # archives the growing docs at Go commit; Archive-old-rows.ps1 is its twin
+    ├── Backup-whole-project.mjs    # the Go backup snapshot; Backup-whole-project.ps1 is its twin
+    ├── Audit-project-records.mjs   # Go audit: gaps in the records, counted, never fixed
+    ├── Compare-kit-files.mjs       # Go update kit: this project against a newer kit
+    ├── Find-heavy-files.mjs        # the heavy things listed at Go commit
+    ├── Rule-reasons.md             # why each rule exists, for the owner
+    ├── Kit-version.json            # the kit commit this project is level with
     ├── guards/
-    │   ├── path-guard.mjs          # refuses any write outside the project
-    │   └── destructive-guard.mjs   # refuses one-way commands
+    │   ├── Path-guard.mjs          # refuses any write outside the project
+    │   ├── Destructive-guard.mjs   # refuses one-way commands
+    │   └── Check-on-stop.mjs       # runs the quick check when a turn that changed code ends
     └── mcp/                        # one folder per outside server
         ├── Figma/Figma_MCP_Rules.md
         └── Google_analytics/Google_Analytics_MCP_Rules.md
@@ -127,7 +134,7 @@ Where state lives and who is allowed to write it.
 | What | Where | Format | Written by |
 |---|---|---|---|
 | The process docs | `CLAUDE.md`, `project-os/*.md` | Markdown | the assistant, under the rules each file states |
-| The hooks setting | `.claude/settings.local.json` | JSON | `project-os/install-hooks.mjs` only. Machine-local, not committed. |
+| The hooks setting | `.claude/settings.local.json` | JSON | `project-os/Install-project-hooks.mjs` only. Machine-local, not committed. |
 | The two shortcuts | `%APPDATA%\Recon\recon.json`, the keys `hotkey` and `open_hotkey`, and `capture_pointer`, Settings' switch for the mouse pointer | JSON | the host only, when Settings changes a shortcut: every other key kept, flushed and renamed into place. Read at startup, and the log says where the value came from. |
 | Start with Windows | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, the value `Recon` | the command `"<exe>" --startup` | the host only, at the tray's "Start with Windows" tick; removed when it is unticked |
 | Recon's trash | `%LOCALAPPDATA%\Recon\trash\<number>\` | a deleted document's folder, whole, plus `trashed` with the time; removed for good at a startup thirty days on | the host only, at a delete and at the startup sweep |
@@ -143,7 +150,7 @@ anything.
 | Area | Files | Notes |
 |---|---|---|
 | Process and rules | `CLAUDE.md`, `project-os/*.md` | One rule has one home. Never write the same rule in two files. |
-| Enforcement | `project-os/guards/*`, `project-os/hooks-settings.json`, `project-os/install-hooks.mjs` | Hooks are read at session start. Re-run the installer after editing the settings file. |
+| Enforcement | `project-os/guards/*`, `project-os/Hooks-settings.json`, `project-os/Install-project-hooks.mjs` | Hooks are read at session start. Re-run the installer after editing the settings file. |
 | Outside servers | `project-os/mcp/*` | One folder per server, read before that server's first call. |
 | The plan | `project-os/Plan.md` | One file, and there is never a second: the product, the decisions, the architecture and the stages. Free-standing documents go in `notes/`, created when one is needed, never at the root. |
 | A feature's plan of its own | `plans/*` | Only when Rotem asks for one as a file. `project-os/Plan.md` names it from the stage it belongs to, and the part it replaces there says it is superseded. Today: screen recording, Stage 5. |

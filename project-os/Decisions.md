@@ -14,18 +14,16 @@ chosen, so nobody re-argues it in six months and nobody quietly undoes it.
 - **A changed decision is superseded, not edited.** Write a new entry naming the
   one it replaces, and italicize the old line in the Index so nobody follows a
   rule that has moved.
-- **A fully replaced entry may move to an archive.** When superseded entries pile
-  up, create `Decisions-archive.md` beside this file — the first time you need
-  it, not before — and move the entry verbatim: never rewritten, never
-  summarized. Its Index line stays here, marked superseded, so the trail
-  survives.
-- **This file also rotates, the way History does.** `project-os/rotate.ps1`
-  keeps the newest 25 entries live at `Go commit` and moves older ones into the
-  same `Decisions-archive.md`, under its own `## Archived decisions` heading.
-  Those entries still BIND the project; they only aged out of the live read, so
-  treat one exactly as if it were still here. The Index keeps its line for every
-  one of them, so nothing becomes invisible. Two kinds of entry therefore share
-  that archive — superseded (dead) and rotated (alive) — and its header says so.
+- **This file rotates, the way History does.** `project-os/Archive-old-rows.mjs` (or its `.ps1` twin)
+  keeps the newest 25 entries live at `Go commit` and moves older ones into
+  `Decisions-archive.md`, under its own `## Archived decisions` heading. Never
+  move an entry there by hand: the script creates the archive the first time
+  it is needed. Those entries still BIND the project; they only aged out of the
+  live read, so treat one exactly as if it were still here. The Index keeps its
+  line for every one of them, so nothing becomes invisible. An archived entry
+  still binds; if its Index line is in italics, only the part that line names
+  as replaced no longer holds. The `## Archived decisions` heading in the
+  archive says so.
 - Every new entry also gets a line in the Index, in the same change. The Index is
   the part people read; an entry missing from it is an entry nobody opens.
 - Use the required format below. All four parts, every time — an entry without
@@ -141,29 +139,9 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-30 · A Ctrl+Z or Ctrl+Shift+Z pressed while pictures come back, or are deleted again, is let go; a thing done again takes a new number, and undo picks the newest by number.
 - 2026-10-01 · A Ctrl+Z pressed while a delete is on its way is let go too; the delete holds the same count the undo and redo of a deletion hold.
 - 2026-10-01 · Each line of a bubble left automatic takes its own direction, by `unicode-bidi: plaintext`; an override still sets the whole bubble. (Supersedes §3.5's "applies to the whole bubble" for automatic.)
+- 2026-10-06 · The commit waits for `Go commit`, the kit's new rule 22 adopted; the release build follows that commit.
 
 ---
-
-## 2026-09-18 · The Open Recon shortcut minimizes only the window in front
-
-### Context
-Rotem asked that a second press of the Open Recon shortcut minimize the window: press, it
-opens; press again, it minimizes. A press can also arrive while Recon's window is open
-behind another application, where "again" is not what the person means.
-
-### Options
-1. Minimize whenever the window is open, wherever it sits.
-2. Minimize only when Recon is the window in front; in every other state bring it forward.
-
-### Decision
-Option 2, the assistant's, Rotem's to veto. With option 1 a press meant to reach Recon from
-another application would make it vanish instead of arrive, and a second press would be
-needed every time. In the tray, minimized, or behind another window, the press shows it.
-
-### Consequences
-It minimizes to the taskbar, as the minimize button does, never hides to the tray: Rotem's
-word was minimize. The rule is one pure function, `settings::open_press`, under a unit
-test. The tray icon's click and a capture still only ever show the window.
 
 ## 2026-09-18 · A file opened by name sits in the timeline as a pointer, in a list of its own, never in the store
 
@@ -900,3 +878,29 @@ Hebrew bubble it sits on the left, and a new empty line's caret starts there unt
 letter is typed; option 2, or a style for an empty block, would change that, and both wait for
 Rotem. The stored resolved value is still the bubble's first strong character. A single-line
 bubble lays out exactly as before: the six S0.6 references are identical.
+
+## 2026-10-06 · The commit waits for Go commit, the kit's new rule 22 adopted
+
+### Context
+The ProjectOS kit update of 2026-10-06 brought a rewritten rule 22: the assistant never
+commits on its own, the report's Next line says the work is uncommitted, and `Go commit`
+commits everything since the last one. This project had run the kit's older rule since
+2026-09-10, where the commit was the assistant's, unasked, after every task, and Rotem had
+corrected a hesitation about it then (`project-os/Mistakes.md`, now Retired). The two could
+not both stand.
+
+### Options
+1. Keep the per-task commit as this project's own wording, against the kit.
+2. Adopt the kit's flow: tasks leave uncommitted work, `Go commit` lands it.
+
+### Decision
+Option 2, Rotem's, on 2026-10-06, in two words. The merge had already brought the kit's
+text in, since the old rule was the kit's own and not this project's wording.
+
+### Consequences
+A task ends with its History row and a Next line saying the work is uncommitted; the
+History row's Commit before carries `(uncommitted)`. The release build of
+`project-os/Workflow.md` step 16, which is made from a commit alone, now follows the commit
+`Go commit` makes, so Rotem's Recon gets a new build at `Go commit` rather than after each
+task; he can call for `Go commit` whenever a build is wanted. Worth revisiting if a task's
+release is wanted sooner than the next commit.

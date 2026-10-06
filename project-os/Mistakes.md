@@ -39,7 +39,7 @@ Mistakes in HOW you worked:
   work continues. A mistake recorded later is a mistake recorded never.
 - **Read this file at task pickup.** It stays short on purpose, so there is no
   excuse to skip it.
-- **The two tails rotate, Open never does.** `project-os/rotate.ps1` keeps
+- **The two tails rotate, Open never does.** `project-os/Archive-old-rows.mjs` (or its `.ps1` twin) keeps
   the newest 30 rows in Promoted and in Retired at `Go commit`, moving older
   ones verbatim into `Mistakes-archive.md`. That is a ceiling, not permission
   to let this file grow: the rule above still governs.
@@ -56,7 +56,11 @@ Mistakes in HOW you worked:
 | Using an outside tool | that server's file under `project-os/mcp/` |
 
 - **Never let it grow into a diary.** It has exactly two ways out: promoted to
-  a rule, or retired unrepeated. Nothing accumulates.
+  a rule, or retired on the owner's word.
+- **An Open row stays until the owner removes it.** Nothing retires on a
+  timer: a row leaves the Open table only when the owner says so (it moves to
+  Retired, with his reason in Why it left), or when it repeats and is promoted,
+  naming the file that now holds the rule.
 - **It is not a confession log and carries no apology.** One line of fact,
   because the next session needs the fact and not the feeling.
 
@@ -64,7 +68,6 @@ Mistakes in HOW you worked:
 
 | Date | What I did | What was wanted | Home if it repeats | Times |
 |---|---|---|---|---|
-| 2026-09-10 | Made the commit conditional on your answer, and called the commit something waiting on you | The commit itself, unasked: rule 22 gives me the commit and gives you the push | `CLAUDE.md` working rules | 1 |
 | 2026-09-10 | Justified the technology choice by the owner having used that stack on another project | The right technologies for this task and for years of maintenance, argued on merits | `CLAUDE.md` rule 21 | 1 |
 | 2026-09-14 | Ran the four checks and the commit in one chain that did not stop on a red check, so S2.6 went in with clippy failing | A red check stops the commit (`CLAUDE.md`, Go commit step 4): the commit gated on every check, never chained after them | `project-os/Workflow.md` step 8 | 1 |
 | 2026-09-16 | Wrote status lines between tool calls through the timeline tasks, and sent reports past the three-line, sixteen-word ceiling, some with no section headings | One line at pickup, then the report, in the layout and length `project-os/Conversations.md` sets | `project-os/Conversations.md` | 1 |
@@ -76,6 +79,9 @@ Mistakes in HOW you worked:
 | 2026-09-20 | Took Rotem's answers to three of the recording plan's calls as a go to build its first step, and began reading the code for it; he had asked for a plan only | Answers to a plan's open calls are written into the plan; building starts at his word, never inferred from an answer | `project-os/Workflow.md` step 16 | 1 |
 
 ## Promoted
+
+Newest at the bottom: add a row under the table's last row.
+`project-os/Archive-old-rows.mjs` (or its `.ps1` twin) moves rows from the top.
 
 | Date | The slip | Where its rule now lives |
 |---|---|---|
@@ -90,5 +96,9 @@ Mistakes in HOW you worked:
 
 ## Retired
 
+Newest at the bottom: add a row under the table's last row.
+`project-os/Archive-old-rows.mjs` (or its `.ps1` twin) moves rows from the top.
+
 | Date | The slip | Why it left |
 |---|---|---|
+| 2026-09-10 | Made the commit conditional on Rotem's answer, where rule 22 then gave the assistant the commit unasked | Rotem adopted the kit's new rule 22 on 2026-10-06: the commit waits for his `Go commit`, so the slip is the rule now |

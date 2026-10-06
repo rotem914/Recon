@@ -1,12 +1,18 @@
-# rotate.ps1
+# Archive-old-rows.ps1
+# Its Node twin is Archive-old-rows.mjs, and the two must always change together.
 # Why this exists: every ProjectOS file that accumulates forever is read at task
 # pickup, so each one needs a ceiling. This script gives all of them the same
 # mechanism: the live file keeps the newest material, everything older MOVES
 # verbatim into a sibling *-archive.md that is not read by default.
 #
 # MOVEMENT, NOT REWRITE. Rows and entries are relocated byte for byte. Nothing is
-# compressed, edited, renumbered or deleted, and re-running is idempotent (every
-# archive append dedups). That is what keeps this script inside CLAUDE.md rule 4.
+# compressed, edited, renumbered or deleted, and re-running is idempotent (an
+# archive append skips only what the archive already held BEFORE the run, so two
+# identical rows moved in one run both land). That is what keeps this script
+# inside CLAUDE.md rule 4.
+#
+# ORDER: every table and the Decisions list are read oldest first, newest at the
+# bottom. The rows and entries at the TOP are the ones that move.
 #
 # ONE SCRIPT, THREE ENGINES, because the files grow in three shapes:
 #   history   History.md: a deep-row table (newest rows protected by a count
@@ -19,8 +25,8 @@
 # "## Open" table. The Scan log is trimmed by count but never edited.
 #
 # Preview (writes nothing):
-#   powershell -NoProfile -ExecutionPolicy Bypass -File project-os/rotate.ps1 -DryRun
-#   pwsh -NoProfile -File project-os/rotate.ps1 -DryRun
+#   powershell -NoProfile -ExecutionPolicy Bypass -File project-os/Archive-old-rows.ps1 -DryRun
+#   pwsh -NoProfile -File project-os/Archive-old-rows.ps1 -DryRun
 # Apply for real: the same lines without -DryRun. It runs at `Go commit`.
 
 [CmdletBinding()]
@@ -28,13 +34,11 @@ param(
     [switch]$DryRun,
 
     # --- History engine ---------------------------------------------------
-    # Size target per live History file (soft: the row floors override it).
-    [int]$TargetKB        = 80,
-    [int]$MaxMonths       = 3,    # deep rows older than this are rotation candidates
-    [int]$MinKeepRows     = 20,   # never keep fewer than this many newest deep rows
-    [int]$MaxKeepRows     = 20,   # HARD cap: never keep more than this (the jam-killer)
-    [int]$MinKeepDays     = 0,    # calendar courtesy; 0 = pure count (the default)
-    [int]$RowCharBudget   = 400,  # warn (do not act) on live rows longer than this
+    # The newest deep rows stay live; every older one moves. One count decides
+    # it: the age, day and size settings and the separate minimum never changed
+    # what moved, so they were removed (2026-10-01).
+    [int]$MaxKeepRows     = 20,   # newest deep rows kept live; every older one moves
+    [int]$RowCharBudget   = 900,  # warn (do not act) on live rows longer than this
     [int]$MaxKeepScanRows = 80,   # newest Scan-log rows kept live (0 = never rotate it)
 
     # --- Section and table engines ---------------------------------------
@@ -53,16 +57,6 @@ $utf8 = [System.Text.UTF8Encoding]::new($false)   # UTF-8, no BOM
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path.TrimEnd([char]0x5C, [char]0x2F)
 $pos  = Join-Path $root 'project-os'
 
-# Project config: dot-source projectos.config.ps1 if present. A project can add
-# its own growing files through $ExtraHistoryTargets and $ExtraDocTargets
-# without editing this script.
-$ExtraHistoryTargets = @()
-$ExtraDocTargets     = @()
-$configPath = Join-Path $PSScriptRoot 'projectos.config.ps1'
-if (Test-Path -LiteralPath $configPath) { . $configPath }
-if ($null -eq $ExtraHistoryTargets) { $ExtraHistoryTargets = @() }
-if ($null -eq $ExtraDocTargets)     { $ExtraDocTargets     = @() }
-
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
@@ -72,6 +66,9 @@ function Read-DocLines($path) {
     return [pscustomobject]@{ Lines = ([regex]::Split($raw, "`r?`n")); Eol = $eol }
 }
 function FmtKB($bytes) { '{0,7:N1} KB' -f ($bytes / $kb) }
+# Dedup key for a moved block: every non-blank line, trimmed. A table row is
+# one line, so its key is the row text, exactly as before.
+function Get-BlockKey($block) { return (@($block | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }) -join "`n") }
 function Ensure-Eol($s, $eol) { if ($s.EndsWith($eol)) { return $s } else { return $s + $eol } }
 function Write-Atomic($path, $text, $enc) {
     $tmp = "$path.tmp"
@@ -113,7 +110,7 @@ function Find-SectionEnd($lines, $mask, $startIdx) {
 
 $grandMoved = 0
 $modeLabel  = if ($DryRun) { '[DRY RUN - no files written]' } else { '[LIVE RUN]' }
-Write-Host ("rotate.ps1  {0}" -f $modeLabel)
+Write-Host ("Archive-old-rows.ps1  {0}" -f $modeLabel)
 Write-Host ('-' * 78)
 
 # ===========================================================================
@@ -150,7 +147,9 @@ function Get-TableHead($allLines, $fromIdx, $toIdx) {
     return @($h, $s)
 }
 # Append rows verbatim to a row archive, scaffolding it if absent. Dedup is on
-# the trimmed row text, so re-running never duplicates a row.
+# the trimmed row text, checked against the archive as it was BEFORE this run:
+# re-running never duplicates a row, and two identical rows moved in the same
+# run are both kept (the live file drops both, so skipping one would lose it).
 function Write-RowArchive($archPath, $liveName, $blurb, $hdr, $sep, $rows, $eol, $enc) {
     $existing = New-Object System.Collections.Generic.HashSet[string]
     $archiveLines = New-Object System.Collections.Generic.List[string]
@@ -162,7 +161,7 @@ function Write-RowArchive($archPath, $liveName, $blurb, $hdr, $sep, $rows, $eol,
         $archiveLines.Add(('# {0} - {1}' -f $liveName, $blurb)) | Out-Null
         $archiveLines.Add('') | Out-Null
         $archiveLines.Add('NOT read by default - consult only when digging into old changes.') | Out-Null
-        $archiveLines.Add('Moved here verbatim by project-os/rotate.ps1. Movement only: rows are never rewritten, compressed, or deleted.') | Out-Null
+        $archiveLines.Add('Moved here verbatim by project-os/Archive-old-rows.ps1. Movement only: rows are never rewritten, compressed, or deleted.') | Out-Null
         $archiveLines.Add('') | Out-Null
         if ($hdr) { $archiveLines.Add($hdr) | Out-Null }
         if ($sep) { $archiveLines.Add($sep) | Out-Null }
@@ -170,7 +169,7 @@ function Write-RowArchive($archPath, $liveName, $blurb, $hdr, $sep, $rows, $eol,
     $appended = 0; $dupes = 0
     foreach ($r in $rows) {
         if ($existing.Contains($r.Text.Trim())) { $dupes++; continue }
-        $archiveLines.Add($r.Text) | Out-Null; [void]$existing.Add($r.Text.Trim()); $appended++
+        $archiveLines.Add($r.Text) | Out-Null; $appended++
     }
     Write-Atomic $archPath (Ensure-Eol ($archiveLines -join $eol) $eol) $enc
     return @($appended, $dupes)
@@ -204,15 +203,10 @@ if (Test-Path -LiteralPath $featuresDir) {
         }
     }
 }
-foreach ($extra in $ExtraHistoryTargets) { if ($null -ne $extra) { $historyTargets.Add($extra) | Out-Null } }
 
 $today  = (Get-Date).Date
-$cutoff = $today.AddMonths(-$MaxMonths)
-$keepNewerThan = $today.AddDays(-$MinKeepDays)
-$floorDesc = if ($MinKeepDays -le 0 -and $MinKeepRows -eq $MaxKeepRows) { "keep newest $MaxKeepRows rows (pure count)" }
-             else { "keep newest $MinKeepRows-$MaxKeepRows rows, calendar window ${MinKeepDays}d" }
 Write-Host ''
-Write-Host ("HISTORY  today {0:yyyy-MM-dd} | cutoff {1:yyyy-MM-dd} | {2} | target {3} KB" -f $today, $cutoff, $floorDesc, $TargetKB)
+Write-Host ("HISTORY  today {0:yyyy-MM-dd} | keep newest {1} rows" -f $today, $MaxKeepRows)
 
 foreach ($t in $historyTargets) {
     Write-Host ''
@@ -243,25 +237,13 @@ foreach ($t in $historyTargets) {
     # Protection floor: $rotatable is oldest-first (rows append at the bottom),
     # so the newest are the TAIL. Protect the last $protectedCount; candidates
     # are the leading, oldest rows.
-    $within = @($rotatable | Where-Object { $_.Date -ge $keepNewerThan }).Count
-    $protectedCount = [Math]::Max($MinKeepRows, $within)
-    $protectedCount = [Math]::Min($protectedCount, $MaxKeepRows)
+    $protectedCount = $MaxKeepRows
     if ($protectedCount -gt $rotatable.Count) { $protectedCount = $rotatable.Count }
     $candidateCount = $rotatable.Count - $protectedCount
     if   ($candidateCount -le 0) { $candidates = @() }
     else { $candidates = $rotatable[0..($candidateCount - 1)] }
 
     $move = New-Object System.Collections.Generic.List[object]
-    foreach ($r in $candidates) { if ($r.Date -lt $cutoff) { $move.Add($r) | Out-Null } }
-    $targetBytes = $TargetKB * $kb
-    if ((Get-KeptBytes $lines $doc.Eol $move) -gt $targetBytes) {
-        $inMove = @{}; foreach ($m in $move) { $inMove[$m.Index] = $true }
-        $remaining = @($candidates | Where-Object { -not $inMove.ContainsKey($_.Index) })
-        foreach ($r in $remaining) {
-            if ((Get-KeptBytes $lines $doc.Eol $move) -le $targetBytes) { break }
-            $move.Add($r) | Out-Null
-        }
-    }
     # Hard cap: never keep more than MaxKeepRows deep rows live.
     if (($rotatable.Count - $move.Count) -gt $MaxKeepRows) {
         $inMove = @{}; foreach ($m in $move) { $inMove[$m.Index] = $true }
@@ -336,15 +318,14 @@ foreach ($t in $historyTargets) {
     $movedCount   = $move.Count
     $keptCount    = $rotatable.Count - $movedCount
     $overBudget   = @($rotatable | Where-Object { $_.Text.Length -gt $RowCharBudget }).Count
-    $floorBlocked = ($afterBytes -gt $targetBytes)
     $grandMoved  += $movedCount + $scanMovedCount
 
     Write-Host ("  live size BEFORE     : {0}" -f (FmtKB $beforeBytes))
     Write-Host ("  deep rows total      : {0}" -f $rotatable.Count)
-    Write-Host ("  protected by floor   : {0,3}   (cap {1}, min {2}, within-{3}d {4})" -f $protectedCount, $MaxKeepRows, $MinKeepRows, $MinKeepDays, $within)
+    Write-Host ("  protected by floor   : {0,3}   (cap {1})" -f $protectedCount, $MaxKeepRows)
     Write-Host ("  rows MOVED           : {0,3}" -f $movedCount)
     Write-Host ("  rows KEPT live       : {0,3}" -f $keptCount)
-    Write-Host ("  live size AFTER (est): {0}{1}" -f (FmtKB $afterBytes), $(if ($floorBlocked) { "   [above {0} KB target - held by protection floor]" -f $TargetKB } else { '' }))
+    Write-Host ("  live size AFTER (est): {0}" -f (FmtKB $afterBytes))
     Write-Host ("  rows > {0} chars      : {1,3}{2}" -f $RowCharBudget, $overBudget, $(if ($overBudget -gt 0) { '   (warning)' } else { '' }))
     if ($t.Scan) {
         Write-Host ("  scan log rows        : {0,3}   (cap {1})" -f $scanCount, $(if ($MaxKeepScanRows -gt 0) { $MaxKeepScanRows } else { 'off' }))
@@ -383,9 +364,9 @@ foreach ($t in $historyTargets) {
         # NULL on feature targets, so it is guarded (Split-Path throws on null).
         $idx = @{}; foreach ($m in $allDropped) { $idx[$m.Index] = $true }
         $pointerPresent = @($lines | Where-Object { $_ -like '*Older rows archived*' }).Count -gt 0
-        $pointer = ('_Older rows archived -> see `{0}` (moved by project-os/rotate.ps1, not rewritten)._' -f (Split-Path $t.Arch -Leaf))
+        $pointer = ('_Older rows archived -> see `{0}` (moved by project-os/Archive-old-rows.ps1, not rewritten)._' -f (Split-Path $t.Arch -Leaf))
         $scanPointerPresent = @($lines | Where-Object { $_ -like '*Older scan rows archived*' }).Count -gt 0
-        $scanPointer = if ($t.ScanArch) { ('_Older scan rows archived -> see `{0}` (moved by project-os/rotate.ps1, not rewritten)._' -f (Split-Path $t.ScanArch -Leaf)) } else { $null }
+        $scanPointer = if ($t.ScanArch) { ('_Older scan rows archived -> see `{0}` (moved by project-os/Archive-old-rows.ps1, not rewritten)._' -f (Split-Path $t.ScanArch -Leaf)) } else { $null }
         $newLive = New-Object System.Collections.Generic.List[string]
         for ($i = 0; $i -lt $lines.Count; $i++) {
             if ($idx.ContainsKey($i)) { continue }
@@ -406,47 +387,75 @@ foreach ($t in $historyTargets) {
 # ===========================================================================
 # The archive is organised BY SECTION, so one file can hold several rotated
 # tails (Mistakes has Promoted and Retired). A section is scaffolded on first
-# use with the same table head the rows were written under, then appended to.
-# Dedup is on the block's first non-empty line.
+# use with the same table head the rows were written under, then appended to
+# at its END, so the archive reads oldest first however many runs fed it.
+# Dedup is checked against the archive as it was BEFORE this run: a re-run
+# after a crash never duplicates, and two identical items moved in one run both
+# land. A table row is keyed on its trimmed text. A decision entry is keyed on
+# its whole block (every non-blank line, trimmed), so two different decisions
+# that share a date and a title are never mistaken for one another.
 function Write-ArchiveSection($archPath, $liveName, $sectionName, $headLines, $payload, $eol, $enc, $dry) {
+    # Decision entries are "## YYYY-MM-DD" blocks; every other section holds rows.
+    $isEntries = ($sectionName -eq 'Archived decisions')
     $lines = New-Object System.Collections.Generic.List[string]
     if (Test-Path -LiteralPath $archPath) {
         foreach ($ln in [System.IO.File]::ReadAllLines($archPath, [System.Text.Encoding]::UTF8)) { $lines.Add($ln) | Out-Null }
     } else {
+        # A bug class does not expire, so the atlas archive is searched when no
+        # live row matches (project-os/BugAtlas.md, How to use it).
+        $readNote = if ($sectionName -eq 'Atlas') { ('NOT read at task pickup. When no row in the live {0} matches a bug, search this file too: a bug class does not expire.' -f $liveName) }
+                    else { 'NOT read by default - consult only when digging into an old entry.' }
         $lines.Add(('# {0} - Archive' -f $liveName)) | Out-Null
         $lines.Add('') | Out-Null
-        $lines.Add('NOT read by default - consult only when digging into an old entry.') | Out-Null
-        $lines.Add('Moved here verbatim by project-os/rotate.ps1. Movement only: nothing is rewritten, compressed, or deleted.') | Out-Null
+        $lines.Add($readNote) | Out-Null
+        $lines.Add('Moved here verbatim by project-os/Archive-old-rows.ps1. Movement only: nothing is rewritten, compressed, or deleted.') | Out-Null
         $lines.Add('') | Out-Null
     }
-    $existing = New-Object System.Collections.Generic.HashSet[string]
-    foreach ($ln in $lines) { [void]$existing.Add($ln.Trim()) }
 
-    $arr    = $lines.ToArray()
-    $mask   = Get-FenceMask $arr
+    $arr  = $lines.ToArray()
+    $mask = Get-FenceMask $arr
+    $existingLines = New-Object System.Collections.Generic.HashSet[string]
+    foreach ($ln in $arr) { [void]$existingLines.Add($ln.Trim()) }
+    $existingBlocks = New-Object System.Collections.Generic.HashSet[string]
+    for ($i = 0; $i -lt $arr.Count; $i++) {
+        if ($mask[$i] -or $arr[$i] -notmatch '^##\s+\d{4}-\d{2}-\d{2}\b') { continue }
+        $end = Find-SectionEnd $arr $mask $i
+        [void]$existingBlocks.Add((Get-BlockKey $arr[$i..($end - 1)]))
+    }
+
+    $lead   = $false
     $secIdx = Find-Section $arr $mask ('## ' + $sectionName)
     if ($secIdx -lt 0) {
         if ($lines.Count -gt 0 -and $lines[$lines.Count - 1].Trim() -ne '') { $lines.Add('') | Out-Null }
         $lines.Add('## ' + $sectionName) | Out-Null
         $lines.Add('') | Out-Null
-        foreach ($h in $headLines) { if ($h) { $lines.Add($h) | Out-Null } }
+        $headCount = 0
+        foreach ($h in $headLines) { if ($h) { $lines.Add($h) | Out-Null; $headCount++ } }
+        if ($isEntries -and $headCount -gt 0) { $lines.Add('') | Out-Null }
         $insertAt = $lines.Count
     } else {
         $insertAt = Find-SectionEnd $arr $mask $secIdx
+        # Each archived decision is itself a "## YYYY-MM-DD" heading, so the
+        # section runs past all of them; insert after the last one.
+        if ($isEntries) {
+            while ($insertAt -lt $arr.Count -and $arr[$insertAt] -match '^##\s+\d{4}-\d{2}-\d{2}\b') { $insertAt = Find-SectionEnd $arr $mask $insertAt }
+        }
         while ($insertAt -gt $secIdx + 1 -and $lines[$insertAt - 1].Trim() -eq '') { $insertAt-- }
+        # A new entry needs a blank line between it and the one above.
+        $lead = $isEntries -and $lines[$insertAt - 1].Trim() -ne ''
     }
 
     $added = 0; $dupes = 0
     $toInsert = New-Object System.Collections.Generic.List[string]
     foreach ($block in $payload) {
-        $key = $null
-        foreach ($ln in $block) { if ($ln.Trim() -ne '') { $key = $ln; break } }
-        if ($null -eq $key) { continue }
-        if ($existing.Contains($key.Trim())) { $dupes++; continue }
+        $key = Get-BlockKey $block
+        if ($key -eq '') { continue }
+        $seen = if ($isEntries) { $existingBlocks.Contains($key) } else { $existingLines.Contains($key) }
+        if ($seen) { $dupes++; continue }
         foreach ($ln in $block) { $toInsert.Add($ln) | Out-Null }
-        [void]$existing.Add($key.Trim())
         $added++
     }
+    if ($added -gt 0 -and $lead) { $toInsert.Insert(0, '') }
     if ($toInsert.Count -gt 0) { $lines.InsertRange($insertAt, $toInsert) }
     if (-not $dry -and $added -gt 0) { Write-Atomic $archPath (Ensure-Eol ($lines -join $eol) $eol) $enc }
     return @($added, $dupes)
@@ -457,7 +466,7 @@ function Write-ArchiveSection($archPath, $liveName, $sectionName, $headLines, $p
 # collapsed; blank lines elsewhere are never touched.
 function Write-Live($target, $lines, $eol, $dropIdx, $secIdx, $archName, $enc, $dry) {
     $drop = @{}; foreach ($i in $dropIdx) { $drop[$i] = $true }
-    $pointer = ('_Older entries archived -> see `{0}` (moved by project-os/rotate.ps1, not rewritten)._' -f $archName)
+    $pointer = ('_Older entries archived -> see `{0}` (moved by project-os/Archive-old-rows.ps1, not rewritten)._' -f $archName)
     $pointerPresent = @($lines | Where-Object { $_ -like '*Older entries archived*' }).Count -gt 0
     $clean = New-Object System.Collections.Generic.List[string]
     $justDropped = $false
@@ -496,7 +505,6 @@ if (Test-Path -LiteralPath $featuresDir) {
         }
     }
 }
-foreach ($extra in $ExtraDocTargets) { if ($null -ne $extra) { $docTargets.Add($extra) | Out-Null } }
 
 Write-Host ''
 Write-Host ("DOCS  keep newest: decisions {0} | backlog {1} | mistakes {2} | atlas {3}" -f $MaxKeepDecisions, $MaxKeepBacklog, $MaxKeepMistakes, $MaxKeepAtlas)
@@ -533,6 +541,11 @@ foreach ($t in $docTargets) {
         }
         $pointerIdx  = Find-Section $lines $mask ('## ' + $t.Sect)
         $archSection = 'Archived decisions'
+        # Written once, under the section heading: a rotated entry is alive.
+        $headLines   = @(
+            ('Entries in this section still BIND the project: they only aged out of the live {0}.' -f (Split-Path $t.Live -Leaf)),
+            'Treat each one as if it were still there. If its line in the live Index is in italics, only the part that line names as replaced no longer holds.'
+        )
     } else {
         $secIdx = Find-Section $lines $mask ('## ' + $t.Sect)
         if ($secIdx -lt 0) { Write-Host ("  section '## {0}' not found - skipped (no accidental rotation)" -f $t.Sect); continue }
@@ -540,8 +553,13 @@ foreach ($t in $docTargets) {
         $sawSep = $false; $hdr = $null; $sep = $null
         for ($i = $secIdx + 1; $i -lt $secEnd; $i++) {
             if ($mask[$i]) { continue }
+            # An example block below the table ("---" or a "### " heading) is
+            # not part of it: its rows are not entries, its separator not ours.
+            if ($lines[$i] -match '^(-{3,}\s*$|###\s)') { break }
             if ($lines[$i] -notmatch '^\|') { continue }
-            if ($lines[$i] -match '^\|[\s\-:|]+\|\s*$') { $sawSep = $true; $sep = $lines[$i]; continue }
+            # The FIRST separator is the table's. An empty placeholder row
+            # ("| | | |") matches the same pattern and must not replace it.
+            if ($lines[$i] -match '^\|[\s\-:|]+\|\s*$') { $sawSep = $true; if ($null -eq $sep) { $sep = $lines[$i] }; continue }
             if (-not $sawSep) { $hdr = $lines[$i]; continue }
             $idx = New-Object System.Collections.Generic.List[int]
             $idx.Add($i) | Out-Null
