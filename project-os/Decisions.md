@@ -140,39 +140,9 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-10-01 · A Ctrl+Z pressed while a delete is on its way is let go too; the delete holds the same count the undo and redo of a deletion hold.
 - 2026-10-01 · Each line of a bubble left automatic takes its own direction, by `unicode-bidi: plaintext`; an override still sets the whole bubble. (Supersedes §3.5's "applies to the whole bubble" for automatic.)
 - 2026-10-06 · The commit waits for `Go commit`, the kit's new rule 22 adopted; the release build follows that commit.
+- 2026-10-07 · A capture's timing lines are kept in `%LOCALAPPDATA%\Recon\timing.log`, capped at 4 MB with one older file; never the window or the files opened.
 
 ---
-
-## 2026-09-18 · A file opened by name sits in the timeline as a pointer, in a list of its own, never in the store
-
-### Context
-Rotem asked that an opened file, an SVG or any other picture, join the timeline "as if it
-were a screenshot". A screenshot is there because Recon keeps its own copy, and rule 11
-says an external file is never copied into Recon's storage, so the ask and the invariant
-met head on.
-
-### Options
-1. A pointer: the thumbnail names the file where it lives, nothing is copied, and it leaves
-   the timeline when the file is moved or deleted.
-2. A kept copy like a capture's, which stays after the original is gone and lifts rule 11.
-3. For either: every file stepped onto in a folder joins, or only the file opened by name.
-
-### Decision
-Option 1, and only the file opened by name: Rotem's, on 2026-09-18. "If we update it, it
-saves the original" is read as what Annotate already does, the image preserved once a note
-is wanted. Built as a list of its own, `opened.json` beside `tabs.json`, rather than as a
-kind of record in the document store: the store's every path assumes a `source.png`, and
-its trash, restore and ledger are the project's most bitten code.
-
-### Consequences
-A pointer holds a path, a size and a number, never pixels; its thumbnail is made from the
-file when asked for and lives in memory only. It shares the documents' numbers, so tabs,
-done marks, the keys and Ctrl+Z treat it as any thumbnail, and Annotate turns it into the
-file's document under the same number. Its x takes it off the list and keeps nothing in the
-trash; Ctrl+Z puts it back within the session only. The picker, "Open with" and the command
-line join; previous and next in a folder never do. The storage figure does not count it.
-Every timeline refresh asks whether each pointed file is still there, which a dead network
-path could make slow: worth a cap or a lazy test if it ever bites.
 
 ## 2026-09-18 · Save As on an annotated PNG or JPEG writes over the file it came from
 
@@ -904,3 +874,38 @@ History row's Commit before carries `(uncommitted)`. The release build of
 `Go commit` makes, so Rotem's Recon gets a new build at `Go commit` rather than after each
 task; he can call for `Go commit` whenever a build is wanted. Worth revisiting if a task's
 release is wanted sooner than the next commit.
+
+## 2026-10-07 · A capture's timing lines are kept in a file of their own, `%LOCALAPPDATA%\Recon\timing.log`, capped at 4 MB with one older file
+
+### Context
+On 2026-10-07 a capture reached the clipboard about 1.2 s after it was made, in a Recon that
+had run six days, and a restart cleared it. The host prints the copy's split, and the page
+its load, paint and copy, but a product run's standard output goes nowhere, so the slow
+days left no record of which step was slow. The Copy Ninja session asked for a file; Rotem
+said to continue.
+
+### Options
+1. The standard output only, as before: nothing is kept.
+2. The whole host log in a file.
+3. Only the lines that time a capture in a file, always on.
+4. A file only while a setting turns it on.
+
+### Decision
+Option 3, by the assistant, Rotem's to veto. The whole log names the window a capture began
+in and the files opened, which a file would keep for weeks, and the timing needs neither.
+Always on, since a slow day cannot be foreseen. The lines: the S0.7 marks and the startup
+marks, each image's encode, the page's two lines that time a capture, its showing and its
+copy with the layer's export and the host's answer, and the host's copy split, each
+stamped in milliseconds since 1970, the clock a document's number is read on, so a line
+sits beside the document it times. The page's other lines and its errors stay on the
+standard output, since an error can carry an opened file's path. One writer thread of the
+log's own does the writing, so no capture thread and not the main one waits on the disk.
+Past 4 MB the file becomes `timing.old.log`, replacing the one before; a checks build
+writes `s-timing.log` beside its executable.
+
+### Consequences
+A slow day is split by reading one file: created, encoded, shown, exported, answered,
+copied. Two files at most, about 8 MB. A line still waiting for the writer when Recon
+quits is lost, and a line that cannot be written is dropped and counted, the file saying
+how many when writing resumes. Worth revisiting before the public release, whether the
+file stays on by default, and if a line ever carries what the user would not want kept.

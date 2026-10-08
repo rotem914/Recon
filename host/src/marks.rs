@@ -63,7 +63,7 @@ pub fn mark(name: &'static str) {
         Err(_) => None,
     };
     if let Some(since) = since {
-        crate::log(&format!("mark: {name} +{:.1} ms", ms(since)));
+        crate::timing(&format!("mark: {name} +{:.1} ms", ms(since)));
     }
 }
 
@@ -76,7 +76,7 @@ pub fn startup(name: &'static str) {
     if let Ok(mut list) = STARTUP.lock() {
         list.push((name, now));
     }
-    crate::log(&format!(
+    crate::timing(&format!(
         "startup: {name} {:.1} ms after main began",
         ms(now.duration_since(*start))
     ));

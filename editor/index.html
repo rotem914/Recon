@@ -495,6 +495,7 @@
   // Everything this page says goes to the terminal as well. A web view that throws inside a
   // hidden window is otherwise completely silent, which cost one whole run.
   const toHost = (level, line) => { invoke('editor_log', { level, line }).catch(() => {}); };
+  const consoleLog = console.log.bind(console);
   for (const level of ['log', 'warn', 'error']) {
     const original = console[level].bind(console);
     console[level] = (...args) => {
@@ -502,6 +503,9 @@
       toHost(level, args.map((a) => (a && a.stack) ? a.stack : String(a)).join(' '));
     };
   }
+  // A line that times a capture: in the console as any line, and kept by the host in the
+  // timing log too (2026-10-07). Only sizes and milliseconds, never a name or a path.
+  const timingLine = (line) => { consoleLog(line); toHost('timing', line); };
   window.addEventListener('error', (e) => toHost('error', `${e.message} at ${e.filename}:${e.lineno}`));
   window.addEventListener('unhandledrejection', (e) => toHost('error', `unhandled rejection: ${e.reason && e.reason.stack ? e.reason.stack : e.reason}`));
   const stage = document.getElementById('stage');
@@ -3853,14 +3857,20 @@
   const copyComposed = async () => {
     let layer;
     let report;
+    // The page's two parts of the copy, for the timing log (2026-10-07): the layer's export,
+    // and the wait from sending it to the host's answer, its own work and its queue included.
+    const asked = performance.now();
+    let exported = asked;
     try {
       layer = await exportLayer();
+      exported = performance.now();
       report = await invoke('editor_copy', layer.bytes, { headers: { margin: layer.margin, blur: layer.blur, crop: layer.crop } });
     } catch (err) {
       notice(`NOT COPIED: ${err}. Your work is here; try again`, 0);
       throw err;
     }
-    console.log(`copied ${report.width}x${report.height}: composed ${report.compose_ms} ms, encoded ${report.published.encode_ms} ms, published ${report.published.publish_ms} ms as ${report.published.formats.join(', ')}`);
+    const answered = performance.now();
+    timingLine(`copied ${report.width}x${report.height}: composed ${report.compose_ms} ms, encoded ${report.published.encode_ms} ms, published ${report.published.publish_ms} ms as ${report.published.formats.join(', ')}; the layer exported in ${Math.round(exported - asked)} ms (its PNG ${Math.round(layer.encodeMs)}), the host answered in ${Math.round(answered - exported)} ms`);
     notice(`copied ${report.width}x${report.height} to the clipboard`, 1500);
     return report;
   };
@@ -4029,7 +4039,7 @@
         throw err;
       });
       drawHud();
-      console.log(`capture shown ${Math.round(performance.now() - arrived)} ms after the page heard of it`);
+      timingLine(`capture shown ${Math.round(performance.now() - arrived)} ms after the page heard of it`);
       // A capture is on the clipboard the moment it opens (Rotem, 2026-09-16): the same
       // copy as Ctrl+C, so the HUD says copied, or NOT COPIED with the reason and Ctrl+C
       // copies by hand. A capture only: a file opened, or a frame of one stepped, arrives
@@ -4044,6 +4054,9 @@
       // when it arrives, so late by one crossing and never early. Painted: the second
       // animation frame after the new pixels went into the canvas. Focused: the new image
       // is loaded and this page has the keyboard, so a click or a key lands on it.
+      // A capture's only (2026-10-07): a mark is timed from the last capture shortcut, so
+      // one sent for a file opened or stepped read in the timing log as that capture's.
+      if (!(event.payload.source === 'capture' && !event.payload.file)) return;
       requestAnimationFrame(() => requestAnimationFrame(() => {
         invoke('editor_mark', { name: 'page painted' }).catch(() => {});
       }));

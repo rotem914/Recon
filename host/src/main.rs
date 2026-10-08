@@ -23,6 +23,7 @@ mod editor;
 mod export;
 mod focus;
 mod folder;
+mod logfile;
 mod magnifier;
 mod marks;
 #[cfg(feature = "stage0-checks")]
@@ -100,6 +101,17 @@ pub(crate) fn log(line: &str) {
     // Flushed on every line: this log is the step's evidence, and a buffered tail that
     // never reaches disk would read exactly like a hotkey that never fired.
     let _ = std::io::stdout().flush();
+}
+
+/// A line that times a capture on its way to the clipboard: logged as any line is, and handed
+/// to the timing log's writer too, stamped the same, since a product run's standard output
+/// goes nowhere (2026-10-07). Never waits on the disk.
+pub(crate) fn timing(line: &str) {
+    use std::io::Write;
+    let stamped = format!("{} | {}", now_ms(), line);
+    println!("{stamped}");
+    let _ = std::io::stdout().flush();
+    logfile::write(&stamped);
 }
 
 /// The hotkey path: freeze, choose a rectangle, convert once, crop, present.
@@ -346,6 +358,12 @@ fn editor_run(demo: bool) -> i32 {
             editor::request_checks();
         }
         editor::set_app(app.handle().clone());
+        // The checks' own timing log, beside the executable, so a run shows the lines a
+        // product run keeps in the user's folder.
+        match logfile::checks_path().and_then(logfile::open) {
+            Ok(path) => println!("timing log: {}", path.display()),
+            Err(err) => println!("timing log NOT open yet: {err}"),
+        }
         // The checks' own settings file, beside the executable and fresh each run, never
         // Rotem's; and no shortcut plugin here, so nothing global is taken by a check.
         let settings_file = std::env::current_exe()
@@ -659,6 +677,18 @@ fn main() {
 
     editor::with_editor(builder)
         .setup(move |app| {
+            // The timing log, here and not before: only the Recon that stays reaches this
+            // point, a second one having handed itself over to it already. The user's local
+            // application data for the product, beside the executable for a checks build, so
+            // no check writes there. No timing line is made before this one.
+            #[cfg(not(feature = "stage0-checks"))]
+            let timing_path = logfile::product_path();
+            #[cfg(feature = "stage0-checks")]
+            let timing_path = logfile::checks_path();
+            match timing_path.and_then(logfile::open) {
+                Ok(path) => log(&format!("timing log: {}", path.display())),
+                Err(err) => log(&format!("timing log NOT open yet: {err}")),
+            }
             // ---- the tray ----
             let hotkey_item =
                 MenuItemBuilder::with_id("hotkey", format!("Capture: {hotkey_label}"))

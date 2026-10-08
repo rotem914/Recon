@@ -74,6 +74,13 @@ fn snapshot_data() -> BTreeMap<PathBuf, u64> {
     for dir in recon_data_dirs() {
         snapshot_tree(&dir, &mut map);
     }
+    // The timing log and its older file (2026-10-07) are appended to by a Recon running
+    // beside the report, every capture; they are neither the config nor a document.
+    map.retain(|path, _| {
+        !path
+            .file_name()
+            .is_some_and(|name| name == "timing.log" || name == "timing.old.log")
+    });
     map
 }
 

@@ -520,10 +520,10 @@ fn preserve(image: Arc<Image>, id: u64, source: Source) {
         match crate::store::write_source(id, &png) {
             Ok(path) => {
                 document.preserved = Preserved::OnDisk(path);
-                println!(
+                crate::timing(&format!(
                     "document {id} preserved: {width}x{height} encoded in {encode_ms} ms, written in {} ms, {count} documents",
                     started.elapsed().as_millis() - encode_ms,
-                );
+                ));
             }
             Err(err) => {
                 document.preserved = Preserved::Encoded(png);
@@ -2334,14 +2334,14 @@ pub fn editor_copy(request: tauri::ipc::Request<'_>) -> Result<CopyReport, Strin
     let crop = crop_header(&request)?;
     let (composite, _, compose_ms) = compose_layer(&bytes, margin, &blurs, crop)?;
     let published = crate::clipboard::publish(&composite.rgba, composite.width, composite.height)?;
-    println!(
+    crate::timing(&format!(
         "copied {}x{} to the clipboard: composed in {compose_ms} ms, encoded in {} ms, published in {} ms as {}",
         composite.width,
         composite.height,
         published.encode_ms,
         published.publish_ms,
         published.formats.join(", ")
-    );
+    ));
     let (width, height) = (composite.width, composite.height);
     #[cfg(feature = "stage0-checks")]
     checks::remember_copy(composite);
@@ -2506,9 +2506,16 @@ static PAGE_LISTENING: AtomicBool = AtomicBool::new(false);
 ///
 /// Without this a web view failure is invisible from a shell: the page throws, the window is
 /// hidden, and the run simply hangs. Which is exactly what happened the first time.
+///
+/// The page's lines that time a capture come as `timing`, and those are kept in the timing
+/// log too (2026-10-07); its other lines and its errors, which can name a file, are not.
 #[tauri::command]
 pub fn editor_log(level: String, line: String) {
-    println!("page[{level}] {line}");
+    if level == "timing" {
+        crate::timing(&format!("page[timing] {line}"));
+    } else {
+        println!("page[{level}] {line}");
+    }
 }
 
 /// What the page needs to know about the image it is showing.
