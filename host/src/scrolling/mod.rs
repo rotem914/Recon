@@ -786,6 +786,9 @@ fn tick() {
         match step {
             Step::First => crate::log("scrolling: the first copy is the picture's top"),
             Step::Unchanged | Step::Placed => session.lost_since = None,
+            // The page on its way, as a smooth scroll draws it: not lost, and not back yet
+            // either, so the bar keeps what it says.
+            Step::Moving => session.lost_since = None,
             Step::Grew(_) => {
                 session.lost_since = None;
                 let (width, height) = stitcher.size();
@@ -804,7 +807,8 @@ fn tick() {
                 session.full_since = Some(Instant::now());
             }
         }
-        if session.message == Message::Lost && session.lost_since.is_none() {
+        if session.message == Message::Lost && session.lost_since.is_none() && step != Step::Moving
+        {
             crate::log("scrolling: the page is back");
             let (width, height) = stitcher.size();
             session.message = Message::Growing(width, height);

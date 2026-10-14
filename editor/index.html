@@ -4020,6 +4020,17 @@
     console.log('page booted, asking the host for an image');
     await measureRatio();
     await loadTabs();
+    // A file opened by name that could not be opened: the host brings the editor up and the
+    // line waits there until it is taken, so a page still booting reads it below (part 5).
+    let openFailureLine = '';
+    const takeOpenFailure = () => invoke('editor_open_failure')
+      .then((line) => { if (line) { openFailureLine = line; notice(line, 0); } })
+      .catch(() => {});
+    // The next picture that does open takes that line away: it no longer says what is on screen.
+    const dropOpenFailure = () => {
+      if (openFailureLine && currentNotice === openFailureLine) { currentNotice = ''; drawHud(); }
+      openFailureLine = '';
+    };
     // A capture can arrive at any moment after this page booted: the host hands the
     // editor the pixels, tells the page, and shows the window (S0.4b).
     await window.__TAURI__.event.listen('capture-ready', async (event) => {
@@ -4038,6 +4049,7 @@
         bringUp();
         throw err;
       });
+      dropOpenFailure();
       drawHud();
       timingLine(`capture shown ${Math.round(performance.now() - arrived)} ms after the page heard of it`);
       // A capture is on the clipboard the moment it opens (Rotem, 2026-09-16): the same
@@ -4066,6 +4078,7 @@
       ]);
       if (focused) invoke('editor_mark', { name: 'page focused' }).catch(() => {});
     });
+    await window.__TAURI__.event.listen('open-failed', takeOpenFailure);
     await window.__TAURI__.event.listen('save-as-offered', (event) => notice(event.payload.line, 0));
     await window.__TAURI__.event.listen('save-as-done', (event) => {
       saveAsOpen = false;
@@ -4086,6 +4099,7 @@
       }
     });
     invoke('editor_mark', { name: 'page booted' }).catch(() => {});
+    await takeOpenFailure();
     try {
       const info = await invoke('editor_image_info');
       await loadImage(info);
@@ -4097,7 +4111,9 @@
         await loadImage(info);
       } catch (noProbe) {
         const hotkey = await invoke('editor_hotkey').catch(() => '');
-        hud.textContent = emptyStateText(hotkey);
+        // Through the HUD, so a file that could not be opened stays said under it.
+        emptyText = emptyStateText(hotkey);
+        drawHud();
         return;
       }
     }

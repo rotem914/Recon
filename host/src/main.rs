@@ -444,7 +444,7 @@ fn file_argument(args: &[String]) -> Option<String> {
 fn open_file(path: String, how: &'static str) {
     std::thread::spawn(move || {
         let started = std::time::Instant::now();
-        match editor::open_file(std::path::Path::new(&path)) {
+        match editor::open_file_saying(std::path::Path::new(&path)) {
             Ok(show_ms) => log(&format!(
                 "opened {path} ({how}): editor shown {} ms after the open began, the show itself {show_ms} ms",
                 started.elapsed().as_millis()
@@ -613,6 +613,29 @@ fn main() {
     // Started by Windows at logon, through the Run value the tray's "Start with Windows"
     // wrote: Recon sits in the tray and shows no window (§3.1).
     let started_by_windows = args.iter().any(|a| a == startup::FLAG);
+    // Explorer starts this process with the right to take the foreground, but when Recon is
+    // already in the tray this one only hands its file, or nothing, over and exits, and the
+    // running one, which has no such right, shows the window behind with a taskbar flash.
+    // Passing the right on lets the running one come to the front (Rotem, 2026-10-10), for a
+    // file and for a plain launch from the Start menu or the taskbar alike. Only to it: the
+    // running one is found by the hand-off window the single-instance plugin names after the
+    // identifier, and on a cold start there is none, so nothing is granted (review, nit). The
+    // logon start is left out: it shows no window of its own.
+    if !started_by_windows {
+        use windows::core::w;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            AllowSetForegroundWindow, FindWindowW, GetWindowThreadProcessId,
+        };
+        if let Ok(hwnd) =
+            unsafe { FindWindowW(w!("com.rotem.recon-sic"), w!("com.rotem.recon-siw")) }
+        {
+            let mut pid = 0u32;
+            unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+            if pid != 0 {
+                let _ = unsafe { AllowSetForegroundWindow(pid) };
+            }
+        }
+    }
 
     let cfg = config::load();
 

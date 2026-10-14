@@ -1712,7 +1712,7 @@ fn present_frame(frame: Frame, reuse: Option<u64>, bring_up: bool) -> Result<u12
 /// Opens a file through the one image source and shows its first frame or page on the
 /// same canvas a capture uses. The file is read once and never written (rule 11).
 pub fn open_path(path: &std::path::Path) -> Result<u128, String> {
-    open_path_as(path, false)
+    open_path_as(path, false, false)
 }
 
 /// A file opened by name, from the picker, "Open with" or the command line: it joins the
@@ -1720,14 +1720,56 @@ pub fn open_path(path: &std::path::Path) -> Result<u128, String> {
 /// for it is there already. A file stepped onto in its folder goes through `open_path` and
 /// joins nothing.
 pub fn open_file(path: &std::path::Path) -> Result<u128, String> {
-    open_path_as(path, true)
+    open_path_as(path, true, false)
 }
 
-fn open_path_as(path: &std::path::Path, joins: bool) -> Result<u128, String> {
+/// `open_file` for a file handed to Recon from outside, by Explorer or a drop: a file that
+/// cannot be read or decoded is said on screen (`open_failed`). Only those two: a failure
+/// after the picture is in, a window not built yet at startup, is not a file left unopened.
+pub fn open_file_saying(path: &std::path::Path) -> Result<u128, String> {
+    open_path_as(path, true, true)
+}
+
+/// A file opened by name that could not be opened: the editor comes up and says so, naming
+/// the file and why, and the file is left alone (part 5, an unreadable file says so plainly).
+/// The line waits here until the page takes it, so a page still booting, on a cold start,
+/// reads it once it listens; the event tells a page already listening.
+fn open_failed(path: &std::path::Path, err: &str) -> Result<u128, String> {
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.display().to_string());
+    if let Ok(mut slot) = OPEN_FAILURE.lock() {
+        *slot = Some(format!("NOT OPENED: {name}, {err}"));
+    }
+    let app = app()?;
+    let _ = app.emit("open-failed", ());
+    show(app)
+}
+
+/// The last file that could not be opened, until the page shows it.
+static OPEN_FAILURE: Mutex<Option<String>> = Mutex::new(None);
+
+/// The page takes the line of a file that could not be opened, once.
+#[tauri::command]
+pub fn editor_open_failure() -> Option<String> {
+    OPEN_FAILURE.lock().ok().and_then(|mut slot| slot.take())
+}
+
+fn open_path_as(path: &std::path::Path, joins: bool, says: bool) -> Result<u128, String> {
     let started = Instant::now();
-    let mut opened = source::open(path).map_err(|err| err.to_string())?;
+    let unopened = |err: source::OpenError| {
+        let err = err.to_string();
+        if says {
+            if let Err(shown) = open_failed(path, &err) {
+                crate::log(&format!("EDITOR NOT SHOWN for the failed open: {shown}"));
+            }
+        }
+        err
+    };
+    let mut opened = source::open(path).map_err(unopened)?;
     let open_ms = started.elapsed().as_millis();
-    let decoded = opened.frame(0).map_err(|err| err.to_string())?;
+    let decoded = opened.frame(0).map_err(unopened)?;
     println!(
         "opened {}: {} {}x{}, {:?}, open {} ms, frame 0 {} ms, {}, {}",
         path.display(),
@@ -1922,6 +1964,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_log,
         editor_frame,
         editor_mark,
+        editor_open_failure,
         editor_hide,
         editor_hotkey,
         crate::settings::editor_settings,
@@ -2016,6 +2059,7 @@ pub fn with_editor(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri:
         editor_copy,
         editor_copy_color,
         editor_mark,
+        editor_open_failure,
         editor_hide,
         editor_hotkey,
         crate::settings::editor_settings,

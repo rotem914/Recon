@@ -130,7 +130,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-09-22 · A scrolling capture is the person's own scroll, joined by numbers of rows in strips that vote; Rotem's pick over Recon scrolling by itself.
 - _2026-09-22 · Whether an area scrolls is asked off the overlay's thread, by its scrollbar, by what it says, or by content taller than it; and Recon's own windows stay out of the copies by Windows' exclusion._ (its clause handing the capture the area the application names is superseded the same day, below; the rest stands)
 - 2026-09-22 · A scrolling capture's area is the lit frame, whole; what the application says scrolls only decides whether the button shows.
-- 2026-09-22 · Only a row that appears once is evidence of a move, standing still is a move of its own, and a panel scrolls when its children run past it together.
+- _2026-09-22 · Only a row that appears once is evidence of a move, standing still is a move of its own, and a panel scrolls when its children run past it together._ (its consequence that a video says "Too fast" while nobody scrolls is superseded on 2026-10-14, below; the rest stands)
 - 2026-09-22 · A capture taken with Ctrl held reaches the page as any capture does, with the window left down; a copy that fails brings it up.
 - 2026-09-27 · Show Recon after a screenshot, unchecked, is the Ctrl capture's path for every capture, the scrolling one included.
 - 2026-09-30 · The pixel ratio is never measured from a minimized window; the one owed is taken at the window's next resize.
@@ -141,38 +141,7 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-10-01 · Each line of a bubble left automatic takes its own direction, by `unicode-bidi: plaintext`; an override still sets the whole bubble. (Supersedes §3.5's "applies to the whole bubble" for automatic.)
 - 2026-10-06 · The commit waits for `Go commit`, the kit's new rule 22 adopted; the release build follows that commit.
 - 2026-10-07 · A capture's timing lines are kept in `%LOCALAPPDATA%\Recon\timing.log`, capped at 4 MB with one older file; never the window or the files opened.
-
----
-
-## 2026-09-18 · Save As on an annotated PNG or JPEG writes over the file it came from
-
-### Context
-Rotem annotated a picture he had opened and pressed Save As: Recon offered a new name
-beside the original, "img annotated.png", as rule 11 and S1.11 had it, and he wanted the
-file he opened saved, not a second version of it. Rule 11 is his own invariant, so the ask
-was put back to him as the scene it is: the clean original gone from disk.
-
-### Options
-1. Save As writes over the opened file, for the types that can be written back as
-   themselves, PNG and JPEG.
-2. Keep a new file every time, as built.
-3. For the other types under option 1: refuse, or keep the new annotated PNG.
-
-### Decision
-Option 1, and the new annotated PNG for the other types: Rotem's, on 2026-09-18. Built as
-the narrowest door: only a managed document's own source file, only when that path is the
-one chosen in the dialog, which opens on it; the write goes through a temporary file, a
-flush and a rename, so a failure leaves the original whole. The Windows overwrite prompt
-stays off, since pressing Save on the file's own name is the answer to its question.
-
-### Consequences
-`CLAUDE.md` rule 11 carries the exception in its own text. A file only viewed, any other
-existing name, and an SVG, GIF, WebP, BMP, TIFF, HEIC or AVIF keep the never-overwrite
-path. The document keeps its clean preserved picture and its notes, so a second Save As
-composes from the clean picture and never burns notes in twice, and the clean picture can
-still be had from Recon while the document lives. A note in the margin makes the saved
-file larger than the original was. The document's record of its file's size and time
-follows the save, so it does not report its own save as a change on disk.
+- 2026-10-14 · A scrolling capture calls a page lost only once it rests out of reach; a page drawn between whole pixels is on its way, never placed and never lost.
 
 ---
 
@@ -909,3 +878,40 @@ copied. Two files at most, about 8 MB. A line still waiting for the writer when 
 quits is lost, and a line that cannot be written is dropped and counted, the file saying
 how many when writing resumes. Worth revisiting before the public release, whether the
 file stays on by default, and if a line ever carries what the user would not want kept.
+
+## 2026-10-14 · A scrolling capture calls a page lost only once it rests out of reach; a page drawn between whole pixels is on its way, never placed and never lost
+
+### Context
+Rotem reported on 2026-10-14 that one notch of the wheel made the bar say "Too fast. Scroll
+back up a little" at once. Recorded on his Chrome at the session's pace, on a Facebook post
+dialog: every notch is drawn over about six frames in which the page sits between whole
+pixels, each row a blend of two, and no row of those frames is a row of the last placed
+frame; the stitcher matches rows exactly, so it called every one of them lost, and a steady
+scroll keeps the page moving past the 350 ms the bar waits. The frame the page rests on
+matched exactly. The same browser's main page scroll landed on whole pixels and joined live.
+The self test's stand-in scrolls in whole rows and never showed it.
+
+### Options
+1. Match rows with a tolerance, and place the blended frames.
+2. Track the blended frames approximately, to know how far the page went, and place only
+   exact ones.
+3. Keep exact matching, call a frame that cannot be placed while the page still moves "on
+   its way", and wait for the frame it rests on.
+
+### Decision
+Option 3, by the assistant, inside Rotem's report. A blended frame placed into the picture
+is a blurred strip in a screenshot, so option 1 trades the warning for a worse picture.
+Option 2 adds a second matcher only to say "too fast" sooner. The page is at rest when a
+frame is the frame before it again, by the same 97% the stitcher already uses for an
+unchanged frame, so a caret or a fading scrollbar does not keep it moving. The bar's wait
+starts again with every frame on its way, and only a placed or unchanged frame counts as
+the page being back.
+
+### Consequences
+A slow scroll joins at every pause, however the browser draws the way there. A long flick
+that never pauses joins nothing until the page rests, and is told "Too fast" only when it
+rests further than a frame from the last placed one, a frame later than before. A video or
+an animation wider than two strips keeps every frame different, so the bar now says nothing
+there where it said "Too fast" while nobody scrolled (the 2026-09-22 entry's consequence);
+nothing joins there either way. Revisit if a page is found that never rests between the
+notches of a slow scroll.

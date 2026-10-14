@@ -29,6 +29,11 @@
 //! that cannot be placed, because the page moved further than the two frames share, changes
 //! nothing: the last placed frame stays the one to match, and the person scrolls back to it.
 //!
+//! A frame is called lost only once the page has come to rest. A browser draws a smooth
+//! scroll between whole pixels, each row of the page a blend of two, so while it moves no row
+//! is a row of the last placed frame (measured on Rotem's Chrome, 2026-10-14: six frames of
+//! every notch); such a frame is on its way, and the frame it rests on is placed.
+//!
 //! Bytes in, bytes out, four to a pixel, top-down; which channel is which does not matter
 //! here, only that the fourth is the alpha, which a screen copy leaves unset and is ignored.
 
@@ -62,8 +67,10 @@ pub enum Step {
     Placed,
     /// Placed, and the picture is this many rows longer.
     Grew(u32),
-    /// Not placed: it shares too little with the last placed frame.
+    /// Not placed, with the page at rest: it shares too little with the last placed frame.
     Lost,
+    /// Not placed, with the page still moving: the frame before it was another.
+    Moving,
     /// Placed, and the picture has reached the longest it may be.
     Full,
 }
@@ -71,6 +78,7 @@ pub enum Step {
 /// One frame as numbers: for every strip, one number per row, whether the row tells
 /// anything, which a row equal to the one above it does not, and whether its number appears
 /// only once in the strip.
+#[derive(Clone)]
 struct Signature {
     rows: Vec<Vec<u64>>,
     telling: Vec<Vec<bool>>,
@@ -89,6 +97,8 @@ pub struct Stitcher {
     canvas: Vec<u8>,
     /// The last placed frame, and the row of the picture its top row is.
     reference: Option<(Signature, Vec<u8>, i64)>,
+    /// The frame taken before this one, placed or not: the page is at rest when it comes again.
+    seen: Option<Signature>,
     last_distance: i64,
     /// For every column of the two edge bands, in how many placed frames it held a pixel
     /// that neither stood still nor moved with the page: a scrollbar's thumb.
@@ -129,6 +139,7 @@ impl Stitcher {
             corner_rows: (corner_rows as usize).min(height / 4),
             canvas: Vec::new(),
             reference: None,
+            seen: None,
             last_distance: 0,
             rogue: vec![0; edge_band * 2],
             flat: vec![true; edge_band * 2],
@@ -157,6 +168,10 @@ impl Stitcher {
             return Step::Full;
         }
         let signature = self.signature(frame);
+        let settled = self
+            .seen
+            .replace(signature.clone())
+            .is_some_and(|seen| same(&seen, &signature));
         // Taken out while it is compared, and put back as it was unless this frame is placed.
         let Some((reference, reference_pixels, top)) = self.reference.take() else {
             self.canvas.extend_from_slice(frame);
@@ -169,7 +184,7 @@ impl Stitcher {
         }
         let Some((distance, agreeing)) = self.distance(&reference, &signature) else {
             self.reference = Some((reference, reference_pixels, top));
-            return Step::Lost;
+            return if settled { Step::Lost } else { Step::Moving };
         };
         if distance == 0 {
             // It stood still, and the last placed frame stays the one to match, so the day
@@ -597,7 +612,9 @@ mod tests {
         let mut s = stitcher();
         s.push(&view(&page, 0));
         assert_eq!(s.push(&view(&page, 100)), Step::Grew(100));
-        // Further than a frame: nothing shared, nothing placed, nothing added.
+        // Further than a frame: nothing shared, nothing placed, nothing added; on its way at
+        // first, and lost once it rests there.
+        assert_eq!(s.push(&view(&page, 900)), Step::Moving);
         assert_eq!(s.push(&view(&page, 900)), Step::Lost);
         assert_eq!(s.size().1, (H + 100) as u32);
         // Back within reach of the last placed frame, and on from there.
@@ -821,8 +838,11 @@ mod tests {
         let mut s = stitcher();
         s.push(&frame(0));
         assert_eq!(s.push(&frame(100)), Step::Grew(100));
-        // Lost, so the bar says so: four strips of ten are against standing still.
+        // Lost once it rests, so the bar says so: four strips of ten are against standing
+        // still.
+        assert_eq!(s.push(&frame(1200)), Step::Moving);
         assert_eq!(s.push(&frame(1200)), Step::Lost);
+        assert_eq!(s.push(&frame(1300)), Step::Moving);
         assert_eq!(s.push(&frame(1300)), Step::Lost);
         assert_eq!(s.size().1 as usize, H + 100);
         assert_eq!(s.push(&frame(220)), Step::Grew(120));
@@ -867,6 +887,40 @@ mod tests {
         let (pixels, _, h) = s.finish();
         assert_eq!(h as usize, H + 150);
         assert!(pixels == page[..(H + 150) * W * 4]);
+    }
+
+    /// A frame of the page as a smooth scroll draws it, `at` rows down with a part of a row
+    /// over: every row a blend of the two rows it lies between.
+    fn between(page: &[u8], at: f64) -> Vec<u8> {
+        let (top, part) = (at.floor() as usize, at.fract());
+        let (upper, lower) = (view(page, top), view(page, top + 1));
+        upper
+            .iter()
+            .zip(&lower)
+            .map(|(&a, &b)| (a as f64 * (1.0 - part) + b as f64 * part).round() as u8)
+            .collect()
+    }
+
+    #[test]
+    fn a_page_between_two_places_is_on_its_way_not_lost() {
+        // Rotem's report of 2026-10-14: one notch of the wheel in Chrome, and the bar said too
+        // fast at once. The notch is drawn over six frames between whole pixels, and only the
+        // frame it rests on is a frame of the page.
+        let page = page(1200);
+        let mut s = stitcher();
+        assert_eq!(s.push(&view(&page, 0)), Step::First);
+        for at in [6.4, 23.7, 51.2, 77.9, 94.6, 99.5] {
+            assert_eq!(s.push(&between(&page, at)), Step::Moving, "at {at}");
+        }
+        assert_eq!(s.push(&view(&page, 100)), Step::Grew(100));
+        for at in [104.3, 131.8, 177.1] {
+            assert_eq!(s.push(&between(&page, at)), Step::Moving, "at {at}");
+        }
+        assert_eq!(s.push(&view(&page, 200)), Step::Grew(100));
+        assert_eq!(s.push(&view(&page, 200)), Step::Unchanged);
+        let (pixels, _, h) = s.finish();
+        assert_eq!(h as usize, H + 200);
+        assert!(pixels == page[..(H + 200) * W * 4]);
     }
 
     #[test]

@@ -2082,3 +2082,35 @@ trash; Ctrl+Z puts it back within the session only. The picker, "Open with" and 
 line join; previous and next in a folder never do. The storage figure does not count it.
 Every timeline refresh asks whether each pointed file is still there, which a dead network
 path could make slow: worth a cap or a lazy test if it ever bites.
+
+## 2026-09-18 · Save As on an annotated PNG or JPEG writes over the file it came from
+
+### Context
+Rotem annotated a picture he had opened and pressed Save As: Recon offered a new name
+beside the original, "img annotated.png", as rule 11 and S1.11 had it, and he wanted the
+file he opened saved, not a second version of it. Rule 11 is his own invariant, so the ask
+was put back to him as the scene it is: the clean original gone from disk.
+
+### Options
+1. Save As writes over the opened file, for the types that can be written back as
+   themselves, PNG and JPEG.
+2. Keep a new file every time, as built.
+3. For the other types under option 1: refuse, or keep the new annotated PNG.
+
+### Decision
+Option 1, and the new annotated PNG for the other types: Rotem's, on 2026-09-18. Built as
+the narrowest door: only a managed document's own source file, only when that path is the
+one chosen in the dialog, which opens on it; the write goes through a temporary file, a
+flush and a rename, so a failure leaves the original whole. The Windows overwrite prompt
+stays off, since pressing Save on the file's own name is the answer to its question.
+
+### Consequences
+`CLAUDE.md` rule 11 carries the exception in its own text. A file only viewed, any other
+existing name, and an SVG, GIF, WebP, BMP, TIFF, HEIC or AVIF keep the never-overwrite
+path. The document keeps its clean preserved picture and its notes, so a second Save As
+composes from the clean picture and never burns notes in twice, and the clean picture can
+still be had from Recon while the document lives. A note in the margin makes the saved
+file larger than the original was. The document's record of its file's size and time
+follows the save, so it does not report its own save as a change on disk.
+
+---
