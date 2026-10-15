@@ -142,75 +142,10 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-10-06 · The commit waits for `Go commit`, the kit's new rule 22 adopted; the release build follows that commit.
 - 2026-10-07 · A capture's timing lines are kept in `%LOCALAPPDATA%\Recon\timing.log`, capped at 4 MB with one older file; never the window or the files opened.
 - 2026-10-14 · A scrolling capture calls a page lost only once it rests out of reach; a page drawn between whole pixels is on its way, never placed and never lost.
+- 2026-10-15 · The Recon Rotem runs lives in `app/`, outside the build folder, with the release before it kept in `app/previous/`.
+- 2026-10-15 · A show refused the foreground asks again for a second and a half, never takes it by force.
 
 ---
-
-## 2026-09-18 · The mode follows what is done: a tool picked starts the annotation, a finished element puts the tool down, and the Annotate button and the A key are gone
-
-### Context
-
-A file opened in viewing, and nothing could be added to it until the Annotate button or
-the A key was pressed; a tool picked there lit up and did nothing. Rotem said on
-2026-09-18 that jumping between the two modes by hand is the problem and the switch has to
-happen by itself: a callout made and its text finished, and the picture is back to viewing;
-a click on that callout, and it is edited. He chose, of the scenes put to him, a tool
-picked again for every note, and the button and the key removed rather than kept as an
-override. This replaces the second half of 2026-09-14, "a chosen one stays until the next
-picture".
-
-### Options
-
-1. Flip the page's mode to viewing after every element, and back at a click on one. Viewing
-   takes the pointer off the notes, so the click would have to be hit-tested by hand, and
-   entering annotation reloads the picture from the host, in the middle of a click.
-2. Leave the mode to mean only "this picture has a document", and make the state Rotem calls
-   viewing the one that already exists inside annotation: no tool in hand, the ordinary
-   pointer, a drag pans, a click on a note edits it.
-
-### Decision
-
-Option 2. A finished note (`commitEditing`) and a drawn shape (the release of a draw that
-made one) put the tool down; a press that draws nothing keeps it, and the crop tool, which
-makes no element, stays in hand. A tool picked over a file only viewed asks the host for
-the document first (`pickTool`), once however many picks arrive, and arms the tool only if
-that picture is still the one shown. The tool keys work in viewing for that reason.
-
-### Consequences
-
-One key or button before every element, which is what Rotem chose. Any of the eight tool
-keys pressed over a viewed file now makes its managed document, where only A did; the file
-itself is never touched (rule 11), and nothing is made until a tool is picked. A file
-annotated before still opens as the plain file, and its notes appear when a tool is
-picked, since the route the A key gave is the tool's now. `setMode('view')` is left in the
-page for the checks only; nothing in the product calls it. The tool in hand was never part
-of undo, so Ctrl+Z is unchanged: it takes back the note or the shape, not the tool.
-
-## 2026-09-18 · The colour picker's HEX is put on the clipboard by the host from a colour the page names, and the picker starts no annotation
-
-### Context
-Rotem asked for a colour picker in the left sidebar: a click on the picture copies the HEX
-under it. The page may not touch the clipboard (part 5, and the capability file says so),
-and since the same day a tool picked over a file only viewed starts its annotation.
-
-### Options
-1. The page writes the text itself through the browser's clipboard.
-2. A host command that publishes any text the page sends.
-3. A host command that takes three numbers, a colour, and writes the HEX itself.
-
-### Decision
-Option 3, the assistant's, Rotem's to veto. The page reads the pixel through the magnifier's
-own route, so the HEX copied is the HEX its circle shows, and sends red, green and blue;
-the host formats `#RRGGBB` and publishes it as text. The picker is the one tool that starts
-no annotation: it changes nothing, so a file only viewed stays viewed and no document is
-made for it (rule 11 untouched). Put down after the click and the zoom circle are Rotem's
-two calls.
-
-### Consequences
-The page still cannot publish anything of its choosing: seven characters of a colour is all
-this adds. The pick is no act, so Ctrl+Z has nothing to take back (rule 23), as with Copy.
-Over an SVG being viewed the colour comes from the fixed raster the magnifier reads, not the
-sharp redraw on screen, so on an edge zoomed far in the two can differ by a shade. A second
-text the host should publish would want its own narrow command, not a widening of this one.
 
 ## 2026-09-19 · A second capture shortcut sits in its own row, Capture 2, empty until picked and cleared by its ×
 
@@ -915,3 +850,87 @@ an animation wider than two strips keeps every frame different, so the bar now s
 there where it said "Too fast" while nobody scrolled (the 2026-09-22 entry's consequence);
 nothing joins there either way. Revisit if a page is found that never rests between the
 notches of a slow scroll.
+
+## 2026-10-15 · The Recon Rotem runs lives in `app/`, outside the build folder, with the release before it kept in `app/previous/`
+
+### Context
+Every release was copied over `host/target/release/recon-host.exe`, inside cargo's build
+folder, and Windows' Run value, the image types' "Open with" and Rotem's taskbar pin pointed
+into that folder. On 2026-10-15 the investigation of `host\` offered for deletion found that
+the assistant had then twice called `host\target\` safe to delete: it held the Recon Rotem
+runs every day, and the only copy of the release, since each release overwrote the last.
+Rotem approved moving it.
+
+### Options
+1. Keep it in the build folder and say so wherever the folder is described.
+2. A folder of its own inside the project, `app/`, out of git, the release before it kept.
+3. A folder outside the project, such as the user's programs folder.
+
+### Decision
+Option 2, Rotem's approval of the assistant's proposal. Option 1 leaves the next cleanup of
+the build folder one sentence away from removing his Recon. Option 3 is outside the project,
+where nothing the assistant writes may go (`CLAUDE.md` rule 12). The product keeps nothing
+beside its own executable: its settings, store, trash and logs are under the user's folders,
+and only check builds write beside themselves, so the move changes no data.
+
+### Consequences
+`host/target/` is a build cache again, which a clean rebuilds whole. A bad release goes back
+by one copy, `app/previous/recon-host.exe`. Windows' Run value and "Open with" are written
+from the executable that writes them, and the tick reads only whether a Run value exists,
+whatever path it holds; so they move only in this order: every Recon quit, then
+`app\recon-host.exe` started (a copy started while another Recon runs hands itself to that
+one and exits, and a tick made there writes the OLD path again), then Start with Windows
+unticked and ticked again, then `app\recon-host.exe --register-types`, then the taskbar pin
+and any other shortcut made anew. `reg query` of the Run value and of
+`HKCU\Software\Classes\Recon.Image\shell\open\command` proves it. Running a check build's
+`--register-types` points "Open with" at that build, as had already happened before this
+move (it pointed at `host/target/debug/`). A Go backup now carries the two executables,
+about 30 MB. Revisit if Recon gets an installer of its own, or if one copy back proves too
+few.
+
+## 2026-10-15 · A show refused the foreground asks again for a second and a half, never takes it by force
+
+### Context
+The first open of the day, from the Start menu while the Recon started by Windows sits in the
+tray, showed the editor behind the other windows with its taskbar button flashing (Rotem,
+2026-10-15). Measured with a probe copy of the host: the launching Recon does hand its right
+to the foreground over (the 2026-10-10 fix), and the Recon in the tray shows its window at
+once, while the Start menu, or Search, is still the window in front; Windows refuses the
+foreground to a desktop window then, whatever right the process holds, and Tauri's focus
+call asks once, with its ALT-key trick, and gives up. The menu closes by itself a moment
+later, and nothing asked again. A Store app in front, Settings, does not refuse.
+
+### Options
+1. After a show that was refused, ask for the foreground again on a timer, every 100 ms for
+   up to 1.5 s, while the window is visible and not in front; a refused ask changes nothing.
+2. Take the foreground by force: attach the window's thread to the input of the one in front
+   (`AttachThreadInput`) and set the foreground through it, which the rule does not stop.
+3. Create the hidden window unfocused (`focused(false)`), so the web view's focus at build
+   time does not activate the hidden window; tried first, then measured not to matter: the
+   hand-off comes up fine with the old window, Chrome in front.
+4. Have the launching Recon, which holds the right, wait for the window and bring it forward
+   itself, instead of handing the right over.
+
+### Decision
+Option 1, the assistant's, Rotem's to veto. The rule Windows applies is the one that stops a
+background program stealing the window a person is typing in, and option 2 defeats it for
+every show, the tray click and the capture included; it also fails against the Start menu
+itself, a process its thread cannot attach to. Option 1 takes nothing a person did not ask
+for: the ask succeeds only with the right the launch handed over, and that right is gone the
+moment the person clicks or types elsewhere, so the window never comes forward over work that
+moved on. Option 4 leaves the launching Recon alive for a second with a window to find by
+title. Option 3 is reverted, and offered to Rotem apart: a Recon started by Windows takes the
+foreground invisibly at logon through that focus, which is a defect of its own.
+
+### Consequences
+`editor::show` ends in `bring_forward_again`: nothing when the window is in front already,
+otherwise a thread that asks on the window's own thread up to fifteen times and logs the
+count, or that the window is still behind and who is in front. Every caller of `show` gets
+it: the tray, the Open shortcut, the second launch, a capture, the page's own bring-up. A
+process with no right to the foreground, such as a check build started from a shell, makes
+fifteen refused asks and nothing else. Not measured here: that the handed-over right outlives
+the Start menu's own closing, which the probe could not close without a keystroke that would
+take the right away; Rotem's first open from the Start menu after the release is the proof.
+Revisit if that proof fails, which would mean the shell revokes the right as the menu closes,
+and option 4 or the shell's own activation becomes the route; or if a second and a half shows
+as a window arriving late.

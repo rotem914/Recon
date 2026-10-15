@@ -19,13 +19,17 @@
 //! second kind lets the page ask the host to touch the screen and the disk, which is part
 //! 5's boundary broken, so a product build does not compile them (review T7).
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 
 use image::ImageEncoder;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Emitter, Manager, UriSchemeResponder, WebviewUrl, WebviewWindowBuilder};
+use windows::Win32::Foundation::HWND;
+use windows::Win32::UI::WindowsAndMessaging::{
+    GetForegroundWindow, IsIconic, IsWindowVisible, SetForegroundWindow,
+};
 
 use crate::capture::coords::{FrameGeometry, ImageRect};
 use crate::capture::Frame;
@@ -1551,7 +1555,11 @@ pub fn create_hidden(app: &AppHandle) -> tauri::Result<()> {
         });
     #[cfg(feature = "own-extensions")]
     let window = with_own_extensions(window);
-    window.build()?;
+    let built = window.build()?;
+    EDITOR_HWND.store(
+        built.hwnd().map(|h| h.0 as isize).unwrap_or(0),
+        Ordering::SeqCst,
+    );
     Ok(())
 }
 
@@ -1619,7 +1627,85 @@ pub fn show(app: &AppHandle) -> Result<u128, String> {
     }
     window.show().map_err(|err| err.to_string())?;
     window.set_focus().map_err(|err| err.to_string())?;
+    bring_forward_again(window);
     Ok(started.elapsed().as_millis())
+}
+
+/// The editor window's handle, kept from its creation for the asks that follow a show, so a
+/// show from the capture thread waits on nothing more than it did.
+static EDITOR_HWND: AtomicIsize = AtomicIsize::new(0);
+
+/// How often, and for how long, a show refused the foreground asks for it again.
+const FORWARD_RETRY: Duration = Duration::from_millis(100);
+const FORWARD_RETRIES: u32 = 15;
+
+/// Whether the window is on screen, visible and not minimized, read from Windows itself.
+fn shown(hwnd: HWND) -> bool {
+    unsafe { IsWindowVisible(hwnd).as_bool() && !IsIconic(hwnd).as_bool() }
+}
+
+/// Whether the window in front is one of this process's: the editor, or the capture overlay,
+/// which takes the foreground itself and keeps it.
+fn foreground_is_ours() -> bool {
+    let fg = unsafe { GetForegroundWindow() };
+    !fg.is_invalid() && crate::focus::is_ours(fg)
+}
+
+/// Asks for the foreground again when the show was refused it (Rotem, 2026-10-15).
+///
+/// Windows refuses the foreground to a desktop window while the Start menu, or Search, is the
+/// window in front, whatever right the process holds; and a launch from there leaves the menu
+/// in front for a moment after the click. The focus call above asks once, and that once was
+/// refused: the window stayed behind with its taskbar button flashing, measured on 2026-10-15
+/// with Search in front. So a window still not in front is asked for again, every 100 ms for
+/// up to a second and a half, until it is in front, or hidden or minimized again, or another
+/// of Recon's own windows is in front. Each ask is made on the window's own thread and looks
+/// again there, so a hide or a minimize landing meanwhile is never undone. A refused ask only
+/// keeps the taskbar button flashing, as the refused show does, so a process with no right to
+/// the foreground, or a person who went elsewhere meanwhile, is left where they are. From a
+/// thread other than the window's, the show is still on its way when this runs, so the first
+/// look asks the window itself and waits for it.
+fn bring_forward_again(window: tauri::WebviewWindow) {
+    let raw = match EDITOR_HWND.load(Ordering::SeqCst) {
+        0 => window.hwnd().map(|h| h.0 as isize).unwrap_or(0),
+        raw => raw,
+    };
+    if raw == 0 || foreground_is_ours() {
+        return;
+    }
+    std::thread::spawn(move || {
+        for attempt in 1..=FORWARD_RETRIES {
+            std::thread::sleep(FORWARD_RETRY);
+            let hwnd = HWND(raw as *mut _);
+            // The first look asks the window itself, which answers once the show it follows
+            // has run: from another thread the show is only on its way when this starts.
+            let on_screen = if attempt == 1 {
+                window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(false)
+            } else {
+                shown(hwnd)
+            };
+            if !on_screen {
+                return;
+            }
+            if foreground_is_ours() {
+                crate::log(&format!("editor in front after {} more asks", attempt - 1));
+                return;
+            }
+            let asked = window.run_on_main_thread(move || {
+                let hwnd = HWND(raw as *mut _);
+                if shown(hwnd) && !foreground_is_ours() {
+                    let _ = unsafe { SetForegroundWindow(hwnd) };
+                }
+            });
+            if asked.is_err() {
+                return;
+            }
+        }
+        crate::log(&format!(
+            "editor still behind after {FORWARD_RETRIES} more asks; in front: {}",
+            crate::platform::foreground_owner().line()
+        ));
+    });
 }
 
 /// Hands a captured frame to the editor and brings the window up.

@@ -41,7 +41,8 @@ impl Returned {
     }
 }
 
-fn is_ours(hwnd: HWND) -> bool {
+/// Whether a window belongs to this process: the editor, the overlay, any of Recon's own.
+pub(crate) fn is_ours(hwnd: HWND) -> bool {
     let mut pid = 0u32;
     unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
     pid == std::process::id()

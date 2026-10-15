@@ -37,7 +37,8 @@ The real tree. The host is the first code in the project, from step S0.1.
 Recon/
 ├── CLAUDE.md                       # entry file, read first every session
 ├── Installation.md                 # the record of how ProjectOS was installed here
-├── .gitignore                      # keeps backups/, .tmp/ and host/target/ out of git
+├── .gitignore                      # keeps backups/, .tmp/, app/ and host/target/ out of git
+├── app/                            # the Recon Rotem runs: each release copied here, the one before it in previous/
 ├── host/                           # the Rust host process: native, owns the pixels
 │   ├── Cargo.toml
 │   ├── build.rs

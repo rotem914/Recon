@@ -9,3 +9,6 @@
 
 # Tauri regenerates these from tauri.conf.json on every build.
 /host/gen/
+
+# The Recon Rotem runs, a release copied here, and the one before it (Workflow.md step 16).
+/app/

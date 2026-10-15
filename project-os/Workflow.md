@@ -278,11 +278,22 @@ built with `cargo build --release --features own-extensions` (the switch keeps R
 inspector in the Recon he runs, `project-os/Decisions.md` 2026-09-19; a public release is
 built without it) into the private target folder `.tmp/release-target/`,
 so another session's uncommitted work stays out and a running Recon's hold on its file
-does not stop the build. It is copied over `host/target/release/recon-host.exe` at once
-when no Recon from that path is running; otherwise a waiting job copies it the moment that
-Recon exits, and copies nothing if one from that path is back by then. The hash of the copy
-is read back against the build, and the build and the copy get their History rows like any
-change. A change to the docs alone builds nothing.
+does not stop the build. It is copied over `app/recon-host.exe`, the Recon Rotem runs, at
+once when no Recon is running; otherwise a waiting job copies it the moment Recon exits,
+and copies nothing if one is back by then. The job waits on ANY Recon, whatever path it
+runs from, since only one Recon runs at a time: one running from anywhere but
+`app/recon-host.exe` is named in the report, and that release is not delivered until Windows
+starts the copy in `app/` again. Right before the copy, and only when it happens, the copy
+it replaces is kept as `app/previous/recon-host.exe` (the folder made when missing), its
+hash read back; a keep that fails stops the copy; the keep is skipped when the build is the
+copy already in place, or when Rotem reported the copy in place bad, so `previous/` always
+holds a release that ran. The hash of the copy is read back against the build, and the
+build and the copy get their History rows like any change. A change to the docs alone
+builds nothing. `app/` is outside the build folder on purpose (`project-os/Decisions.md`
+2026-10-15): once Start with Windows, Open with and the taskbar pin name
+`app/recon-host.exe`, cleaning or deleting `host/target/` takes neither the Recon he runs
+nor what Windows starts; a checks build's `--register-types` points Open with back into
+`host/target/debug/`, so a session that ran one says so and re-registers from `app/`.
 
 **The build reaches Rotem's Recon without a command from him.** Rotem said on 2026-09-19,
 after a session handed him copy commands round after round: the flow is always the same
