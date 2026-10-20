@@ -147,6 +147,8 @@ given, and never re-takes one the user changed.
 one value under the user's own Run key, so Windows starts it at logon, where it sits in the
 tray with no window shown; off removes exactly that value. Nothing is written until the tick
 is chosen, and a start by hand still opens the window. Added 2026-09-15 at Rotem's ask.
+Since 2026-10-19 the everyday copy, the one in `app\`, re-points that value to itself when it
+starts and the value names another copy, so a release moved there is the one Windows starts.
 
 ## 3.2 Capture flow
 

@@ -2181,3 +2181,25 @@ this adds. The pick is no act, so Ctrl+Z has nothing to take back (rule 23), as 
 Over an SVG being viewed the colour comes from the fixed raster the magnifier reads, not the
 sharp redraw on screen, so on an edge zoomed far in the two can differ by a shade. A second
 text the host should publish would want its own narrow command, not a widening of this one.
+
+## 2026-09-19 · A second capture shortcut sits in its own row, Capture 2, empty until picked and cleared by its ×
+
+### Context
+Rotem asked for two capture shortcuts in Settings instead of one, after pointing Print Screen
+at Recon by hand in its settings file.
+
+### Options
+1. A second row under Capture, the same size as the others.
+2. Two narrower fields side by side on the Capture row.
+
+### Decision
+Option 1, Rotem's, on 2026-09-19. Three more choices ride with it, the assistant's, Rotem's to
+veto: the row is named Capture 2; it is empty until a shortcut is picked, as Open Recon is,
+since a global shortcut never taken by default cannot collide with another application; and
+only it can be cleared, while the first capture shortcut still always holds one.
+
+### Consequences
+The file keeps it as `second_hotkey`, beside `hotkey` and `open_hotkey`. No two of the three
+may be the same shortcut, however spelled; a file edited by hand that names one twice leaves
+the later one empty at startup. The tray's item and the empty editor's words still name the
+first capture shortcut only.

@@ -142,32 +142,11 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-10-06 · The commit waits for `Go commit`, the kit's new rule 22 adopted; the release build follows that commit.
 - 2026-10-07 · A capture's timing lines are kept in `%LOCALAPPDATA%\Recon\timing.log`, capped at 4 MB with one older file; never the window or the files opened.
 - 2026-10-14 · A scrolling capture calls a page lost only once it rests out of reach; a page drawn between whole pixels is on its way, never placed and never lost.
-- 2026-10-15 · The Recon Rotem runs lives in `app/`, outside the build folder, with the release before it kept in `app/previous/`.
+- 2026-10-15 · _The Recon Rotem runs lives in `app/`, outside the build folder, with the release before it kept in `app/previous/`._ (its clause re-ticking Start with Windows by hand is superseded on 2026-10-19, below; the rest stands)
 - 2026-10-15 · A show refused the foreground asks again for a second and a half, never takes it by force.
+- 2026-10-19 · The everyday copy re-points Start with Windows to itself at every start, told by its folder's name, `app`.
 
 ---
-
-## 2026-09-19 · A second capture shortcut sits in its own row, Capture 2, empty until picked and cleared by its ×
-
-### Context
-Rotem asked for two capture shortcuts in Settings instead of one, after pointing Print Screen
-at Recon by hand in its settings file.
-
-### Options
-1. A second row under Capture, the same size as the others.
-2. Two narrower fields side by side on the Capture row.
-
-### Decision
-Option 1, Rotem's, on 2026-09-19. Three more choices ride with it, the assistant's, Rotem's to
-veto: the row is named Capture 2; it is empty until a shortcut is picked, as Open Recon is,
-since a global shortcut never taken by default cannot collide with another application; and
-only it can be cleared, while the first capture shortcut still always holds one.
-
-### Consequences
-The file keeps it as `second_hotkey`, beside `hotkey` and `open_hotkey`. No two of the three
-may be the same shortcut, however spelled; a file edited by hand that names one twice leaves
-the later one empty at startup. The tray's item and the empty editor's words still name the
-first capture shortcut only.
 
 ## 2026-09-19 · A capture can pick Recon's own editor window like any other; only the capture overlay itself is left out, Rotem's call
 
@@ -934,3 +913,39 @@ take the right away; Rotem's first open from the Start menu after the release is
 Revisit if that proof fails, which would mean the shell revokes the right as the menu closes,
 and option 4 or the shell's own activation becomes the route; or if a second and a half shows
 as a window arriving late.
+
+## 2026-10-19 · The everyday copy re-points Start with Windows to itself at every start, told by its folder's name, `app`
+
+### Context
+The move of the everyday Recon into `app/` (2026-10-15) left Windows' Run value on the old
+path, `host\target\release\`: the value is written only at the tray's tick, and the tick was
+never made again from the new copy. So every logon started the old release, the one before
+the first-open fix, and the taskbar pin, re-made to name `app\`, never lit for it: Windows
+lights a pin only for the window of the very program it names, and the running window got a
+button of its own at the end of the bar. The 2026-10-15 entry had left the re-tick to
+Rotem's hand, and a hand step after every move is the step that gets missed.
+
+### Options
+1. Rotem's hand after every move: quit, start from the pin, untick and tick.
+2. Every product build re-points the value to itself at its start, when it names another copy.
+3. Only a copy whose folder is named `app` re-points it; every other copy leaves it alone.
+
+### Decision
+Option 3, Rotem's pick of the code route on 2026-10-19, in his words "whenever the copy in
+app\ starts"; the folder's name as the test is the assistant's. Option 1 is what failed.
+Option 2 lets a release built for a check, or the copy kept in `app/previous/`, steal the
+logon start by being run once. The folder's name is the one fact that tells the everyday
+copy from every other: a check build's is `debug`, a release build's `release`, the kept
+copy's `previous`.
+
+### Consequences
+`startup::repoint`, called in the setup of the Recon that stays, after the single-instance
+hand-off, so a copy started while another runs never reaches it. It writes only when a
+value exists, so the tick off stays off; only when the value names another command, so a
+logon start from `app\` writes nothing; and never from a folder of another name. The first
+start of a new `app\` copy after a move is still by hand, from the pin, since the logon
+start names the old path until then; from that start on, logon and the pin name the same
+copy and the pin lights. "Open with" is not covered: it stays `--register-types`, run by
+Rotem from `app\`. Supersedes, in the 2026-10-15 entry, the clause "then Start with Windows
+unticked and ticked again". Revisit if the everyday copy ever lives in a folder of another
+name, an installer's for one; the test is then that installer's to carry.

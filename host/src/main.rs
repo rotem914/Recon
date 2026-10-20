@@ -712,6 +712,23 @@ fn main() {
                 Ok(path) => log(&format!("timing log: {}", path.display())),
                 Err(err) => log(&format!("timing log NOT open yet: {err}")),
             }
+            // The everyday copy, the one in `app\`, re-points Start with Windows to itself
+            // when the value names another copy (Rotem, 2026-10-19): the release moved out
+            // of the build folder had left the value on the old path, so the Recon started
+            // at logon was the old copy, and the taskbar pin, naming the new one, never lit
+            // for it. Here and not before, for the same reason as the timing log: a copy
+            // that handed itself over never reaches this point, so a start from `app\` while
+            // another Recon runs changes nothing. A copy anywhere else is left out by its
+            // folder's name, and a build of the checks by its feature too, so no check
+            // writes the real key from whatever folder it was copied into.
+            #[cfg(not(feature = "stage0-checks"))]
+            match startup::repoint() {
+                Ok(Some((was, now))) => log(&format!(
+                    "start with Windows re-pointed to this copy: {now} (was {was})"
+                )),
+                Ok(None) => {}
+                Err(err) => log(&format!("START WITH WINDOWS NOT RE-POINTED: {err}")),
+            }
             // ---- the tray ----
             let hotkey_item =
                 MenuItemBuilder::with_id("hotkey", format!("Capture: {hotkey_label}"))
