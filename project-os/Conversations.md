@@ -2,7 +2,7 @@
 
 The rules for every reply you write to Rotem.
 
-This file is the ONE home of every reply-format rule.
+This file and `Conversations-2.md`, its continuation, are the ONE home of every reply-format rule.
 `CLAUDE.md` only points here and carries no limits of its own.
 
 Each rule below is followed by a live example of a reply obeying it.
@@ -20,11 +20,12 @@ project's one.
 
 ## In-flight narration
 
-Nothing is written between tool calls.
-One line at pickup says what the task is; the next text is the report.
-No plan of the next edit, no summary of the last one, no "I'll do X now".
-That one line follows the tone rules, never the layout: no divider, no heading.
-The one exception is a question that blocks the work, and it ends the turn.
+Between tool calls, a progress note of a few words: what is being done now.
+Never a plan of the next edit, never a summary of the last one.
+One line at pickup names the task, its type, the area it touches and its risk
+level, plus any invariant it touches; the next text is the report.
+Both follow the tone rules, never the layout: no divider, no heading.
+A question that blocks the work ends the turn.
 
 Rotem asked on 2026-09-15: a running commentary fills his feed with lines he
 never needs, and the report at the end already carries what changed.
@@ -142,6 +143,7 @@ Say the word and I will lock it in.
 ### 4 · Paragraph spacing
 
 Leave a blank line above every paragraph.
+A gap inside a section, under the headline and between blocks, is a `&nbsp;` line, never a divider.
 
 ~~~
 The rename tool is live.
@@ -332,6 +334,11 @@ In PowerShell the command form is
 `cd "C:\code\northwind"; if ($?) { npm run dev }`, in a POSIX shell
 `cd "/Users/alex/code/northwind" && npm run dev`.
 
+**Copy the owner reviews is shown as before and after, in plain text.**
+The whole block as it is now, then as proposed, its changed lines in italics.
+One block at a time, never in a fence or the question panel.
+It ends on Say `Approve` and the assistant writes it.
+
 ~~~
 Start it and look:
 
@@ -366,9 +373,11 @@ Nothing on the existing pages changed.
 
 A question for the owner is the LAST thing in the reply, never buried mid-reply.
 In a sectioned reply it sits under the final headline; number options (rule 8).
+A word you need from the owner is asked as Say `X`, so the strip offers X as a button.
 When the client has a built-in question panel, a question with options goes
-through it, always, with one line per option; the feed then carries only what
-the answer is waiting on.
+through it while the work runs, with one line per option; the feed then carries
+only what the answer is waiting on.
+A report never ends on the panel: it numbers the options, each a Say word (rule 20).
 
 ~~~
 ----
@@ -452,7 +461,7 @@ Fix: fetch once, filter in memory.
 
 ### 16 · One home: never open a second file
 
-This file is the ONLY place that carries reply-format rules.
+This file and `Conversations-2.md` are the only places that carry reply-format rules.
 Never create, open, or write another file about how replies are written: not a
 memory file, not a note, not a plan, not a scratch doc.
 A format lesson learned mid-conversation is added HERE, in place.
@@ -550,6 +559,18 @@ told at every handoff rather than guessing. The plan carries the same label per 
 
 S0.5, the nine formats: Fable, it is a decision gate.
 ~~~
+
+### 20 · The wrap-up box carries the recap alone
+
+The app's wrap-up box carries the recap only, never a question or buttons.
+
+The Claude desktop app ends a turn with a wrap-up box, filled by a tool call.
+With a question in it, the app folds the reply into the step above and shows a
+paragraph of its own in its place, first person, none of this layout. With the
+recap alone, the app asks for the closing message after the call, and that
+message renders as this file prescribes. The kit's mods plugin refuses a
+wrap-up call that carries a question, in a project whose Conversations.md
+carries this rule.
 
 ---
 

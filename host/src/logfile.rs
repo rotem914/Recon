@@ -5,8 +5,12 @@
 //! stamped with the time it was made, in milliseconds since 1970, the clock a document's
 //! number is read on.
 //!
-//! Only those lines: the rest of the host's log, and the page's other lines and errors,
-//! name the window a capture began in and the files opened, and stay on the standard
+//! Only those lines, and since 2026-10-26 the two that say how a start while Recon sits in the
+//! tray ended: whether the second instance got the window in front, and whether the running
+//! Recon's own asks did (`handoff.rs`, `editor::bring_forward_again`), counts only; the second
+//! instance appends its line itself, at once, and never retires the file. The rest
+//! of the host's log, and the page's other lines and errors, name the window a capture began
+//! in and the files opened, and stay on the standard
 //! output. The lines are handed to one writer thread of their own, so no capture thread,
 //! and not the main one, ever waits on the disk. Past its cap the file is renamed to the one
 //! older file kept beside it, replacing it, and a new one begins; a file deleted or moved
@@ -252,9 +256,58 @@ pub fn write(line: &str) {
     }
 }
 
+/// Writes one line, stamped here, straight into this run's file, opened and closed for it:
+/// for the second instance (`handoff.rs`), which quits right after and has no writer thread,
+/// and whose line would be lost with one. Waits on the disk, which that process can afford.
+pub fn write_now(line: &str) -> Result<(), String> {
+    #[cfg(not(feature = "stage0-checks"))]
+    let path = product_path()?;
+    #[cfg(feature = "stage0-checks")]
+    let path = checks_path()?;
+    append_now(&path, line)
+}
+
+/// Appends one stamped line to the file and closes it. Never through a `Sink`: that would
+/// rename a file past its cap out from under the running Recon's open handle, and its next
+/// retirement would then put a one-line file over the whole history (review, 2026-10-26).
+/// The cap is the running Recon's alone to keep; its count misses these few bytes, which is
+/// nothing against the cap. Windows keeps each appended line whole beside the other writer.
+fn append_now(path: &Path, line: &str) -> Result<(), String> {
+    let mut file = open_append(path)?;
+    let text = format!("{} | {}\n", stamp(), line.replace(['\n', '\r'], " "));
+    file.write_all(text.as_bytes())
+        .map_err(|err| format!("{}: {err}", path.display()))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{older, writer, Sink};
+    use super::{append_now, older, writer, Sink};
+
+    /// The second instance's line lands beside the running Recon's, and never retires the
+    /// file, however far past its cap the file is: a rename from there would move the file
+    /// out from under the running Recon's handle (review, 2026-10-26).
+    #[test]
+    fn a_line_appended_at_once_never_retires_the_file() {
+        let dir = scratch("append-now");
+        let path = dir.join("timing.log");
+        let mut running = Sink::open(path.clone(), 40).expect("opened");
+        running.write("1 | the running Recon's").expect("written");
+        // The file grows past the cap behind the running Recon's count, as the other writer
+        // makes it grow.
+        std::fs::write(&path, "x".repeat(60)).unwrap();
+        append_now(&path, "second instance: editor in front after 0 asks").expect("appended");
+        assert!(
+            !older(&path).exists(),
+            "the second instance retired the file"
+        );
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.starts_with(&"x".repeat(60)));
+        assert!(text.ends_with(" | second instance: editor in front after 0 asks\n"));
+        running
+            .write("2 | still the running Recon's")
+            .expect("written");
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     /// A folder of the test's own, under the test executable's, inside the project, named
     /// by this process too, so two test runs at once never share one.

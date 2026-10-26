@@ -50,9 +50,10 @@ Recon/
 │   └── src/
 │       ├── main.rs                 # tray, hotkey, capture to editor, the selection guard, the diagnostic flags
 │       ├── marks.rs                # S0.7's marks on one clock: hotkey to overlay usable, selection to editor usable
-│       ├── logfile.rs              # the timing log: a capture's timing lines kept in a file, capped, one older file beside it
+│       ├── logfile.rs              # the timing log: a capture's timing lines and the first-open outcomes kept in a file, capped, one older file beside it
 │       ├── platform.rs             # what the platform is: each display's HDR state, who owns the foreground window
 │       ├── focus.rs                # the return target: the application the capture began in, back in front on hide
+│       ├── handoff.rs              # the second instance: the hand-off to the running Recon, and its editor window raised from the click's own process
 │       ├── registration.rs         # the file types in "Open with" and Default apps, under the user, never a default taken
 │       ├── startup.rs              # Start with Windows: the tray's tick, one value under the user's Run key, and --startup for a start in the tray
 │       ├── dialog.rs               # Ctrl+O and Ctrl+S: Windows' own picker and Save As, owned by the editor, on their own thread
@@ -98,6 +99,7 @@ Recon/
     ├── Workflow.md                 # the path every task walks
     ├── QA.md                       # what must be true before anything is done
     ├── Conversations.md            # how every reply is written
+    ├── Conversations-2.md          # the reply rules, continued: rules 21 on
     ├── Code_review.md              # the review calibration
     ├── Visual_QA.md                # the hands-on testing method
     ├── Design.md                   # the design system: Rotem's tokens and components, read before a visible change
@@ -139,7 +141,7 @@ Where state lives and who is allowed to write it.
 | The hooks setting | `.claude/settings.local.json` | JSON | `project-os/Install-project-hooks.mjs` only. Machine-local, not committed. |
 | The two shortcuts | `%APPDATA%\Recon\recon.json`, the keys `hotkey` and `open_hotkey`, and `capture_pointer`, Settings' switch for the mouse pointer | JSON | the host only, when Settings changes a shortcut: every other key kept, flushed and renamed into place. Read at startup, and the log says where the value came from. |
 | Start with Windows | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, the value `Recon` | the command `"<exe>" --startup` | the host only, at the tray's "Start with Windows" tick, and at every start of the copy in `app\` when the value names another copy; removed when it is unticked |
-| The timing log | `%LOCALAPPDATA%\Recon\timing.log`, and `timing.old.log` beside it | plain text, one line each, stamped in milliseconds since 1970: the S0.7 marks, each image's encode, the page's capture shown and copied lines, the host's copy split; never the window a capture began in or a file opened, which stay on the standard output. Past 4 MB the file becomes `timing.old.log`, replacing it | the host only, appending, by a writer thread of its own, from the product's start. A checks build writes `s-timing.log` beside its executable instead |
+| The timing log | `%LOCALAPPDATA%\Recon\timing.log`, and `timing.old.log` beside it | plain text, one line each, stamped in milliseconds since 1970: the S0.7 marks, each image's encode, the page's capture shown and copied lines, the host's copy split, and the two lines saying how a start while Recon sat in the tray ended, counts only; never the window a capture began in or a file opened, which stay on the standard output. Past 4 MB the file becomes `timing.old.log`, replacing it | the host only, appending, by a writer thread of its own, from the product's start; the second instance appends its one line straight into the file before it quits. A checks build writes `s-timing.log` beside its executable instead |
 | Recon's trash | `%LOCALAPPDATA%\Recon\trash\<number>\` | a deleted document's folder, whole, plus `trashed` with the time; removed for good at a startup thirty days on | the host only, at a delete and at the startup sweep |
 | The timeline's tabs | `%LOCALAPPDATA%\Recon\tabs.json` | JSON, schema 1: the selected tab, and every tab after Main with its name and the ids of its captures, in the tab's own order, the one the strip shows last listed first; rewritten whole through a temporary file. One that does not parse is set aside as `tabs.broken-<ms>.json` | the host only, at every change the page makes to the tabs. The checks use `host/target/debug/tabs.json` instead |
 | The opened files | `%LOCALAPPDATA%\Recon\opened.json` | JSON, schema 1: for each file opened by name, its path, its size in pixels and its number; never pixels, and its thumbnail is made in memory. Rewritten whole through a temporary file; one that does not parse is set aside as `opened.broken-<ms>.json` | the host only: when a file is opened by name, taken off the timeline, annotated, or found gone. The checks use `host/target/debug/opened.json` instead |

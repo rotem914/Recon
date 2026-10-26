@@ -1626,7 +1626,11 @@ pub fn show(app: &AppHandle) -> Result<u128, String> {
         window.unminimize().map_err(|err| err.to_string())?;
     }
     window.show().map_err(|err| err.to_string())?;
-    window.set_focus().map_err(|err| err.to_string())?;
+    if launcher_raising() {
+        crate::log("show: the focus call left to the second instance, which raises the window");
+    } else {
+        window.set_focus().map_err(|err| err.to_string())?;
+    }
     bring_forward_again(window);
     Ok(started.elapsed().as_millis())
 }
@@ -1634,6 +1638,29 @@ pub fn show(app: &AppHandle) -> Result<u128, String> {
 /// The editor window's handle, kept from its creation for the asks that follow a show, so a
 /// show from the capture thread waits on nothing more than it did.
 static EDITOR_HWND: AtomicIsize = AtomicIsize::new(0);
+
+/// Until when a second instance is raising the window itself (`handoff.rs`), in milliseconds
+/// since 1970; zero when none is. A show inside that time leaves the focus call out: that
+/// call presses an ALT key to get the front, which Windows reads as input, and input may
+/// cost the second instance the right it holds (review, 2026-10-26). The show itself and
+/// `bring_forward_again` still run.
+static LAUNCHER_RAISING_UNTIL: AtomicU64 = AtomicU64::new(0);
+
+/// A second instance has handed over and raises the window for this long from now.
+pub fn launcher_raising_for(span: Duration) {
+    LAUNCHER_RAISING_UNTIL.store(epoch_ms() + span.as_millis() as u64, Ordering::SeqCst);
+}
+
+fn launcher_raising() -> bool {
+    epoch_ms() < LAUNCHER_RAISING_UNTIL.load(Ordering::SeqCst)
+}
+
+fn epoch_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or_default()
+}
 
 /// How often, and for how long, a show refused the foreground asks for it again.
 const FORWARD_RETRY: Duration = Duration::from_millis(100);
@@ -1688,7 +1715,7 @@ fn bring_forward_again(window: tauri::WebviewWindow) {
                 return;
             }
             if foreground_is_ours() {
-                crate::log(&format!("editor in front after {} more asks", attempt - 1));
+                crate::timing(&format!("editor in front after {} more asks", attempt - 1));
                 return;
             }
             let asked = window.run_on_main_thread(move || {
@@ -1701,8 +1728,13 @@ fn bring_forward_again(window: tauri::WebviewWindow) {
                 return;
             }
         }
+        // The outcome goes to the timing log too, where a product run keeps it (2026-10-26);
+        // the window in front stays on the standard output, as the file's rule asks.
+        crate::timing(&format!(
+            "editor still behind after {FORWARD_RETRIES} more asks"
+        ));
         crate::log(&format!(
-            "editor still behind after {FORWARD_RETRIES} more asks; in front: {}",
+            "in front: {}",
             crate::platform::foreground_owner().line()
         ));
     });

@@ -2203,3 +2203,59 @@ The file keeps it as `second_hotkey`, beside `hotkey` and `open_hotkey`. No two 
 may be the same shortcut, however spelled; a file edited by hand that names one twice leaves
 the later one empty at startup. The tray's item and the empty editor's words still name the
 first capture shortcut only.
+
+## 2026-09-19 · A capture can pick Recon's own editor window like any other; only the capture overlay itself is left out, Rotem's call
+
+### Context
+Rotem asked on 2026-09-19, in a fast-mode burst of the Zoom circle session, that a capture be
+able to pick Recon's own editor window. The entry of 2026-09-14 on the window under the
+pointer left every window of Recon's process out of the list the capture picks from, saying
+none of them is a thing the user could click on the real desktop; the editor is one.
+
+### Options
+1. Keep leaving out every window of Recon's process.
+2. Leave out only the capture overlay's own windows, known by their class, `ReconOverlay`, so
+   the editor is lit and picked as any other window is.
+
+### Decision
+Option 2, Rotem's, on 2026-09-19. It supersedes that one clause of the 2026-09-14 entry; the
+rest of it stands. Written at `Go commit` from another session, since the burst's own session
+wrote none.
+
+### Consequences
+With the editor on screen when a capture starts, it can be lit and captured, and its parts
+too, as the parts of any window are. Hidden and minimised windows stay out by the same tests
+as before, so Recon's hidden windows are never picked. Revisit if a window of Recon's that is
+not the editor, a menu or a dialog of its own, turns out to be picked where it should not be.
+
+## 2026-09-19 · The wheel stretches the picture already painted and asks for one region at a time; the host says once whether a picture has a see-through pixel
+
+### Context
+Rotem found the zoom on an opened picture stuck in a fast spin of the wheel. Every notch asked
+the host for a region and made the one on its way stale, so nothing was painted until the wheel
+rested: the stall the pan drag had on 2026-09-15, whose entry named the wheel as the next place
+to look. Beside it, every paint of an opened file looked through each pixel for a see-through
+one to lay over the background, in the page, whether the file had any or not.
+
+### Options
+1. Ask for a region at most once a frame.
+2. Stop dropping late answers while the wheel turns.
+3. Stretch what is already painted to the new zoom at once, the copy of the whole picture under
+   it, the notes with it, and ask for one region at a time, the newest zoom as each lands.
+
+For the see-through check: the page remembers a region that had none, or the host reads the
+whole frame once and says so with the picture.
+
+### Decision
+Option 3, mine, on Rotem's GO for both. Option 1 still stalls when a region takes longer than a
+frame; option 2 paints a region at a zoom it was not made for, at its natural size, so the
+picture would jump between sizes. The stretch is smoothed, as the host's own resample is. The
+host reads the frame, since a region without a see-through pixel says nothing of the next one;
+a vector is never called solid, its regions being drawn from the file again at each zoom.
+
+### Consequences
+Mid-spin the picture is a stretched copy, soft when zooming in, and turns sharp when a region
+lands; at rest the view is the ordinary paint, placed as F74 asks. The keys' zoom and
+`setZoomAround` still paint the direct way. The first info of a picture costs one pass over its
+pixels in the host, not measured here. Revisit if the soft moment reads as a fault, or if Rotem
+wants a glide between notches, which was offered and left for after this.

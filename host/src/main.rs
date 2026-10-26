@@ -23,6 +23,7 @@ mod editor;
 mod export;
 mod focus;
 mod folder;
+mod handoff;
 mod logfile;
 mod magnifier;
 mod marks;
@@ -613,27 +614,17 @@ fn main() {
     // Started by Windows at logon, through the Run value the tray's "Start with Windows"
     // wrote: Recon sits in the tray and shows no window (§3.1).
     let started_by_windows = args.iter().any(|a| a == startup::FLAG);
-    // Explorer starts this process with the right to take the foreground, but when Recon is
-    // already in the tray this one only hands its file, or nothing, over and exits, and the
-    // running one, which has no such right, shows the window behind with a taskbar flash.
-    // Passing the right on lets the running one come to the front (Rotem, 2026-10-10), for a
-    // file and for a plain launch from the Start menu or the taskbar alike. Only to it: the
-    // running one is found by the hand-off window the single-instance plugin names after the
-    // identifier, and on a cold start there is none, so nothing is granted (review, nit). The
-    // logon start is left out: it shows no window of its own.
+    // A Recon already in the tray: this one hands its file, or nothing, over to it and quits,
+    // and then the window has to come to the front, which only the program the click started
+    // has the right to do (Rotem, 2026-10-10 and 2026-10-15, and 2026-10-26, when the right
+    // handed over did not survive the real click). So the hand-off is Recon's own, and this
+    // process raises the window itself before it quits; `handoff.rs` says how. On a cold
+    // start there is no running Recon, and the logon start is left to the plugin: it shows no
+    // window of its own, and no click is behind it.
     if !started_by_windows {
-        use windows::core::w;
-        use windows::Win32::UI::WindowsAndMessaging::{
-            AllowSetForegroundWindow, FindWindowW, GetWindowThreadProcessId,
-        };
-        if let Ok(hwnd) =
-            unsafe { FindWindowW(w!("com.rotem.recon-sic"), w!("com.rotem.recon-siw")) }
-        {
-            let mut pid = 0u32;
-            unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
-            if pid != 0 {
-                let _ = unsafe { AllowSetForegroundWindow(pid) };
-            }
+        if let Some(running) = handoff::running() {
+            handoff::run(&running);
+            std::process::exit(0);
         }
     }
 
@@ -653,6 +644,9 @@ fn main() {
     // arguments come here, the file opens in this window, and it exits (§3.1).
     let builder =
         tauri::Builder::default().plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            // The second instance raises the window itself once this returns (`handoff.rs`),
+            // so the show below leaves its focus call out for that long.
+            editor::launcher_raising_for(handoff::RAISE_FOR);
             let args: Vec<String> = argv.into_iter().skip(1).collect();
             match file_argument(&args) {
                 Some(path) => {

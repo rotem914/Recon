@@ -38,7 +38,8 @@ Read this file first. Then the docs in `project-os/`, in this order:
    you go looking for a file.
 3. `project-os/QA.md`: what must be checked before anything is called done.
 4. `project-os/Conversations.md`: how you write replies. Every reply, not just
-   report-backs.
+   report-backs. `project-os/Conversations-2.md` continues it, rules 21 on,
+   and is read the same way.
 5. `project-os/History.md`: what changed recently, so you do not undo
    yesterday's fix. Read the Scan log only: find the `## Appendix` heading and
    read everything above it; the newest rows sit just above that heading. Open
@@ -430,6 +431,20 @@ them.
 This sits on top of rule 2. Rule 2 says do not solve more of the problem than
 asked. Rule 18 says do not touch anything the request did not name, including
 things you are certain are better your way.
+
+**A rule file changes only on the owner's word** (2026-10-15, after a session
+rewrote the reply rules in the middle of a discussion, unasked, and the owner
+found two rules nobody had set). A rule file is anything that tells you how to
+work: this `CLAUDE.md`, the rule docs under `project-os/` (Workflow,
+Conversations, QA, Hooks and the rest; the living records, History, Decisions,
+Backlog, Map, Mistakes and the bug atlas, are not rules), the guards under
+`project-os/guards/`, a feature's `Claude.md` and an MCP server's rules doc.
+Propose the change in the reply, as before and after, and write it only when
+the owner's last message says `Go rule` (the shortcut below). The folder guard
+refuses the write otherwise (`project-os/Hooks.md`), so a slip stops at the
+guard and not at the report. A rule file that still holds a setup placeholder is not yet a rule: the
+install fills it without the word, and the lock closes when the last
+placeholder goes.
 
 ### 19. The same bug twice becomes an atlas row
 
@@ -939,11 +954,29 @@ When the owner says `Backlog` about an item, in any casing, append one row to
 That file's own rules apply: this trigger is the ONLY way in, done rows move
 to Done and are never deleted, and the Open table is scanned at task pickup.
 
+### `Go rule`
+
+The owner's word for a change to a rule file: `CLAUDE.md`, a rule doc under
+`project-os/` (never a living record: History, Decisions, Backlog, Map,
+Mistakes, the plan, the bug atlas), a guard under `project-os/guards/`, a feature's
+`Claude.md`, an MCP server's rules doc. Without it in the owner's last message
+the folder guard refuses the write (rule 18, `project-os/Hooks.md`). Flow:
+
+1. Propose first: the text as it is and as it would be, one block at a time,
+   and end on Say `Go rule`.
+2. On `Go rule`, write the change as proposed, nothing beside it, in that
+   reply.
+3. The word covers that reply only. The next rule change is proposed again.
+
+A kit update or a review calibration that writes a rule file waits for the
+word the same way.
+
 ## How to reply
 
-Every reply follows `project-os/Conversations.md`. Not only report-backs after
-work: every reply, in every conversation.
+Every reply follows `project-os/Conversations.md` and its continuation,
+`project-os/Conversations-2.md`. Not only report-backs after work: every reply,
+in every conversation.
 
-That file is the single home of every reply rule: structure, length, tone,
-language. This file sets none of its own, so the two can never disagree and you
-never have to guess which one wins.
+Those two files are the single home of every reply rule: structure, length,
+tone, language. This file sets none of its own, so they can never disagree and
+you never have to guess which one wins.

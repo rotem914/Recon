@@ -156,7 +156,7 @@ not.
         "hooks": [
           {
             "type": "command",
-            "command": "node -e \"console.log('PROJECT RULES: before doing anything in this session, read the files CLAUDE.md lists under Read these before you work, as that list says. Conversations.md governs every reply you write. Workflow.md governs every task.')\"",
+            "command": "node -e \"console.log('PROJECT RULES: before doing anything in this session, read the files CLAUDE.md lists under Read these before you work, as that list says. Conversations.md and Conversations-2.md govern every reply you write. Workflow.md governs every task.')\"",
             "timeout": 10,
             "suppressOutput": true
           }
@@ -168,7 +168,7 @@ not.
         "hooks": [
           {
             "type": "command",
-            "command": "node -e \"console.log('STANDING RULES for this reply and this task: 1) Reply exactly as project-os/Conversations.md prescribes, layout and length included. 2) Change only what was asked, nothing else, however tempting. 3) Prefer the smallest safe change. 4) When something is unclear, or the decision belongs to the owner, ask instead of deciding. 5) After any completed change, add its History row; in FAST MODE, one row for the whole burst, when it ends. 6) Never write a file outside this project folder. 7) Never say a check passed unless it was actually run.')\"",
+            "command": "node -e \"console.log('STANDING RULES for this reply and this task: 1) Reply exactly as project-os/Conversations.md and Conversations-2.md prescribe, layout and length included. 2) Change only what was asked, nothing else, however tempting. 3) Prefer the smallest safe change. 4) When something is unclear, or the decision belongs to the owner, ask instead of deciding. 5) After any completed change, add its History row; in FAST MODE, one row for the whole burst, when it ends. 6) Never write a file outside this project folder. 7) Never say a check passed unless it was actually run.')\"",
             "timeout": 10,
             "suppressOutput": true
           }
@@ -228,6 +228,20 @@ assistant's memory folder for a project, `~/.claude/projects/<project>/memory/`,
 markdown only. An `EXTRA_ROOTS` list at the top of
 the file, empty by default, is where the owner names any other folder writes
 may reach.
+
+**Rule files are the owner's** (2026-10-15). The same guard refuses a write to
+a rule file, `CLAUDE.md`, a rule doc under `project-os/` (never a living
+record: History, Decisions, Backlog, Map, Mistakes, the bug atlas), a guard
+under `project-os/guards/`, a feature's `Claude.md` or an MCP server's rules
+doc, unless the owner's last typed message in the session's transcript says
+`Go rule` (`CLAUDE.md`, rule 18 and the `Go rule` shortcut). It reads the
+transcript Claude Code names in the hook's payload, only when a rule file is
+the target; a payload without one, a test or a run outside Claude Code, is not
+refused. It catches what the guard sees: the file tools, a redirection, a
+writing program, an inline script that names the file and can write. A script
+saved to a file first is not read, as it never was. A rule file that still
+holds a setup placeholder is not yet a rule: the install fills it without the
+word, and the lock closes when the last placeholder goes.
 
 What it reads, beyond a plain command:
 
@@ -469,4 +483,6 @@ closes the string or is read by a shell as code, and the reminder then arrives
 with words missing, or not at all, while the install still reports it on.
 Write "do not" rather than the short form, and name files without quotes. The
 guard lines carry `${CLAUDE_PROJECT_DIR}` on purpose; this list is for the
-reminder text only.
+reminder text only. The same shell eats the backslash escapes inside an inline
+script fed to node or python (seen 2026-10-16): a script that needs one goes
+to a file first and runs from there.

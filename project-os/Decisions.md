@@ -140,69 +140,15 @@ task touches. A line in _italics_ means part of that entry no longer holds.
 - 2026-10-01 · A Ctrl+Z pressed while a delete is on its way is let go too; the delete holds the same count the undo and redo of a deletion hold.
 - 2026-10-01 · Each line of a bubble left automatic takes its own direction, by `unicode-bidi: plaintext`; an override still sets the whole bubble. (Supersedes §3.5's "applies to the whole bubble" for automatic.)
 - 2026-10-06 · The commit waits for `Go commit`, the kit's new rule 22 adopted; the release build follows that commit.
-- 2026-10-07 · A capture's timing lines are kept in `%LOCALAPPDATA%\Recon\timing.log`, capped at 4 MB with one older file; never the window or the files opened.
+- 2026-10-07 · _A capture's timing lines are kept in `%LOCALAPPDATA%\Recon\timing.log`, capped at 4 MB with one older file; never the window or the files opened._ (the file also holds the two first-open outcome lines since 2026-10-26, below, counts only; the rest stands)
 - 2026-10-14 · A scrolling capture calls a page lost only once it rests out of reach; a page drawn between whole pixels is on its way, never placed and never lost.
 - 2026-10-15 · _The Recon Rotem runs lives in `app/`, outside the build folder, with the release before it kept in `app/previous/`._ (its clause re-ticking Start with Windows by hand is superseded on 2026-10-19, below; the rest stands)
-- 2026-10-15 · A show refused the foreground asks again for a second and a half, never takes it by force.
+- 2026-10-15 · _A show refused the foreground asks again for a second and a half, never takes it by force._ (the right handed over to the Recon in the tray is superseded on 2026-10-26, below; the asks and the refusal to take it by force stand)
 - 2026-10-19 · The everyday copy re-points Start with Windows to itself at every start, told by its folder's name, `app`.
+- 2026-10-20 · The kit's reply rules take the numbers after Recon's own, 20 on; their numbers are mapped at every update.
+- 2026-10-26 · The second instance raises the editor window itself, with the right the click gave it, and the hand-off message is Recon's own; both outcomes go to the timing log.
 
 ---
-
-## 2026-09-19 · A capture can pick Recon's own editor window like any other; only the capture overlay itself is left out, Rotem's call
-
-### Context
-Rotem asked on 2026-09-19, in a fast-mode burst of the Zoom circle session, that a capture be
-able to pick Recon's own editor window. The entry of 2026-09-14 on the window under the
-pointer left every window of Recon's process out of the list the capture picks from, saying
-none of them is a thing the user could click on the real desktop; the editor is one.
-
-### Options
-1. Keep leaving out every window of Recon's process.
-2. Leave out only the capture overlay's own windows, known by their class, `ReconOverlay`, so
-   the editor is lit and picked as any other window is.
-
-### Decision
-Option 2, Rotem's, on 2026-09-19. It supersedes that one clause of the 2026-09-14 entry; the
-rest of it stands. Written at `Go commit` from another session, since the burst's own session
-wrote none.
-
-### Consequences
-With the editor on screen when a capture starts, it can be lit and captured, and its parts
-too, as the parts of any window are. Hidden and minimised windows stay out by the same tests
-as before, so Recon's hidden windows are never picked. Revisit if a window of Recon's that is
-not the editor, a menu or a dialog of its own, turns out to be picked where it should not be.
-
-## 2026-09-19 · The wheel stretches the picture already painted and asks for one region at a time; the host says once whether a picture has a see-through pixel
-
-### Context
-Rotem found the zoom on an opened picture stuck in a fast spin of the wheel. Every notch asked
-the host for a region and made the one on its way stale, so nothing was painted until the wheel
-rested: the stall the pan drag had on 2026-09-15, whose entry named the wheel as the next place
-to look. Beside it, every paint of an opened file looked through each pixel for a see-through
-one to lay over the background, in the page, whether the file had any or not.
-
-### Options
-1. Ask for a region at most once a frame.
-2. Stop dropping late answers while the wheel turns.
-3. Stretch what is already painted to the new zoom at once, the copy of the whole picture under
-   it, the notes with it, and ask for one region at a time, the newest zoom as each lands.
-
-For the see-through check: the page remembers a region that had none, or the host reads the
-whole frame once and says so with the picture.
-
-### Decision
-Option 3, mine, on Rotem's GO for both. Option 1 still stalls when a region takes longer than a
-frame; option 2 paints a region at a zoom it was not made for, at its natural size, so the
-picture would jump between sizes. The stretch is smoothed, as the host's own resample is. The
-host reads the frame, since a region without a see-through pixel says nothing of the next one;
-a vector is never called solid, its regions being drawn from the file again at each zoom.
-
-### Consequences
-Mid-spin the picture is a stretched copy, soft when zooming in, and turns sharp when a region
-lands; at rest the view is the ordinary paint, placed as F74 asks. The keys' zoom and
-`setZoomAround` still paint the direct way. The first info of a picture costs one pass over its
-pixels in the host, not measured here. Revisit if the soft moment reads as a fault, or if Rotem
-wants a glide between notches, which was offered and left for after this.
 
 ## 2026-09-19 · The magnifier is one unit in the host: the page asks for the finished panel and paints it, Rotem's choice of two
 
@@ -949,3 +895,83 @@ copy and the pin lights. "Open with" is not covered: it stays `--register-types`
 Rotem from `app\`. Supersedes, in the 2026-10-15 entry, the clause "then Start with Windows
 unticked and ticked again". Revisit if the everyday copy ever lives in a folder of another
 name, an installer's for one; the test is then that installer's to carry.
+
+## 2026-10-20 · The kit's reply rules take the numbers after Recon's own, 20 on; their numbers are mapped at every update
+
+### Context
+The kit's reply rules, `project-os/Conversations.md`, number 1 to 19 at kit commit `748f930`,
+and a second file, `Conversations-2.md`, carries 20 to 25. Recon's copy already carries two
+rules of its own after the kit's 18: "The plan travels with its change" and "The next step
+names its model", numbered 18 and 19, both Rotem's; `CLAUDE.md` rule 13, `Workflow.md` step 16
+and `Mistakes.md` point at that 19 by number. The kit's new rule 19, the wrap-up box, lands on
+the same number.
+
+### Options
+1. Recon's two rules move to the end, after the kit's, and every reference to them follows.
+2. The kit's rules take the numbers after Recon's: its 19 becomes 20, its second file 21 to 26,
+   and every cross-reference inside the kit's text follows, at each update.
+3. The kit's numbers stay, and Recon's model rule takes a letter, 19b.
+
+### Decision
+Option 2, proposed in the update report and taken with Rotem's GO on 2026-10-20. The merge
+law of `Go update kit` keeps this project's own wording and numbers on every clash, and a rule
+Rotem set is his; the kit's text is what bends. The unfinished run of 2026-10-16 had made the
+same call.
+
+### Consequences
+Every kit update that adds a reply rule, or cites one by number, is mapped by hand: the kit's
+N is Recon's N+1 from 19 on, in the headings, in "rules 21 on" in `CLAUDE.md`, and in every
+"(rule N)" the kit's text carries; the compare tool shows these as clashes and never copies
+them. The kit's mods plugin reads the wrap-up rule by its words, not its number, so the
+renumber costs it nothing (`mods/hooks/Reply-check.ts` at `748f930`). Recon's two rules
+numbered 18 stay as they are; nothing points at the second by number. Revisit if the kit ever
+numbers its rules in a way that cannot be mapped, or if Rotem renumbers his own two.
+
+## 2026-10-26 · The second instance raises the editor window itself, with the right the click gave it, and the hand-off message is Recon's own
+
+### Context
+The first open of the day still came up behind every window after the 2026-10-15 fix (Rotem,
+2026-10-26). That fix handed the launching Recon's right to the foreground to the Recon in the
+tray, which then asked for a second and a half; it was measured with the Start menu held open
+and with a stand-in launcher, never with the real click, whose proof it left to Rotem's hand.
+The product keeps no record of those lines: they go to the standard output, which a launch
+from the pin has none of, so which half failed, the right revoked as the shell finished the
+launch or never granted, is unknown. The only Recon shortcut on this computer is the taskbar
+pin, where no Start menu is in front at all, so the refusal measured on 2026-10-15 does not
+even cover it. A window hidden since logon sits under everything opened since, which is why a
+refused show puts it beneath all the windows, not behind one.
+
+### Options
+1. Option 4 of the 2026-10-15 decision: the launching Recon, which holds the right Windows
+   gives the program a click starts, raises the window itself and quits only then. Recon then
+   sends the hand-off message in the plugin's place, since the plugin quits the moment the
+   message is delivered.
+2. Log first: write the two outcomes into the timing log, read the next first open, then
+   choose a route on evidence.
+3. Force, through `AttachThreadInput`: rejected on 2026-10-15, and still rejected.
+
+### Decision
+Option 1 with the two log lines of option 2 riding along, Rotem's `Fix` on 2026-10-26.
+`handoff.rs` finds the running Recon by the plugin's own window, sends the plugin's message
+(the format of version 2.4.4, tested against its receiver's reading), waits up to three
+seconds for the editor window to be on screen, since a file is decoded on a thread before its
+show, then asks for the front from the launching process every 100 ms up to fifteen times,
+and quits. The grant through `AllowSetForegroundWindow` is gone: a launcher that can grant can
+raise, and one that cannot raise could not grant. The running Recon's own asks in
+`editor::show` stay. Both outcomes go into the timing log as counts, never a window's name
+(the 2026-10-07 rule); the second instance writes its line straight into the file, having no
+writer thread. A second instance started with `--startup` is left to the plugin: no click is
+behind it.
+
+### Consequences
+Every start while Recon sits in the tray, the pin, the Start menu and a file from Explorer
+alike, is raised by the process the click started. That process lives up to a second and a
+half longer, without a window, and up to three seconds more while a file decodes; a file slower
+than that comes up behind as before, and the log says so. The plugin's wire format is now read
+in two places, its receiver and `handoff::payload`, so a plugin update is checked against the
+test that pins it. The 2026-10-15 probe measurements describe the old code. NOT measured here:
+the real click, the probe having run while the screen saver held the input desktop; Rotem's
+first open after the release is the proof, and the two lines in the timing log say which half
+failed if it fails again. Revisit then: it would mean the launching process's own right does
+not survive the shell finishing the launch either, and the routes left are the shell's own
+activation of the window, or force.
